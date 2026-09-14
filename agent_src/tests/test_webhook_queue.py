@@ -39,6 +39,12 @@ def test_webhook_enqueues_alert_when_queue_has_capacity() -> None:
     assert response.json()["status"] == "enqueued"
     assert response.json()["queue_depth"] == 3
     delay.assert_called_once()
+    queued_payload = delay.call_args.args[0]
+    event = queued_payload["alerts"][0]
+    assert event["schema_version"] == "2.0"
+    assert event["source"] == "alertmanager"
+    assert event["event_type"] == "service_health_failed"
+    assert event["correlation_id"].startswith("corr-")
 
 
 def test_webhook_skips_duplicate_before_enqueue() -> None:

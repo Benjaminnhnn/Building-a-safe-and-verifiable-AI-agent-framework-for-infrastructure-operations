@@ -14,6 +14,7 @@ from typing import List, Optional
 from dotenv import load_dotenv
 
 from core.tasks import process_admin_feedback_task, process_alerts_task, review_tool_change_task
+from core.event_schema import normalize_alertmanager_payload
 from utils.telegram_bot import TELEGRAM_CHAT_ID, send_telegram_message, set_telegram_webhook
 from utils import telegram_bot
 from core.rag_engine import get_rag_instance
@@ -249,7 +250,7 @@ async def prometheus_webhook(payload: AlertmanagerPayload):
     """
     try:
         depth = _queue_depth()
-        payload_dict = payload.model_dump()
+        payload_dict = normalize_alertmanager_payload(payload.model_dump())
         alerts, reserved_keys = _filter_ingress_duplicates(payload_dict["alerts"])
         if not alerts:
             return {"status": "deduped", "alert_count": 0, "queue_depth": depth}

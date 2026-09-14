@@ -1,0 +1,51 @@
+{
+  "status": "firing",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "PostgreSQLDown",
+        "instance": "bank-core-01",
+        "job": "postgres-exporter",
+        "service": "payment-api",
+        "component": "postgres-staging",
+        "environment": "staging",
+        "severity": "critical"
+      },
+      "annotations": {"summary": "PostgreSQL is unavailable"},
+      "startsAt": "2026-08-24T09:00:00Z",
+      "generatorURL": "http://prometheus:9090",
+      "fingerprint": "fixture-postgresql-down"
+    },
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "PaymentAPIEndpointDown",
+        "instance": "bank-core-01",
+        "job": "blackbox_http_payment_api",
+        "service": "payment-api",
+        "environment": "staging",
+        "severity": "critical"
+      },
+      "annotations": {"summary": "Payment API readiness failed"},
+      "startsAt": "2026-08-24T09:00:15Z",
+      "generatorURL": "http://prometheus:9090",
+      "fingerprint": "fixture-payment-api-down"
+    },
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "FrontendAPIProxyDown",
+        "instance": "bank-web-01",
+        "job": "blackbox_http_frontend_api",
+        "service": "frontend",
+        "environment": "staging",
+        "severity": "critical"
+      },
+      "annotations": {"summary": "Frontend API proxy failed"},
+      "startsAt": "2026-08-24T09:00:30Z",
+      "generatorURL": "http://prometheus:9090",
+      "fingerprint": "fixture-frontend-proxy-down"
+    }
+  ]
+}

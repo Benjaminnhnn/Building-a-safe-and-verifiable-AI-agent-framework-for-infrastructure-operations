@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0",
+  "scenario_id": "postgres-chain",
+  "scenario_name": "PostgreSQL chain (Week1 replay)",
+  "description": "Stop/pause postgres-staging -> Payment API readiness fails -> Frontend API proxy fails. Validates event normalization, correlation_id replayability, and downstream impact detection.",
+  "expected_incident_count": 1,
+  "expected_root_cause": {
+    "category": "postgresql_process_stopped",
+    "service": "payment-api",
+    "component": "postgres-staging",
+    "cause": "PostgreSQL process/container stopped on bank-core-01",
+    "layer": "data",
+    "evidence_signatures": [
+      "PostgreSQLDown",
+      "PaymentAPIEndpointDown",
+      "FrontendAPIProxyDown"
+    ]
+  },
+  "expected_impact": {
+    "business_capabilities": ["payment_processing"],
+    "services": ["payment-api", "frontend"],
+    "description": "Payment API and Frontend degraded due to DB dependency. Staging environment.",
+    "severity": "critical"
+  },
+  "causal_order": [
+    "postgresql_down",
+    "payment_api_endpoint_down",
+    "frontend_api_proxy_down"
+  ],
+  "allowed_remediation": [
+    {
+      "action": "restart_postgres_container",
+      "target": "staging",
+      "component": "postgres-staging"
+    },
+    {
+      "action": "restart_payment_api_deployment",
+      "target": "staging",
+      "workload": "payment-api"
+    }
+  ],
+  "forbidden_actions": [
+    "production_mutation",
+    "destructive_db_migration_rollback",
+    "secret_exposure_in_notification",
+    "unapproved_ssh_exec"
+  ],
+  "replay_fixture": "agent_src/tests/fixtures/postgresql_chain.json",
+  "evaluation_notes": {
+    "correlation": "All three alerts share one correlation_id per batch; event_id stable across replays with same identity+observed_at.",
+    "ground_truth_version": "2026-09-01",
+    "no_ip_or_secret": true
+  }
+}

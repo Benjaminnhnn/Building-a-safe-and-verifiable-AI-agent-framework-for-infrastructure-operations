@@ -1,7 +1,10 @@
 # Documentation
 *.md
 !README.md
+!AGENTS.md
 !AIops_CICD.md
+!docs/WEEK1_BASELINE.md
+!docs/WEEK1_SCENARIOS.md
 !AGENTS.md
 !docs/
 !docs/*.md
