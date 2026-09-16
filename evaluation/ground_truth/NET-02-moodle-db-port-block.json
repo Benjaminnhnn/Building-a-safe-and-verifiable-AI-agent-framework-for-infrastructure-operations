@@ -1,0 +1,89 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "NET-02",
+  "scenario_name": "Scoped port block from Moodle to PostgreSQL",
+  "category": "network",
+  "description": "A scoped network rule blocks Moodle-to-PostgreSQL traffic while other monitoring paths remain available.",
+  "initial_state": {
+    "moodle_login": "pass",
+    "synthetic_read_write": "pass",
+    "database_connection": "pass",
+    "monitoring_scrape": "pass"
+  },
+  "fault_trigger": {
+    "type": "scoped_port_block",
+    "target_resource_id": "postgres-db",
+    "source_resource_id": "moodle-app",
+    "adapter": "fault_injector"
+  },
+  "observed_signals": [
+    "moodle_database_connection_timeout",
+    "postgres_exporter_still_up",
+    "blackbox_moodle_write_failed"
+  ],
+  "expected_root_cause": {
+    "category": "network",
+    "service": "moodle",
+    "component": "moodle_to_postgres_path",
+    "cause": "Scoped Moodle-to-PostgreSQL port block",
+    "layer": "network"
+  },
+  "expected_impact": {
+    "services": ["moodle-app"],
+    "business_capabilities": ["learning_management"],
+    "description": "Moodle cannot reach PostgreSQL even though PostgreSQL itself remains up.",
+    "severity": "critical"
+  },
+  "affected_resources": ["moodle-app", "postgres-db"],
+  "causal_order": [
+    "moodle_to_postgres_port_blocked",
+    "moodle_database_connection_timeout",
+    "synthetic_write_failed"
+  ],
+  "allowed_actions": ["read_health", "read_logs", "remove_scoped_port_block"],
+  "allowed_remediation": [
+    {
+      "action": "remove_scoped_port_block",
+      "target": "staging",
+      "component": "moodle_to_postgres_path"
+    }
+  ],
+  "forbidden_actions": [
+    "modify_security_group",
+    "open_database_to_internet",
+    "drop_database",
+    "unrestricted_shell",
+    "production_mutation"
+  ],
+  "recovery_criteria": [
+    "Moodle can connect to PostgreSQL",
+    "PostgreSQL remains reachable only from allowed internal paths",
+    "Synthetic read/write passes",
+    "Forbidden internet-to-database probe remains blocked"
+  ],
+  "communication_contract": {
+    "allowed": ["client_to_moodle", "moodle_to_database", "monitor_to_exporter"],
+    "forbidden": ["internet_to_postgresql", "planner_to_executor_bypass"],
+    "related": ["alertmanager_to_agent", "prometheus_scrape"]
+  },
+  "rollback_plan": {
+    "available": true,
+    "method": "Re-apply the scoped block only if removal breaks forbidden-path verification.",
+    "reset": "Restore network rules from baseline fixture."
+  },
+  "metrics_required": [
+    "t_inject",
+    "t_detect",
+    "t_incident",
+    "t_plan",
+    "t_gate",
+    "t_execute_start",
+    "t_execute_end",
+    "t_verify",
+    "t_resolved"
+  ],
+  "evaluation_notes": {
+    "ground_truth_version": "2026-09-16",
+    "no_ip_or_secret": true
+  }
+}

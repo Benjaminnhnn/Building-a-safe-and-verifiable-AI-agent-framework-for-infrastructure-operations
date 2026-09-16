@@ -1,0 +1,32 @@
+digraph architecture {
+graph [rankdir=LR, bgcolor="white", pad=0.35, nodesep=0.6, ranksep=0.65, splines=polyline, fontname="Arial", fontsize=22, fontcolor="#172B4D", labelloc=t, labeljust=l, newrank=true];
+node [shape=box, style="rounded,filled", fillcolor="white", color="#BCC9D6", fontname="Arial", fontsize=13, margin=0, penwidth=1.2];
+edge [color="#526779", penwidth=1.5, arrowsize=0.75, fontname="Arial", fontsize=11];
+
+label="02 / INCIDENT PROCESSING & SAFETY\nFive stages, left to right. Lower row: supporting data and explicit failure paths.\n ";
+ingress [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#E8F3E8" ALIGN="LEFT"><B>1  OBSERVE</B><BR/><FONT POINT-SIZE="12">Webhook &#8594; validated incident</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">Alertmanager &#8594; Agent API<BR ALIGN="LEFT"/>Normalize + validate &#8594; Redis queue<BR ALIGN="LEFT"/>Observer: correlate / deduplicate<BR ALIGN="LEFT"/>Collect evidence for target resources</TD></TR></TABLE>>];
+reason [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#EFEAFB" ALIGN="LEFT"><B>2  DIAGNOSE &amp; PLAN</B><BR/><FONT POINT-SIZE="12">Two agents, structured messages</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">Diagnosis: hypotheses + evidence refs<BR ALIGN="LEFT"/>Resource graph + RAG + LLM<BR ALIGN="LEFT"/>Planner: TypedAction + preconditions<BR ALIGN="LEFT"/>Target / rollback / expected outcome</TD></TR></TABLE>>];
+safety [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#FFF0D9" ALIGN="LEFT"><B>3  SAFETY GATE</B><BR/><FONT POINT-SIZE="12">Deterministic policy decision</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">Validate target + scope + permission<BR ALIGN="LEFT"/>Evidence / risk / rollback readiness<BR ALIGN="LEFT"/>ALLOW &#8594; execute<BR ALIGN="LEFT"/>REQUIRE_APPROVAL &#8594; authenticate<BR ALIGN="LEFT"/>DENY &#8594; block and record</TD></TR></TABLE>>];
+execute [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#FFF0D9" ALIGN="LEFT"><B>4  EXECUTE</B><BR/><FONT POINT-SIZE="12">Execution Agent</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">Exact allowlisted Docker / Ansible action<BR ALIGN="LEFT"/>Dry-run + precondition recheck<BR ALIGN="LEFT"/>Timeout + idempotency + snapshot<BR ALIGN="LEFT"/>Record outputs; conditional rollback</TD></TR></TABLE>>];
+verify [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#E3F3F1" ALIGN="LEFT"><B>5  VERIFY</B><BR/><FONT POINT-SIZE="12">Independent Verification Agent</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">Fresh probes via read-only identity<BR ALIGN="LEFT"/>Health + allowed / forbidden / related<BR ALIGN="LEFT"/>Observe stability window<BR ALIGN="LEFT"/>Pass &#8594; RESOLVED; otherwise escalate</TD></TR></TABLE>>];
+state [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#F0F3F7" ALIGN="LEFT"><B>INCIDENT &amp; EVIDENCE</B><BR/><FONT POINT-SIZE="12">Persistent, replayable records</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">Resource / Incident / Evidence schema<BR ALIGN="LEFT"/>Source + time + hash + redaction<BR ALIGN="LEFT"/>Correlation ID across every stage</TD></TR></TABLE>>];
+context [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#F0F3F7" ALIGN="LEFT"><B>ORCHESTRATOR &amp; CONTEXT</B><BR/><FONT POINT-SIZE="12">Sequential workflow, checkpoint / resume</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">Bounded retries; no duplicate action<BR ALIGN="LEFT"/>RAG is guidance; evidence is observed<BR ALIGN="LEFT"/>Planner holds no execution credential</TD></TR></TABLE>>];
+human [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#F0F3F7" ALIGN="LEFT"><B>APPROVAL / DENIAL PATH</B><BR/><FONT POINT-SIZE="12">Operator identity + action hash + TTL</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">Approved &#8594; revalidate at gate<BR ALIGN="LEFT"/>Rejected / expired &#8594; no execution<BR ALIGN="LEFT"/>All decisions enter the audit trail</TD></TR></TABLE>>];
+rollback [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#F0F3F7" ALIGN="LEFT"><B>FAILURE / ROLLBACK PATH</B><BR/><FONT POINT-SIZE="12">No unrestricted shell or SQL</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">Only catalogued reversible changes<BR ALIGN="LEFT"/>Rollback also requires policy checks<BR ALIGN="LEFT"/>Unsafe / failed rollback &#8594; escalate</TD></TR></TABLE>>];
+score [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#F0F3F7" ALIGN="LEFT"><B>AUDIT &amp; BENCHMARK</B><BR/><FONT POINT-SIZE="12">Offline scoring, ground truth isolated</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">Record diagnosis / action / verdict<BR ALIGN="LEFT"/>Measure recovery and side effects<BR ALIGN="LEFT"/>Compare Manual / Ansible / AI</TD></TR></TABLE>>];
+{rank=same; ingress; state;}
+{rank=same; reason; context;}
+{rank=same; safety; human;}
+{rank=same; execute; rollback;}
+{rank=same; verify; score;}
+ingress -> reason [label="incident + evidence"];
+reason -> safety [label="typed plan"];
+safety -> execute [label="ALLOW / valid approval"];
+execute -> verify [label="execution result"];
+ingress -> state [label="persist", constraint=false];
+reason -> context [style=dashed, arrowhead=none, constraint=false];
+safety -> human [label="approval / deny", style=dashed, constraint=false];
+execute -> rollback [label="failure", style=dashed, constraint=false];
+verify -> score [label="record verdict", constraint=false];
+state -> context -> human -> rollback -> score [style=invis, weight=30];
+}

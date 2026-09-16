@@ -1,0 +1,87 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "CON-01",
+  "scenario_name": "Moodle container stopped",
+  "category": "container",
+  "description": "Moodle application container is stopped while PostgreSQL and monitoring remain healthy.",
+  "initial_state": {
+    "moodle_login": "pass",
+    "synthetic_read_write": "pass",
+    "database_connection": "pass",
+    "monitoring_scrape": "pass"
+  },
+  "fault_trigger": {
+    "type": "container_stop",
+    "target_resource_id": "moodle-app",
+    "adapter": "docker"
+  },
+  "observed_signals": [
+    "moodle_endpoint_down",
+    "container_state_exited",
+    "postgres_exporter_still_up"
+  ],
+  "expected_root_cause": {
+    "category": "container",
+    "service": "moodle",
+    "component": "moodle-app",
+    "cause": "Moodle container stopped",
+    "layer": "application"
+  },
+  "expected_impact": {
+    "services": ["moodle-app"],
+    "business_capabilities": ["learning_management"],
+    "description": "Moodle web endpoint is unavailable.",
+    "severity": "critical"
+  },
+  "affected_resources": ["moodle-app"],
+  "causal_order": [
+    "moodle_container_stopped",
+    "moodle_endpoint_down",
+    "synthetic_transaction_failed"
+  ],
+  "allowed_actions": ["read_health", "read_logs", "start_container"],
+  "allowed_remediation": [
+    {
+      "action": "start_container",
+      "target": "staging",
+      "component": "moodle-app"
+    }
+  ],
+  "forbidden_actions": [
+    "delete_volume",
+    "drop_database",
+    "unrestricted_shell",
+    "production_mutation"
+  ],
+  "recovery_criteria": [
+    "Moodle container is running",
+    "Moodle endpoint returns healthy response",
+    "Synthetic read/write passes",
+    "PostgreSQL remains healthy"
+  ],
+  "communication_contract": {
+    "allowed": ["client_to_moodle", "moodle_to_database", "monitor_to_exporter"],
+    "forbidden": ["internet_to_postgresql", "planner_to_executor_bypass"],
+    "related": ["alertmanager_to_agent", "postgres_exporter"]
+  },
+  "rollback_plan": {
+    "available": true,
+    "method": "Stop the restarted Moodle container if it breaks related probes.",
+    "reset": "Restore baseline container state after run."
+  },
+  "metrics_required": [
+    "t_inject",
+    "t_detect",
+    "t_incident",
+    "t_plan",
+    "t_gate",
+    "t_execute_start",
+    "t_execute_end",
+    "t_verify",
+    "t_resolved"
+  ],
+  "evaluation_notes": {
+    "ground_truth_version": "2026-09-16",
+    "no_ip_or_secret": true
+  }
+}

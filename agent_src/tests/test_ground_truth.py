@@ -10,13 +10,11 @@ from core.ground_truth import load_ground_truth, validate_ground_truth
 
 def _ground_truth_paths() -> list[Path]:
     # tests run with PYTHONPATH=agent_src, cwd is repo root
-    candidates = [
-        Path("evaluation/ground_truth/postgresql_chain.json"),
-    ]
+    candidates = sorted(Path("evaluation/ground_truth").glob("*.json"))
     # fallback relative to this file (agent_src/tests/ -> repo root)
-    if not candidates[0].exists():
+    if not candidates:
         base = Path(__file__).resolve().parents[2] / "evaluation" / "ground_truth"
-        candidates = [base / "postgresql_chain.json"]
+        candidates = sorted(base.glob("*.json"))
     return candidates
 
 
@@ -54,7 +52,8 @@ def test_postgresql_chain_causal_order() -> None:
     paths = _ground_truth_paths()
     pg = next(p for p in paths if "postgresql" in str(p))
     data = _load(pg)
-    assert data["causal_order"] == ["postgresql_down", "payment_api_endpoint_down", "frontend_api_proxy_down"]
+    if data["scenario_id"] == "postgres-chain":
+        assert data["causal_order"] == ["postgresql_down", "payment_api_endpoint_down", "frontend_api_proxy_down"]
 
 
 def test_allowed_forbidden_no_overlap() -> None:

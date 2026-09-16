@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "environment": "staging",
+  "source": "Sprint 1 Moodle target contract; replace service names/endpoints after Infrastructure Engineer finalizes Compose and probes.",
+  "resources": [
+    {
+      "resource_id": "moodle-app",
+      "name": "Moodle application",
+      "type": "application",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "web-ec2",
+      "service_name": "moodle",
+      "endpoint": "moodle-web-endpoint",
+      "depends_on": ["postgres-db", "moodledata-volume"],
+      "tags": {
+        "system": "moodle",
+        "component": "web"
+      }
+    },
+    {
+      "resource_id": "postgres-db",
+      "name": "Moodle PostgreSQL database",
+      "type": "database",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "core-ec2",
+      "service_name": "postgres",
+      "endpoint": "postgres-internal-endpoint",
+      "depends_on": ["postgres-volume"],
+      "tags": {
+        "system": "moodle",
+        "component": "database"
+      }
+    },
+    {
+      "resource_id": "moodledata-volume",
+      "name": "Moodle data volume",
+      "type": "volume",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "web-ec2",
+      "service_name": null,
+      "endpoint": null,
+      "depends_on": [],
+      "tags": {
+        "system": "moodle",
+        "component": "storage"
+      }
+    },
+    {
+      "resource_id": "moodle-web-endpoint",
+      "name": "Moodle web endpoint",
+      "type": "endpoint",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "web-ec2",
+      "service_name": "moodle",
+      "endpoint": "moodle-web-endpoint",
+      "depends_on": ["moodle-app"],
+      "tags": {
+        "system": "moodle",
+        "component": "probe"
+      }
+    },
+    {
+      "resource_id": "prometheus-monitor",
+      "name": "Prometheus monitoring",
+      "type": "application",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "monitor-ec2",
+      "service_name": "prometheus",
+      "endpoint": "prometheus-internal-endpoint",
+      "depends_on": ["moodle-app", "postgres-db"],
+      "tags": {
+        "system": "monitoring",
+        "component": "metrics"
+      }
+    },
+    {
+      "resource_id": "alertmanager",
+      "name": "Alertmanager",
+      "type": "application",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "monitor-ec2",
+      "service_name": "alertmanager",
+      "endpoint": "alertmanager-internal-endpoint",
+      "depends_on": ["prometheus-monitor"],
+      "tags": {
+        "system": "monitoring",
+        "component": "alerting"
+      }
+    }
+  ]
+}

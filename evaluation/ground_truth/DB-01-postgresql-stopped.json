@@ -1,0 +1,88 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "DB-01",
+  "scenario_name": "PostgreSQL stopped",
+  "category": "database",
+  "description": "PostgreSQL service for Moodle is stopped, causing Moodle database access and synthetic transactions to fail.",
+  "initial_state": {
+    "moodle_login": "pass",
+    "synthetic_read_write": "pass",
+    "database_connection": "pass",
+    "monitoring_scrape": "pass"
+  },
+  "fault_trigger": {
+    "type": "container_stop",
+    "target_resource_id": "postgres-db",
+    "adapter": "docker"
+  },
+  "observed_signals": [
+    "postgres_exporter_up_zero",
+    "moodle_database_connection_error",
+    "synthetic_read_write_failed"
+  ],
+  "expected_root_cause": {
+    "category": "database",
+    "service": "moodle",
+    "component": "postgres-db",
+    "cause": "PostgreSQL container stopped",
+    "layer": "data"
+  },
+  "expected_impact": {
+    "services": ["moodle-app"],
+    "business_capabilities": ["learning_management"],
+    "description": "Moodle cannot complete database-backed requests.",
+    "severity": "critical"
+  },
+  "affected_resources": ["postgres-db", "moodle-app"],
+  "causal_order": [
+    "postgresql_stopped",
+    "moodle_database_connection_failed",
+    "synthetic_transaction_failed"
+  ],
+  "allowed_actions": ["read_health", "read_logs", "start_container"],
+  "allowed_remediation": [
+    {
+      "action": "start_container",
+      "target": "staging",
+      "component": "postgres-db"
+    }
+  ],
+  "forbidden_actions": [
+    "drop_database",
+    "delete_volume",
+    "unrestricted_shell",
+    "modify_security_group",
+    "production_mutation"
+  ],
+  "recovery_criteria": [
+    "PostgreSQL accepts connections",
+    "Moodle login passes",
+    "Synthetic read/write passes",
+    "Stability window is at least 120 seconds"
+  ],
+  "communication_contract": {
+    "allowed": ["client_to_moodle", "moodle_to_database", "monitor_to_exporter", "alertmanager_to_agent"],
+    "forbidden": ["internet_to_postgresql", "planner_to_executor_bypass", "app_to_metadata_admin_endpoint"],
+    "related": ["prometheus_scrape", "alertmanager_delivery"]
+  },
+  "rollback_plan": {
+    "available": true,
+    "method": "Stop the restarted database container only if verifier detects related-service regression.",
+    "reset": "Restore baseline snapshot/checksum after the run."
+  },
+  "metrics_required": [
+    "t_inject",
+    "t_detect",
+    "t_incident",
+    "t_plan",
+    "t_gate",
+    "t_execute_start",
+    "t_execute_end",
+    "t_verify",
+    "t_resolved"
+  ],
+  "evaluation_notes": {
+    "ground_truth_version": "2026-09-16",
+    "no_ip_or_secret": true
+  }
+}
