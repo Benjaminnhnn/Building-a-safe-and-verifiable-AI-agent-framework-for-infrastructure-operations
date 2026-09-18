@@ -18,6 +18,8 @@ terraform/.terraform/
 terraform/.terraform.lock.hcl
 terraform/apply_output.txt
 terraform/tfplan
+terraform/.artifacts/
+terraform/deployment.tfvars
 terraform/aws/
 terraform/awscliv2.zip
 .terraform/

@@ -229,6 +229,11 @@ If the operator public IP changes, use:
 bash automation/update-infrastructure.sh
 ```
 
+This only updates `my_ip_cidr` in the selected tfvars file. It prefers
+`terraform/deployment.tfvars` when that file exists and otherwise uses
+`terraform/terraform.tfvars`. Review a Terraform plan and apply it separately;
+use `--var-file <path>` to override the selection.
+
 ## Verification Commands
 
 Agent health:

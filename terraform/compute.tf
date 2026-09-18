@@ -8,15 +8,15 @@ resource "aws_key_pair" "deployer" {
 }
 
 resource "aws_instance" "monitor" {
-  ami                         = data.aws_ssm_parameter.al2023_ami.value
+  ami                         = local.ec2_ami
   instance_type               = var.monitor_instance_type
-  subnet_id                   = aws_subnet.public_a.id
+  subnet_id                   = var.monitor_use_management_subnet ? aws_subnet.management.id : aws_subnet.public_a.id
   vpc_security_group_ids      = [aws_security_group.monitor_sg.id]
   associate_public_ip_address = true
   key_name                    = aws_key_pair.deployer.key_name
 
   root_block_device {
-    volume_size = var.root_volume_size
+    volume_size = coalesce(var.monitor_root_volume_size, var.root_volume_size)
     volume_type = "gp3"
     encrypted   = true
   }
@@ -33,7 +33,8 @@ resource "aws_instance" "monitor" {
 }
 
 resource "aws_instance" "web" {
-  ami                         = data.aws_ssm_parameter.al2023_ami.value
+  count                       = var.enable_legacy_demo ? 1 : 0
+  ami                         = local.ec2_ami
   instance_type               = var.web_instance_type
   subnet_id                   = aws_subnet.public_a.id
   vpc_security_group_ids      = [aws_security_group.web_sg.id]
@@ -58,7 +59,8 @@ resource "aws_instance" "web" {
 }
 
 resource "aws_instance" "core" {
-  ami                         = data.aws_ssm_parameter.al2023_ami.value
+  count                       = var.enable_legacy_demo ? 1 : 0
+  ami                         = local.ec2_ami
   instance_type               = var.core_instance_type
   subnet_id                   = aws_subnet.public_a.id
   vpc_security_group_ids      = [aws_security_group.core_sg.id]
@@ -95,7 +97,8 @@ resource "aws_eip" "monitor" {
 }
 
 resource "aws_eip" "web" {
-  instance = aws_instance.web.id
+  count    = var.enable_legacy_demo ? 1 : 0
+  instance = aws_instance.web[0].id
   domain   = "vpc"
 
   tags = merge(local.common_tags, {
@@ -106,7 +109,8 @@ resource "aws_eip" "web" {
 }
 
 resource "aws_eip" "core" {
-  instance = aws_instance.core.id
+  count    = var.enable_legacy_demo ? 1 : 0
+  instance = aws_instance.core[0].id
   domain   = "vpc"
 
   tags = merge(local.common_tags, {

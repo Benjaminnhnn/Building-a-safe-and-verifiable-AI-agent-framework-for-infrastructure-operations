@@ -1,3 +1,5 @@
+# Legacy groups remain attached to existing EC2 instances during migration.
+# Keep inline rules on these groups; new Moodle groups use standalone rules only.
 resource "aws_security_group" "monitor_sg" {
   name        = "${var.project_name}-${var.environment}-monitor-sg"
   description = "Security group for monitoring and AI node"
@@ -12,49 +14,9 @@ resource "aws_security_group" "monitor_sg" {
   }
 
   ingress {
-    description = "Grafana from internet"
+    description = "Grafana from administrator CIDR"
     from_port   = 3000
     to_port     = 3000
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "Prometheus from internet"
-    from_port   = 9090
-    to_port     = 9090
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "AlertManager from internet"
-    from_port   = 9093
-    to_port     = 9093
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "AI Agent API from internet"
-    from_port   = 8000
-    to_port     = 8000
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "Staging AI Agent API from internet"
-    from_port   = 18000
-    to_port     = 18000
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "Staging Redis Exporter from my IP only"
-    from_port   = 19121
-    to_port     = 19121
     protocol    = "tcp"
     cidr_blocks = [var.my_ip_cidr]
   }
@@ -94,27 +56,27 @@ resource "aws_security_group" "web_sg" {
   }
 
   ingress {
-    description = "HTTP from internet"
+    description = "HTTP from administrator CIDR"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [var.my_ip_cidr]
   }
 
   ingress {
-    description = "HTTPS from internet"
+    description = "HTTPS from administrator CIDR"
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [var.my_ip_cidr]
   }
 
   ingress {
-    description = "Staging frontend from internet"
+    description = "Staging frontend from administrator CIDR"
     from_port   = 18081
     to_port     = 18081
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [var.my_ip_cidr]
   }
 
   ingress {
@@ -221,14 +183,6 @@ resource "aws_security_group" "core_sg" {
     to_port         = 18080
     protocol        = "tcp"
     security_groups = [aws_security_group.monitor_sg.id]
-  }
-
-  ingress {
-    description = "Staging API access from internet"
-    from_port   = 18080
-    to_port     = 18080
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {

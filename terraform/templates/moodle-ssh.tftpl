@@ -1,0 +1,25 @@
+Host monitor-ai-01 ${monitor_ip}
+    HostName ${monitor_ip}
+    User ${ssh_user}
+    IdentityFile "${key_path}"
+    IdentitiesOnly yes
+    StrictHostKeyChecking yes
+    ForwardAgent no
+
+Host moodle-app-a ${app_a_ip}
+    HostName ${app_a_ip}
+    User ${ssh_user}
+    IdentityFile "${key_path}"
+    IdentitiesOnly yes
+    StrictHostKeyChecking yes
+    ForwardAgent no
+    ProxyJump monitor-ai-01
+
+Host moodle-app-b ${app_b_ip}
+    HostName ${app_b_ip}
+    User ${ssh_user}
+    IdentityFile "${key_path}"
+    IdentitiesOnly yes
+    StrictHostKeyChecking yes
+    ForwardAgent no
+    ProxyJump monitor-ai-01

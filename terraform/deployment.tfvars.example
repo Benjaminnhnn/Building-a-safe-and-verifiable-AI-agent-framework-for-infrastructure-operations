@@ -1,0 +1,32 @@
+# NEW environment only. With an existing state, disabling legacy EC2s plans deletion.
+# Copy to deployment.tfvars, fill your IP/key paths, then review a saved plan.
+aws_region                      = "ap-southeast-1"
+project_name                    = "moodle-aiops"
+environment                     = "staging"
+my_ip_cidr                      = "REPLACE_WITH_YOUR_PUBLIC_IP/32"
+ci_cd_ssh_cidr_blocks            = []
+public_key_path                 = "~/.ssh/aws-hybrid.pub"
+private_key_path                = "~/.ssh/aws-hybrid"
+enable_legacy_demo              = false
+monitor_use_management_subnet   = true
+monitor_instance_type           = "t3.small"
+monitor_root_volume_size        = 30
+moodle_instance_type            = "t3.small"
+moodle_root_volume_size         = 30
+
+# RDS PostgreSQL: private Single-AZ instance in Data A. The subnet group still
+# spans Data A/B as required by RDS. db.t4g.micro targets short Free Tier/credit
+# backed tests; it is not a high-availability database deployment.
+moodle_db_engine_version  = "16.10"
+moodle_db_instance_class  = "db.t4g.micro"
+
+# Pin the regional AL2023 x86_64 AMI before deployment.
+# ec2_ami_id = "ami-REPLACE"
+
+# HTTP smoke-test mode. Before Moodle login/data tests use an issued ACM cert
+# in this region, set the covered DNS hostname, and switch allow_http to false.
+moodle_allow_http      = true
+moodle_certificate_arn = null
+moodle_hostname        = null
+# moodle_certificate_arn = "arn:aws:acm:ap-southeast-1:ACCOUNT_ID:certificate/CERTIFICATE_ID"
+# moodle_hostname = "moodle.example.org"

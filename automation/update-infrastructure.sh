@@ -1,80 +1,140 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-set -e
-
-# Màu sắc
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# Đường dẫn
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-TF_DIR="$REPO_ROOT/terraform"
-ANSIBLE_DIR="$REPO_ROOT/ansible"
-TF_VARS="$TF_DIR/terraform.tfvars"
-INVENTORY="$ANSIBLE_DIR/inventory.ini"
-
-echo -e "${YELLOW}=== AWS Hybrid Infrastructure Update ===${NC}\n"
-
-# 1. Lấy IP public hiện tại
-echo -e "${YELLOW}[1/5] Lấy IP public hiện tại...${NC}"
-CURRENT_IP=$(curl -s https://api.ipify.org)
-if [ -z "$CURRENT_IP" ]; then
-    echo -e "${RED}Không thể lấy IP public. Vui lòng kiểm tra kết nối Internet.${NC}"
-    exit 1
-fi
-echo -e "${GREEN}IP hiện tại: $CURRENT_IP${NC}\n"
-
-# 2. Cập nhật terraform.tfvars
-echo -e "${YELLOW}[2/5] Cập nhật terraform.tfvars...${NC}"
-OLD_IP=$(grep "my_ip_cidr" "$TF_VARS" | cut -d'"' -f2 | cut -d'/' -f1)
-if [ "$CURRENT_IP" == "$OLD_IP" ]; then
-    echo -e "${GREEN}IP không thay đổi. Bỏ qua cập nhật.${NC}\n"
+DEPLOYMENT_TF_VARS="$REPO_ROOT/terraform/deployment.tfvars"
+DEFAULT_TF_VARS="$REPO_ROOT/terraform/terraform.tfvars"
+if [[ -f "$DEPLOYMENT_TF_VARS" ]]; then
+    TF_VARS="$DEPLOYMENT_TF_VARS"
 else
-    sed -i "s/my_ip_cidr.*= .*/my_ip_cidr       = \"${CURRENT_IP}\/32\"/" "$TF_VARS"
-    echo -e "${GREEN}Cập nhật: $OLD_IP → $CURRENT_IP${NC}\n"
+    TF_VARS="$DEFAULT_TF_VARS"
 fi
+CHECK_ONLY=false
 
-# 3. Chạy terraform apply
-echo -e "${YELLOW}[3/5] Áp dụng Terraform changes...${NC}"
-cd "$TF_DIR"
-terraform apply -auto-approve > /tmp/tf_apply.log 2>&1
-echo -e "${GREEN}Terraform apply hoàn tất.${NC}\n"
+usage() {
+    cat <<'EOF'
+Usage:
+  bash automation/update-infrastructure.sh [--check]
+  bash automation/update-infrastructure.sh --var-file <path> [--check]
 
-# 4. Lấy IPs mới từ terraform output
-echo -e "${YELLOW}[4/5] Cập nhật Ansible inventory...${NC}"
-MONITOR_IP=$(terraform output -raw monitor_public_ip 2>/dev/null || echo "")
-WEB_IP=$(terraform output -raw web_public_ip 2>/dev/null || echo "")
-CORE_IP=$(terraform output -raw core_public_ip 2>/dev/null || echo "")
-ANSIBLE_INVENTORY=$(terraform output -raw ansible_inventory 2>/dev/null || echo "")
+Options:
+  --var-file <path>  File tfvars to update.
+                     Default: terraform/deployment.tfvars when it exists;
+                     otherwise terraform/terraform.tfvars.
+  --check            Check whether my_ip_cidr needs updating, without writing.
+  -h, --help         Show this help.
 
-if [ -z "$MONITOR_IP" ] || [ -z "$WEB_IP" ] || [ -z "$CORE_IP" ] || [ -z "$ANSIBLE_INVENTORY" ]; then
-    echo -e "${RED}Không thể lấy IPs từ Terraform output.${NC}"
+This script only updates my_ip_cidr in the selected tfvars file. It does not
+run Terraform, overwrite the Ansible inventory, or contact any EC2 instance.
+EOF
+}
+
+die() {
+    printf 'Error: %s\n' "$*" >&2
     exit 1
+}
+
+while (( $# > 0 )); do
+    case "$1" in
+        --var-file)
+            (( $# >= 2 )) || die "--var-file requires a path."
+            TF_VARS="$2"
+            shift 2
+            ;;
+        --check)
+            CHECK_ONLY=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            die "Unknown argument: $1. Use --help for usage."
+            ;;
+    esac
+done
+
+[[ -f "$TF_VARS" ]] || die "tfvars file not found: $TF_VARS"
+[[ ! -L "$TF_VARS" ]] || die "Refusing to update a symbolic link: $TF_VARS"
+
+for required_command in awk chmod curl mktemp mv rm tr; do
+    command -v "$required_command" >/dev/null 2>&1 ||
+        die "Required command not found: $required_command"
+done
+
+assignment_count="$(
+    awk '
+        /^[[:space:]]*my_ip_cidr[[:space:]]*=/ { count++ }
+        END { print count + 0 }
+    ' "$TF_VARS"
+)"
+
+[[ "$assignment_count" -eq 1 ]] ||
+    die "Expected exactly one my_ip_cidr assignment in $TF_VARS; found $assignment_count."
+
+current_cidr="$(
+    awk -F '"' '
+        /^[[:space:]]*my_ip_cidr[[:space:]]*=/ {
+            if (NF >= 3) {
+                print $2
+            }
+            exit
+        }
+    ' "$TF_VARS"
+)"
+
+[[ -n "$current_cidr" ]] ||
+    die "my_ip_cidr must be a quoted string in $TF_VARS."
+
+if ! public_ip="$(
+    curl --ipv4 --fail --silent --show-error --connect-timeout 5 --max-time 15 https://api.ipify.org |
+        tr -d '[:space:]'
+)"; then
+    die "Could not determine the public IPv4 address from api.ipify.org."
 fi
 
-# Cập nhật inventory.ini từ Terraform output để giữ đúng ssh_user/private_key_path
-# trong terraform.tfvars của từng máy dev.
-printf "%s\n" "$ANSIBLE_INVENTORY" > "$INVENTORY"
+[[ "$public_ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] ||
+    die "The IP service did not return a valid IPv4 address."
 
-echo -e "${GREEN}Cập nhật Ansible inventory:${NC}"
-echo -e "  monitor-ai-01: $MONITOR_IP"
-echo -e "  bank-web-01:   $WEB_IP"
-echo -e "  bank-core-01:  $CORE_IP\n"
+IFS='.' read -r -a octets <<< "$public_ip"
+for octet in "${octets[@]}"; do
+    (( 10#$octet <= 255 )) || die "The IP service returned an invalid IPv4 address."
+done
 
-# 5. Test ansible ping
-echo -e "${YELLOW}[5/5] Test Ansible connectivity...${NC}"
-cd "$ANSIBLE_DIR"
-if ansible all -m ping 2>/dev/null | grep -q "SUCCESS"; then
-    echo -e "${GREEN}✓ Tất cả servers responsive${NC}\n"
-else
-    echo -e "${YELLOW}⚠ Một số servers chưa responsive (chờ 1-2 phút rồi thử lại)${NC}\n"
+new_cidr="$public_ip/32"
+
+if [[ "$current_cidr" == "$new_cidr" ]]; then
+    printf 'my_ip_cidr is already current in %s. No file was changed.\n' "$TF_VARS"
+    exit 0
 fi
 
-echo -e "${GREEN}=== Update hoàn tất ===${NC}"
-echo -e "IP public: ${YELLOW}$CURRENT_IP${NC}"
-echo -e "Server status:"
-cd "$ANSIBLE_DIR"
-ansible all -m ping 2>/dev/null | grep -E "SUCCESS|UNREACHABLE" || true
+if [[ "$CHECK_ONLY" == true ]]; then
+    printf 'my_ip_cidr needs updating in %s. No file was changed.\n' "$TF_VARS"
+    exit 0
+fi
+
+temporary_file=""
+cleanup() {
+    if [[ -n "$temporary_file" && -e "$temporary_file" ]]; then
+        rm -f -- "$temporary_file"
+    fi
+}
+trap cleanup EXIT INT TERM
+
+temporary_file="$(mktemp "${TF_VARS}.tmp.XXXXXX")"
+
+awk -v cidr="$new_cidr" '
+    /^[[:space:]]*my_ip_cidr[[:space:]]*=/ {
+        sub(/"[^"]*"/, "\"" cidr "\"")
+    }
+    { print }
+' "$TF_VARS" > "$temporary_file"
+
+chmod --reference="$TF_VARS" "$temporary_file"
+mv -- "$temporary_file" "$TF_VARS"
+temporary_file=""
+
+printf 'Updated my_ip_cidr in %s.\n' "$TF_VARS"
+printf 'AWS infrastructure was not changed. Create and review a Terraform plan before applying.\n'

@@ -1,0 +1,181 @@
+<mxfile host="app.diagrams.net" modified="2026-09-16T00:00:00.000Z" agent="OpenAI Codex" version="24.7.17" type="device">
+  <diagram id="moodle-aiops-multi-az" name="Moodle AIOps - Multi-AZ">
+    <mxGraphModel dx="2100" dy="1300" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="Kiến trúc Moodle AIOps trên AWS — Multi-AZ" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=24;fontStyle=1;fontColor=#232F3E;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1250" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="ALB · 2 EC2 Moodle cố định · RDS PostgreSQL Single-AZ · EFS Regional · Monitoring/Bastion riêng · không ASG · không Systems Manager · không Moodle Redis" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontColor=#5C6678;" vertex="1" parent="1">
+          <mxGeometry x="40" y="56" width="1700" height="28" as="geometry" />
+        </mxCell>
+
+        <mxCell id="users" value="Người dùng / Synthetic client" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#232F3D;strokeColor=none;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.users;" vertex="1" parent="1">
+          <mxGeometry x="30" y="245" width="76" height="76" as="geometry" />
+        </mxCell>
+        <mxCell id="admin" value="Quản trị viên / CI" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#232F3D;strokeColor=none;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.user;" vertex="1" parent="1">
+          <mxGeometry x="30" y="810" width="76" height="76" as="geometry" />
+        </mxCell>
+
+        <mxCell id="aws" value="AWS Cloud" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=13;fontStyle=1;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_aws_cloud;strokeColor=#232F3E;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#232F3E;" vertex="1" parent="1">
+          <mxGeometry x="145" y="100" width="1810" height="970" as="geometry" />
+        </mxCell>
+        <mxCell id="region" value="AWS Region · ap-southeast-1" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_region;strokeColor=#00A4A6;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#147EBA;dashed=1;" vertex="1" parent="aws">
+          <mxGeometry x="25" y="42" width="1760" height="880" as="geometry" />
+        </mxCell>
+        <mxCell id="vpc" value="Amazon VPC · 10.10.0.0/16" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_vpc;strokeColor=#248814;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#248814;" vertex="1" parent="region">
+          <mxGeometry x="25" y="45" width="1710" height="790" as="geometry" />
+        </mxCell>
+
+        <mxCell id="igw" value="Internet Gateway" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#5A30B5;strokeColor=none;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.internet_gateway;" vertex="1" parent="vpc">
+          <mxGeometry x="35" y="105" width="76" height="76" as="geometry" />
+        </mxCell>
+        <mxCell id="alb" value="Application Load Balancer&#10;HTTPS 443 / health check&#10;spans public subnet A + B" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#5A30B5;strokeColor=none;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.application_load_balancer;" vertex="1" parent="vpc">
+          <mxGeometry x="170" y="103" width="82" height="82" as="geometry" />
+        </mxCell>
+
+        <mxCell id="azA" value="Availability Zone A" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=11;fontStyle=1;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_availability_zone;strokeColor=#879196;fillColor=#FAFAFA;verticalAlign=top;align=left;spacingLeft=28;fontColor=#5C6678;dashed=1;" vertex="1" parent="vpc">
+          <mxGeometry x="300" y="45" width="570" height="535" as="geometry" />
+        </mxCell>
+        <mxCell id="azB" value="Availability Zone B" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=11;fontStyle=1;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_availability_zone;strokeColor=#879196;fillColor=#FAFAFA;verticalAlign=top;align=left;spacingLeft=28;fontColor=#5C6678;dashed=1;" vertex="1" parent="vpc">
+          <mxGeometry x="900" y="45" width="570" height="535" as="geometry" />
+        </mxCell>
+
+        <mxCell id="publicA" value="Public subnet A · 10.10.1.0/24" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=10;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_public_subnet;strokeColor=#7AA116;fillColor=#F2F9EF;verticalAlign=top;align=left;spacingLeft=28;fontColor=#248814;container=1;collapsible=0;recursiveResize=0;pointerEvents=0;" vertex="1" parent="azA">
+          <mxGeometry x="25" y="38" width="520" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="natA" value="NAT Gateway A" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#5A30B5;strokeColor=none;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=9;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.nat_gateway;" vertex="1" parent="publicA">
+          <mxGeometry x="215" y="22" width="54" height="54" as="geometry" />
+        </mxCell>
+        <mxCell id="publicANote" value="ALB node A" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7AA116;fontColor=#355E1C;fontSize=9;" vertex="1" parent="publicA">
+          <mxGeometry x="350" y="35" width="105" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="publicB" value="Public subnet B · 10.10.2.0/24" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=10;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_public_subnet;strokeColor=#7AA116;fillColor=#F2F9EF;verticalAlign=top;align=left;spacingLeft=28;fontColor=#248814;container=1;collapsible=0;recursiveResize=0;pointerEvents=0;" vertex="1" parent="azB">
+          <mxGeometry x="25" y="38" width="520" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="natB" value="NAT Gateway B" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#5A30B5;strokeColor=none;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=9;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.nat_gateway;" vertex="1" parent="publicB">
+          <mxGeometry x="215" y="22" width="54" height="54" as="geometry" />
+        </mxCell>
+        <mxCell id="publicBNote" value="ALB node B" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7AA116;fontColor=#355E1C;fontSize=9;" vertex="1" parent="publicB">
+          <mxGeometry x="350" y="35" width="105" height="32" as="geometry" />
+        </mxCell>
+
+        <mxCell id="appA" value="Private app subnet A · 10.10.11.0/24" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=10;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_private_subnet;strokeColor=#147EBA;fillColor=#EAF6F7;verticalAlign=top;align=left;spacingLeft=28;fontColor=#147EBA;container=1;collapsible=0;recursiveResize=0;pointerEvents=0;" vertex="1" parent="azA">
+          <mxGeometry x="25" y="165" width="520" height="165" as="geometry" />
+        </mxCell>
+        <mxCell id="ec2A" value="Amazon EC2&#10;moodle-app-a&#10;fixed target" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=9;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ec2;" vertex="1" parent="appA">
+          <mxGeometry x="75" y="48" width="68" height="68" as="geometry" />
+        </mxCell>
+        <mxCell id="stackA" value="Docker Compose&#10;Moodle web + healthz&#10;Node Exporter + cAdvisor&#10;Cron: enabled" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D86613;fontColor=#232F3E;fontSize=9;align=center;arcSize=5;" vertex="1" parent="appA">
+          <mxGeometry x="205" y="46" width="200" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="appB" value="Private app subnet B · 10.10.12.0/24" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=10;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_private_subnet;strokeColor=#147EBA;fillColor=#EAF6F7;verticalAlign=top;align=left;spacingLeft=28;fontColor=#147EBA;container=1;collapsible=0;recursiveResize=0;pointerEvents=0;" vertex="1" parent="azB">
+          <mxGeometry x="25" y="165" width="520" height="165" as="geometry" />
+        </mxCell>
+        <mxCell id="ec2B" value="Amazon EC2&#10;moodle-app-b&#10;fixed target" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=9;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ec2;" vertex="1" parent="appB">
+          <mxGeometry x="75" y="48" width="68" height="68" as="geometry" />
+        </mxCell>
+        <mxCell id="stackB" value="Docker Compose&#10;Moodle web + healthz&#10;Node Exporter + cAdvisor&#10;Cron: disabled" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D86613;fontColor=#232F3E;fontSize=9;align=center;arcSize=5;" vertex="1" parent="appB">
+          <mxGeometry x="205" y="46" width="200" height="78" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dataA" value="Private data subnet A · 10.10.21.0/24" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=10;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_private_subnet;strokeColor=#3334B9;fillColor=#F1F2FC;verticalAlign=top;align=left;spacingLeft=28;fontColor=#3334B9;container=1;collapsible=0;recursiveResize=0;pointerEvents=0;" vertex="1" parent="azA">
+          <mxGeometry x="25" y="350" width="520" height="155" as="geometry" />
+        </mxCell>
+        <mxCell id="rdsPrimary" value="Amazon RDS PostgreSQL&#10;Single-AZ · db.t4g.micro&#10;private · encrypted" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#4D72F3;gradientDirection=north;fillColor=#3334B9;strokeColor=#ffffff;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=9;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.rds;" vertex="1" parent="dataA">
+          <mxGeometry x="70" y="42" width="68" height="68" as="geometry" />
+        </mxCell>
+        <mxCell id="efsMtA" value="EFS mount target A&#10;NFS 2049" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F9EF;strokeColor=#277116;fontColor=#277116;fontSize=9;fontStyle=1;" vertex="1" parent="dataA">
+          <mxGeometry x="285" y="58" width="155" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="dataB" value="Private data subnet B · 10.10.22.0/24" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=10;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_private_subnet;strokeColor=#3334B9;fillColor=#F1F2FC;verticalAlign=top;align=left;spacingLeft=28;fontColor=#3334B9;container=1;collapsible=0;recursiveResize=0;pointerEvents=0;" vertex="1" parent="azB">
+          <mxGeometry x="25" y="350" width="520" height="155" as="geometry" />
+        </mxCell>
+        <mxCell id="efsMtB" value="EFS mount target B&#10;NFS 2049" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F9EF;strokeColor=#277116;fontColor=#277116;fontSize=9;fontStyle=1;" vertex="1" parent="dataB">
+          <mxGeometry x="285" y="58" width="155" height="48" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dbEndpoint" value="RDS PostgreSQL endpoint · TCP 5432&#10;Moodle + read-only exporter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF0FF;strokeColor=#3334B9;fontColor=#3334B9;fontSize=10;fontStyle=1;" vertex="1" parent="vpc">
+          <mxGeometry x="740" y="600" width="235" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="efs" value="Amazon EFS Regional&#10;moodledata + Sprint 1 file sessions&#10;encrypted · Access Point" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#60A337;gradientDirection=north;fillColor=#277116;strokeColor=#ffffff;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=9;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.efs;" vertex="1" parent="vpc">
+          <mxGeometry x="1060" y="590" width="78" height="78" as="geometry" />
+        </mxCell>
+
+        <mxCell id="mgmt" value="Management subnet · 10.10.31.0/24 · monitoring/control plane (single instance in Sprint 1)" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=10;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_public_subnet;strokeColor=#879196;fillColor=#F7FAFC;verticalAlign=top;align=left;spacingLeft=28;fontColor=#5C6678;container=1;collapsible=0;recursiveResize=0;pointerEvents=0;" vertex="1" parent="vpc">
+          <mxGeometry x="300" y="670" width="1170" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="monitor" value="Amazon EC2&#10;monitor-ai-01&#10;Bastion + Ansible" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=9;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ec2;" vertex="1" parent="mgmt">
+          <mxGeometry x="45" y="20" width="58" height="58" as="geometry" />
+        </mxCell>
+        <mxCell id="monitorStack" value="Prometheus · Grafana · Alertmanager · Blackbox Exporter · PostgreSQL Exporter · AI Agent (Sprint 2)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#879196;fontColor=#232F3E;fontSize=10;align=center;arcSize=5;" vertex="1" parent="mgmt">
+          <mxGeometry x="155" y="27" width="685" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="accessNote" value="SSH/Ansible qua ProxyJump&#10;Không copy private key lên bastion" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E8;strokeColor=#96650A;fontColor=#7A5208;fontSize=9;align=center;arcSize=5;" vertex="1" parent="mgmt">
+          <mxGeometry x="875" y="22" width="245" height="52" as="geometry" />
+        </mxCell>
+
+        <mxCell id="eUserIgw" value="HTTPS" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#232F3E;strokeWidth=2;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="users" target="igw">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eIgwAlb" value="443" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#5A30B5;strokeWidth=2;fontSize=10;fontColor=#5A30B5;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="igw" target="alb">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eAlbA" value="target group / healthz" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#5A30B5;strokeWidth=2;fontSize=9;fontColor=#5A30B5;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="alb" target="ec2A">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eAlbB" value="target group / healthz" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#5A30B5;strokeWidth=2;fontSize=9;fontColor=#5A30B5;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="alb" target="ec2B">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eAppADb" value="SQL" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#3334B9;strokeWidth=1.7;fontSize=9;fontColor=#3334B9;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="ec2A" target="dbEndpoint">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eAppBDb" value="SQL" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#3334B9;strokeWidth=1.7;fontSize=9;fontColor=#3334B9;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="ec2B" target="dbEndpoint">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eDbPrimary" value="private endpoint" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#3334B9;strokeWidth=1.7;fontSize=9;fontColor=#3334B9;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="dbEndpoint" target="rdsPrimary">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eAppAEfs" value="NFS 2049" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#277116;strokeWidth=1.7;fontSize=9;fontColor=#277116;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="ec2A" target="efsMtA">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eAppBEfs" value="NFS 2049" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#277116;strokeWidth=1.7;fontSize=9;fontColor=#277116;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="ec2B" target="efsMtB">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eMtAEfs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#277116;strokeWidth=1.5;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="efsMtA" target="efs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eMtBEfs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#277116;strokeWidth=1.5;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="efsMtB" target="efs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eAppANat" value="outbound" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#5C6678;strokeWidth=1.2;dashed=1;fontSize=8;fontColor=#5C6678;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="ec2A" target="natA">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eAppBNat" value="outbound" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#5C6678;strokeWidth=1.2;dashed=1;fontSize=8;fontColor=#5C6678;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="ec2B" target="natB">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eAdminMonitor" value="SSH / Grafana" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#232F3E;strokeWidth=1.7;fontSize=9;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="admin" target="monitor">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eMonitorA" value="metrics + controlled SSH" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#147EBA;strokeWidth=1.5;dashed=1;fontSize=9;fontColor=#147EBA;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="monitor" target="ec2A">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eMonitorB" value="metrics + controlled SSH" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#147EBA;strokeWidth=1.5;dashed=1;fontSize=9;fontColor=#147EBA;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="monitor" target="ec2B">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eMonitorAlb" value="synthetic probe" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#147EBA;strokeWidth=1.4;dashed=1;fontSize=9;fontColor=#147EBA;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="monitor" target="alb">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="allowed" value="&lt;b&gt;Allowed:&lt;/b&gt; Internet → ALB → Moodle · Moodle → RDS/EFS · Monitor → exporters/SSH · app outbound → NAT cùng AZ" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F9EF;strokeColor=#248814;fontColor=#235C18;fontSize=10;align=left;verticalAlign=middle;spacing=10;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="190" y="1090" width="930" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="forbidden" value="&lt;b&gt;Blocked:&lt;/b&gt; Internet → EC2/RDS/EFS/Prometheus/Alertmanager · app → admin endpoints · agent execution without Safety Gate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF1F1;strokeColor=#C62828;fontColor=#7F1D1D;fontSize=10;align=left;verticalAlign=middle;spacing=10;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="1090" width="780" height="48" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

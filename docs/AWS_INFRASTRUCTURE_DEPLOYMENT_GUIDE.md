@@ -197,14 +197,15 @@ ansible_ssh_private_key_file=/home/<user>/.ssh/aws-hybrid
 Neu may dev doi IP sau nay, chay:
 
 ```bash
-bash automation/update-infrastructure.sh
-```
-Co the bo khau check keypair:
-```bash
-ANSIBLE_HOST_KEY_CHECKING=False ansible all -i ansible/inventory.ini -m ping
+bash automation/update-infrastructure.sh --var-file terraform/terraform.tfvars
+terraform -chdir=terraform plan -out=.artifacts/ip-cidr.tfplan
+terraform -chdir=terraform show .artifacts/ip-cidr.tfplan
+terraform -chdir=terraform apply .artifacts/ip-cidr.tfplan
 ```
 
-Script nay se cap nhat `my_ip_cidr`, apply Terraform va ghi lai `ansible/inventory.ini`.
+Script chi cap nhat `my_ip_cidr` trong `terraform/terraform.tfvars`.
+Terraform plan/apply van la buoc rieng de co the review thay doi; script khong
+ghi lai `ansible/inventory.ini` va khong chay Ansible.
 
 ## 8. Kiem Tra SSH/Ansible
 
@@ -491,7 +492,10 @@ rg -n "my_ip_cidr" terraform/terraform.tfvars
 Neu IP hien tai khac `my_ip_cidr`, chay:
 
 ```bash
-bash automation/update-infrastructure.sh
+bash automation/update-infrastructure.sh --var-file terraform/terraform.tfvars
+terraform -chdir=terraform plan -out=.artifacts/ip-cidr.tfplan
+terraform -chdir=terraform show .artifacts/ip-cidr.tfplan
+terraform -chdir=terraform apply .artifacts/ip-cidr.tfplan
 ```
 
 ## 13. Cap Nhat GitHub Secrets Truoc Khi Chay CI/CD
@@ -658,7 +662,10 @@ Khi da co ha tang va chi can cap nhat IP/deploy lai:
 
 ```bash
 cd /path/to/aws-hybrid
-bash automation/update-infrastructure.sh
+bash automation/update-infrastructure.sh --var-file terraform/terraform.tfvars
+terraform -chdir=terraform plan -out=.artifacts/ip-cidr.tfplan
+terraform -chdir=terraform show .artifacts/ip-cidr.tfplan
+terraform -chdir=terraform apply .artifacts/ip-cidr.tfplan
 ansible all -i ansible/inventory.ini -m ping
 ansible-playbook -i ansible/inventory.ini ansible/playbooks/configure-monitoring-stack.yml
 ansible-playbook -i ansible/inventory.ini ansible/playbooks/configure-release-runtime.yml
@@ -686,8 +693,10 @@ aws configure --profile target-account
 Ansible `UNREACHABLE`:
 
 ```bash
-curl -s https://api.ipify.org
-bash automation/update-infrastructure.sh
+bash automation/update-infrastructure.sh --var-file terraform/terraform.tfvars
+terraform -chdir=terraform plan -out=.artifacts/ip-cidr.tfplan
+terraform -chdir=terraform show .artifacts/ip-cidr.tfplan
+terraform -chdir=terraform apply .artifacts/ip-cidr.tfplan
 chmod 600 ~/.ssh/aws-hybrid
 ansible all -i ansible/inventory.ini -m ping
 ```

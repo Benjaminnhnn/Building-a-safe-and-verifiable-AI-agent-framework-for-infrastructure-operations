@@ -1,0 +1,136 @@
+---
+# This playbook deliberately prepares hosts only. It does not pull or start a
+# Moodle image; application rollout is a separate, reviewed release step.
+- name: Prepare Moodle application runtime
+  hosts: moodle
+  become: true
+  gather_facts: true
+
+  vars:
+    moodle_runtime_root: /opt/moodle
+    moodle_efs_mount_path: "{{ host_mount_path | default('/mnt/efs/moodledata') }}"
+    moodle_efs_mount_options: "{{ mount_options | default('tls,_netdev') }}"
+    moodle_efs_uid: "{{ uid | default(1000) }}"
+    moodle_efs_gid: "{{ gid | default(1000) }}"
+
+  pre_tasks:
+    - name: Require EFS values exported by Terraform
+      ansible.builtin.assert:
+        that:
+          - file_system_id is defined
+          - file_system_id is match('^fs-[0-9a-f]+$')
+          - access_point_id is defined
+          - access_point_id is match('^fsap-[0-9a-f]+$')
+          - moodle_efs_mount_options is search('accesspoint=' + access_point_id)
+          - moodle_efs_mount_options is search('tls')
+        fail_msg: >-
+          Export Moodle filesystem values with Terraform and pass them as extra
+          vars. Refusing an unencrypted or non-access-point EFS mount.
+
+    - name: Require Amazon Linux 2023
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == 'Amazon'
+        fail_msg: This playbook currently supports the Amazon Linux EC2 AMI selected by Terraform.
+
+  tasks:
+    - name: Install Docker and EFS mount helper
+      ansible.builtin.dnf:
+        name:
+          - amazon-efs-utils
+          - docker
+        state: present
+        update_cache: true
+
+    - name: Enable Docker service
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Configure bounded Docker json-file logs
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          {
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "10m",
+              "max-file": "3"
+            }
+          }
+      notify: Restart Docker
+
+    - name: Create EFS mount point
+      ansible.builtin.file:
+        path: "{{ moodle_efs_mount_path }}"
+        state: directory
+        owner: "{{ moodle_efs_uid }}"
+        group: "{{ moodle_efs_gid }}"
+        mode: '0770'
+
+    - name: Mount Moodle EFS through its access point with TLS
+      ansible.posix.mount:
+        path: "{{ moodle_efs_mount_path }}"
+        src: "{{ file_system_id }}:/"
+        fstype: efs
+        opts: "{{ moodle_efs_mount_options }}"
+        dump: '0'
+        passno: '0'
+        state: mounted
+
+    - name: Verify mounted file system is EFS
+      ansible.builtin.command:
+        cmd: "findmnt --noheadings --output FSTYPE --target {{ moodle_efs_mount_path }}"
+      register: moodle_efs_fstype
+      changed_when: false
+      failed_when: moodle_efs_fstype.stdout | trim not in ['nfs4', 'efs']
+
+    - name: Create root-owned Moodle release directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0750'
+      loop:
+        - "{{ moodle_runtime_root }}"
+        - "{{ moodle_runtime_root }}/release"
+        - "{{ moodle_runtime_root }}/secrets"
+        - "{{ moodle_runtime_root }}/logs"
+
+    - name: Create Moodle application data directories on EFS
+      ansible.builtin.file:
+        path: "{{ moodle_efs_mount_path }}/{{ item }}"
+        state: directory
+        owner: "{{ moodle_efs_uid }}"
+        group: "{{ moodle_efs_gid }}"
+        mode: '0770'
+      loop:
+        - cache
+        - localcache
+        - sessions
+        - temp
+        - trashdir
+
+    - name: Verify Docker and EFS prerequisites
+      ansible.builtin.command:
+        cmd: docker info --format '{{ "{{" }}.ServerVersion{{ "}}" }}'
+      register: moodle_docker_version
+      changed_when: false
+
+    - name: Report prepared runtime
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} is prepared: Docker {{ moodle_docker_version.stdout }},
+          EFS {{ file_system_id }} mounted at {{ moodle_efs_mount_path }}. No Moodle
+          container or database credential has been deployed by this playbook.
+
+  handlers:
+    - name: Restart Docker
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
