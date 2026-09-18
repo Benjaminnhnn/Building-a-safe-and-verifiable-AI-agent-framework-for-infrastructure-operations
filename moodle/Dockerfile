@@ -32,7 +32,8 @@ RUN apt-get update \
     && sed -ri 's/<VirtualHost \*:80>/<VirtualHost *:8080>/' /etc/apache2/sites-available/000-default.conf \
     && rm -rf /var/lib/apt/lists/*
 
-RUN git init /var/www/html \
+RUN chown root:root /var/www/html \
+    && git init /var/www/html \
     && git -C /var/www/html remote add origin https://github.com/moodle/moodle.git \
     && git -C /var/www/html fetch --depth=1 origin "${MOODLE_GIT_SHA}" \
     && git -C /var/www/html checkout --detach FETCH_HEAD \
