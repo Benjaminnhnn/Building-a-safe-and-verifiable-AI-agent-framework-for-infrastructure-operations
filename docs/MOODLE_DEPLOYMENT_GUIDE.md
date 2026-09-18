@@ -198,8 +198,9 @@ Chỉ thay đổi tags Cron/inventory chưa thực sự cài cron; Ansible cần
 
 ## Chuẩn bị runtime Ngày 6
 
-Playbook chuyên biệt dưới đây chỉ cài Docker và `amazon-efs-utils`, cấu hình log
-rotation Docker, rồi mount EFS bằng **TLS và access point** do Terraform xuất.
+Playbook chuyên biệt dưới đây chỉ cài Docker, Docker Compose plugin `v2.29.7`
+(pin SHA-256) và `amazon-efs-utils`, cấu hình log rotation Docker, rồi mount EFS
+bằng **TLS và access point** do Terraform xuất.
 Nó tạo các thư mục `moodledata` dùng chung nhưng **không** pull image, không đọc
 RDS secret, không tạo database role và không chạy Moodle. Vì vậy ALB vẫn
 `unhealthy` là đúng sau bước này.
@@ -241,6 +242,41 @@ ansible -i terraform/.artifacts/moodle-inventory.yml moodle -b -m shell -a '
 Xóa hai file `.runtime-check-*` sau khi xác minh. Chỉ sau đó mới thêm manifest
 release có image Moodle được ghim digest/tag, RDS app credential và health endpoint
 `/healthz`; không dùng web server giả để qua ALB health check.
+
+## Release package Ngày 7
+
+Moodle source không được build trên EC2. CI build image từ Moodle `5.2.3`, commit
+upstream `344232c15336c71b80f9aca8359ce0e0a9f3d116`, trên PHP 8.4 Apache base
+được pin digest. Moodle 5.2 yêu cầu tối thiểu PostgreSQL 16 và PHP 8.3, nên khớp
+RDS PostgreSQL 16.10 hiện tại. Image tạo `config.php` lúc container khởi động;
+password chỉ được đọc từ file runtime, không nằm trong image hoặc Git.
+
+`release/moodle/docker-compose.yml` có ba service:
+
+- `moodle-web`: chạy ở cả A và B, port 8080, ALB health endpoint `/healthz`.
+- `moodle-cron`: chỉ bật bằng Compose profile `cron` tại A.
+- `moodle-install`: one-off profile `installer`, chỉ chạy sau khi database role,
+  CA bundle và admin secret đã được review.
+
+Moodle dùng PostgreSQL TLS `verify-full` và RDS CA bundle. Với EFS access point
+UID/GID 1000, container cũng chạy UID/GID 1000; dữ liệu dùng chung được giới hạn
+trong `/mnt/efs/moodledata`. `config.php` sử dụng database locking mặc định của
+PostgreSQL, không phụ thuộc file locking NFS.
+
+Chỉ kiểm tra build/Compose cục bộ, không kết nối AWS hoặc deploy:
+
+```bash
+bash -n moodle/docker-entrypoint.sh moodle/cron-runner.sh
+docker build -t local/moodle:5.2.3 moodle
+MOODLE_RUNTIME_ENV_FILE=./moodle-runtime.env.example \
+docker compose --env-file release/moodle/moodle-runtime.env.example \
+  -f release/moodle/docker-compose.yml config
+```
+
+Workflow `Build Moodle image` sẽ push image **theo commit SHA** vào GHCR khi thay
+đổi `moodle/` được push. Trước khi EC2 pull image, package GHCR phải được đặt
+public hoặc có credential pull read-only trong release procedure. Chưa push/deploy
+image từ bước này và chưa dùng image tag mutable như `latest`.
 
 ## Kết quả kiểm tra và phần còn lại
 

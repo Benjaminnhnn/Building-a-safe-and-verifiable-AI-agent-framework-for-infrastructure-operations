@@ -8,6 +8,8 @@
 
   vars:
     moodle_runtime_root: /opt/moodle
+    moodle_compose_version: v2.29.7
+    moodle_compose_sha256: 383ce6698cd5d5bbf958d2c8489ed75094e34a77d340404d9f32c4ae9e12baf0
     moodle_efs_mount_path: "{{ host_mount_path | default('/mnt/efs/moodledata') }}"
     moodle_efs_mount_options: "{{ mount_options | default('tls,_netdev') }}"
     moodle_efs_uid: "{{ uid | default(1000) }}"
@@ -30,8 +32,14 @@
     - name: Require Amazon Linux 2023
       ansible.builtin.assert:
         that:
-          - ansible_distribution == 'Amazon'
+          - ansible_facts['distribution'] == 'Amazon'
         fail_msg: This playbook currently supports the Amazon Linux EC2 AMI selected by Terraform.
+
+    - name: Require x86_64 Docker Compose plugin architecture
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['architecture'] == 'x86_64'
+        fail_msg: This playbook pins the x86_64 Docker Compose plugin; add an architecture-specific checksum before using another AMI architecture.
 
   tasks:
     - name: Install Docker and EFS mount helper
@@ -47,6 +55,28 @@
         name: docker
         enabled: true
         state: started
+
+    - name: Create Docker CLI plugin directory
+      ansible.builtin.file:
+        path: /usr/local/lib/docker/cli-plugins
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Install pinned Docker Compose plugin
+      ansible.builtin.get_url:
+        url: "https://github.com/docker/compose/releases/download/{{ moodle_compose_version }}/docker-compose-linux-x86_64"
+        dest: /usr/local/lib/docker/cli-plugins/docker-compose
+        owner: root
+        group: root
+        mode: '0755'
+        checksum: "sha256:{{ moodle_compose_sha256 }}"
+
+    - name: Verify Docker Compose plugin
+      ansible.builtin.command:
+        cmd: docker compose version
+      changed_when: false
 
     - name: Configure bounded Docker json-file logs
       ansible.builtin.copy:

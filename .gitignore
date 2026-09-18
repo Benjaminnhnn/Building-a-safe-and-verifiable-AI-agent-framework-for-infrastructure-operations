@@ -40,6 +40,8 @@ id_rsa.pub
 .env.staging
 .env.production
 .env.local
+release/moodle/moodle-runtime.env
+release/moodle/secrets/
 
 # Python
 __pycache__/

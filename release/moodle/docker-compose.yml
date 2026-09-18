@@ -1,0 +1,70 @@
+services:
+  moodle-web:
+    image: ${MOODLE_IMAGE:?Set an immutable Moodle image reference}
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - ${MOODLE_RUNTIME_ENV_FILE:-./moodle-runtime.env}
+    environment:
+      MOODLE_DB_PASSWORD_FILE: /run/moodle-secrets/moodle-db-password
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /run/moodle-secrets/rds-ca.pem
+    ports:
+      - "8080:8080"
+    volumes:
+      - ${MOODLE_DATA_DIR:?Set the prepared EFS mount path}:/var/moodledata
+      - ${MOODLE_SECRETS_DIR:?Set the root-owned secrets directory}/moodle-db-password:/run/moodle-secrets/moodle-db-password:ro
+      - ${MOODLE_SECRETS_DIR:?Set the root-owned secrets directory}/rds-ca.pem:/run/moodle-secrets/rds-ca.pem:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 2
+      start_period: 20s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  moodle-cron:
+    image: ${MOODLE_IMAGE:?Set an immutable Moodle image reference}
+    restart: unless-stopped
+    user: "1000:1000"
+    profiles: ["cron"]
+    env_file:
+      - ${MOODLE_RUNTIME_ENV_FILE:-./moodle-runtime.env}
+    environment:
+      MOODLE_DB_PASSWORD_FILE: /run/moodle-secrets/moodle-db-password
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /run/moodle-secrets/rds-ca.pem
+    command: ["/usr/local/bin/cron-runner.sh"]
+    volumes:
+      - ${MOODLE_DATA_DIR:?Set the prepared EFS mount path}:/var/moodledata
+      - ${MOODLE_SECRETS_DIR:?Set the root-owned secrets directory}/moodle-db-password:/run/moodle-secrets/moodle-db-password:ro
+      - ${MOODLE_SECRETS_DIR:?Set the root-owned secrets directory}/rds-ca.pem:/run/moodle-secrets/rds-ca.pem:ro
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  moodle-install:
+    image: ${MOODLE_IMAGE:?Set an immutable Moodle image reference}
+    user: "1000:1000"
+    profiles: ["installer"]
+    env_file:
+      - ${MOODLE_RUNTIME_ENV_FILE:-./moodle-runtime.env}
+    environment:
+      MOODLE_DB_PASSWORD_FILE: /run/moodle-secrets/moodle-db-password
+      MOODLE_ADMIN_PASSWORD_FILE: /run/moodle-secrets/moodle-admin-password
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /run/moodle-secrets/rds-ca.pem
+    command: ["/usr/local/bin/moodle-install.sh"]
+    volumes:
+      - ${MOODLE_DATA_DIR:?Set the prepared EFS mount path}:/var/moodledata
+      - ${MOODLE_SECRETS_DIR:?Set the root-owned secrets directory}/moodle-db-password:/run/moodle-secrets/moodle-db-password:ro
+      - ${MOODLE_SECRETS_DIR:?Set the root-owned secrets directory}/moodle-admin-password:/run/moodle-secrets/moodle-admin-password:ro
+      - ${MOODLE_SECRETS_DIR:?Set the root-owned secrets directory}/rds-ca.pem:/run/moodle-secrets/rds-ca.pem:ro
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

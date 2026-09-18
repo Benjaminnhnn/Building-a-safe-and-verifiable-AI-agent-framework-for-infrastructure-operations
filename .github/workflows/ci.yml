@@ -51,12 +51,18 @@ jobs:
       - name: Build Frontend image
         run: docker build -t local/frontend:ci-${{ github.sha }} demo-web/frontend
 
+      - name: Build Moodle image
+        run: docker build -t local/moodle:ci-${{ github.sha }} moodle
+
       - name: Validate Docker Compose files
         run: |
           cp release/.env.example release/.env.staging
           cp release/.env.example release/.env.production
           docker compose -f release/docker-compose.staging.yml config > /dev/null
           docker compose -f release/docker-compose.production.yml config > /dev/null
+          MOODLE_RUNTIME_ENV_FILE=./moodle-runtime.env.example \
+          docker compose --env-file release/moodle/moodle-runtime.env.example \
+            -f release/moodle/docker-compose.yml config > /dev/null
 
       - name: Notify admins on failure
         if: failure()
@@ -75,4 +81,3 @@ jobs:
           ./automation/notify.sh "CI Pipeline" "$FAILED_STEP" "Lint/Test/Build validation failed for ${{ github.ref_name }} by ${{ github.actor }}"
 
           
-      
