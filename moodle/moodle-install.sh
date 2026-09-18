@@ -21,7 +21,6 @@ if [ -z "$admin_password" ]; then
 fi
 
 exec php /var/www/html/admin/cli/install_database.php \
-    --non-interactive \
     --agree-license \
     --fullname="$MOODLE_SITE_FULLNAME" \
     --shortname="$MOODLE_SITE_SHORTNAME" \
