@@ -49,6 +49,6 @@
   "evaluation_notes": {
     "correlation": "All three alerts share one correlation_id per batch; event_id stable across replays with same identity+observed_at.",
     "ground_truth_version": "2026-09-01",
-    "no_ip_or_secret": true
+    "no_ip_or_sensitive_data": true
   }
 }

@@ -75,10 +75,10 @@ def test_no_ip_or_secret_in_ground_truth() -> None:
         errs = validate_ground_truth(data, path=p)
         leak_errs = [e for e in errs if "sensitive/IP leakage" in e]
         assert not leak_errs, f"{p}: {leak_errs}"
-        # also ensure flag no_ip_or_secret is true where present
+        # also ensure the no-sensitive-data declaration is true where present
         notes = data.get("evaluation_notes", {})
-        if "no_ip_or_secret" in notes:
-            assert notes["no_ip_or_secret"] is True
+        if "no_ip_or_sensitive_data" in notes:
+            assert notes["no_ip_or_sensitive_data"] is True
 
 
 def test_ground_truth_overall_validation_passes() -> None:
