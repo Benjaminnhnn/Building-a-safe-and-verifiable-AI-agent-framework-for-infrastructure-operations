@@ -278,6 +278,25 @@ Workflow `Build Moodle image` sẽ push image **theo commit SHA** vào GHCR khi 
 public hoặc có credential pull read-only trong release procedure. Chưa push/deploy
 image từ bước này và chưa dùng image tag mutable như `latest`.
 
+## Pre-deploy Ngày 8
+
+Chạy preflight chỉ đọc trước khi tạo runtime secret hoặc khởi động container:
+
+```bash
+bash automation/moodle-preflight.sh \
+  ghcr.io/benjaminnhnn/moodle:<commit-sha-da-build-thanh-cong>
+```
+
+Script kiểm tra AWS identity, trạng thái RDS/EFS, Docker Compose và EFS mount ở
+cả hai Moodle node, rồi xác minh workstation và hai EC2 có thể đọc **cùng một
+image reference bất biến** từ GHCR. Nó không login GHCR, không tạo database,
+không ghi secret và không deploy Moodle. Nếu image package chưa public, cần
+chọn một trong hai cách trước khi chạy deployment: đặt package public hoặc
+đăng nhập GHCR bằng credential chỉ có quyền `read:packages` trên cả hai node.
+
+Runtime file phải chứa `MOODLE_DATA_ROOT=/var/moodledata`; đây là đường dẫn
+trong container, khác với `MOODLE_DATA_DIR=/mnt/efs/moodledata` trên host.
+
 ## Kết quả kiểm tra và phần còn lại
 
 - Terraform fmt/validate pass; 20/20 mock tests pass, kiểm tra network, storage, compute,
