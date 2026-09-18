@@ -288,8 +288,8 @@ bash automation/moodle-preflight.sh \
 ```
 
 Script kiểm tra AWS identity, trạng thái RDS/EFS, Docker Compose và EFS mount ở
-cả hai Moodle node, rồi xác minh workstation và hai EC2 có thể đọc **cùng một
-image reference bất biến** từ GHCR. Nó không login GHCR, không tạo database,
+cả hai Moodle node, rồi xác minh hai EC2 có thể đọc **cùng một image reference
+bất biến** từ GHCR. Nó không login GHCR, không tạo database,
 không ghi secret và không deploy Moodle. Nếu image package chưa public, cần
 chọn một trong hai cách trước khi chạy deployment: đặt package public hoặc
 đăng nhập GHCR bằng credential chỉ có quyền `read:packages` trên cả hai node.

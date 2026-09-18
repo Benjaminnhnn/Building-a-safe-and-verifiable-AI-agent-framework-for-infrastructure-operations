@@ -16,7 +16,7 @@ if [[ -z "$image_ref" ]]; then
   exit 64
 fi
 
-for required_command in ansible aws docker jq terraform; do
+for required_command in ansible aws jq terraform; do
   if ! command -v "$required_command" >/dev/null 2>&1; then
     echo "Required command not found: $required_command" >&2
     exit 127
@@ -71,18 +71,15 @@ ansible -i "$inventory_path" moodle -b -m shell -a '
   test -d /opt/moodle/secrets
 ' >/dev/null
 
-if ! docker manifest inspect "$image_ref" >/dev/null 2>&1; then
+echo "Checking that each Moodle node can read the immutable image reference..."
+if ! ansible -i "$inventory_path" moodle -b -m command -a "docker manifest inspect $image_ref" >/dev/null; then
   cat >&2 <<EOF
-Cannot read $image_ref from this workstation.
-Set the GHCR package to public, or authenticate with a read-only package token
-before deployment. Each Moodle EC2 node also needs equivalent pull access.
-This preflight made no changes.
+One or more Moodle nodes cannot read $image_ref from GHCR.
+Run automation/configure-moodle-ghcr-access.sh with a PAT classic limited to
+read:packages, then run this preflight again. This preflight made no changes.
 EOF
   exit 1
 fi
-
-echo "Checking that each Moodle node can read the immutable image reference..."
-ansible -i "$inventory_path" moodle -b -m command -a "docker manifest inspect $image_ref" >/dev/null
 
 echo "Moodle preflight passed. RDS, EFS, host runtime, and GHCR image access are ready."
 echo "ALB target health is expected to remain unhealthy until moodle-web is started."
