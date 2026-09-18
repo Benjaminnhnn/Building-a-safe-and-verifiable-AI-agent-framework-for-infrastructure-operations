@@ -57,7 +57,7 @@ run "fresh_moodle_infrastructure" {
     error_message = "Internet-facing ALB must span both public subnets and use ALB SG."
   }
   assert {
-    condition     = aws_lb_target_group.moodle.target_type == "instance" && aws_lb_target_group.moodle.port == 8080 && aws_lb_target_group_attachment.moodle_a.target_id == aws_instance.moodle_a.id && aws_lb_target_group_attachment.moodle_b.target_id == aws_instance.moodle_b.id && aws_lb_target_group_attachment.moodle_a.target_group_arn == aws_lb_target_group.moodle.arn && aws_lb_target_group_attachment.moodle_b.target_group_arn == aws_lb_target_group.moodle.arn && one(aws_lb_target_group.moodle.health_check).path == "/healthz" && one(aws_lb_target_group.moodle.health_check).matcher == "200" && !one(aws_lb_target_group.moodle.stickiness).enabled
+    condition     = aws_lb_target_group.moodle.target_type == "instance" && aws_lb_target_group.moodle.port == 8080 && aws_lb_target_group_attachment.moodle_a.target_id == aws_instance.moodle_a.id && aws_lb_target_group_attachment.moodle_b.target_id == aws_instance.moodle_b.id && aws_lb_target_group_attachment.moodle_a.target_group_arn == aws_lb_target_group.moodle.arn && aws_lb_target_group_attachment.moodle_b.target_group_arn == aws_lb_target_group.moodle.arn && one(aws_lb_target_group.moodle.health_check).path == "/healthz.php" && one(aws_lb_target_group.moodle.health_check).matcher == "200" && !one(aws_lb_target_group.moodle.stickiness).enabled
     error_message = "ALB must register both fixed targets, check readiness and avoid sticky-session masking."
   }
   assert {

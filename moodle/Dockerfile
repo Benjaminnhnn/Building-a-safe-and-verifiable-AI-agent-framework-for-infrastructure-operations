@@ -30,6 +30,7 @@ RUN apt-get update \
     && a2enmod expires headers remoteip rewrite \
     && sed -ri 's/^Listen 80$/Listen 8080/' /etc/apache2/ports.conf \
     && sed -ri 's/<VirtualHost \*:80>/<VirtualHost *:8080>/' /etc/apache2/sites-available/000-default.conf \
+    && sed -ri 's#DocumentRoot /var/www/html#DocumentRoot /var/www/html/public#' /etc/apache2/sites-available/000-default.conf \
     && rm -rf /var/lib/apt/lists/*
 
 RUN chown root:root /var/www/html \
@@ -48,7 +49,7 @@ RUN chown root:root /var/www/html \
 
 COPY --chown=moodle:moodle docker-entrypoint.sh cron-runner.sh moodle-install.sh healthz.php /usr/local/bin/
 RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh /usr/local/bin/cron-runner.sh /usr/local/bin/moodle-install.sh \
-    && mv /usr/local/bin/healthz.php /var/www/html/healthz.php \
+    && mv /usr/local/bin/healthz.php /var/www/html/public/healthz.php \
     && printf '%s\n' \
         'memory_limit = 256M' \
         'max_execution_time = 300' \

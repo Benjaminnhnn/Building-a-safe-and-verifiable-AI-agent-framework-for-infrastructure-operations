@@ -10,6 +10,6 @@ case "$interval" in
 esac
 
 while true; do
-    php /var/www/html/admin/cli/cron.php --non-interactive
+    php /var/www/html/admin/cli/cron.php
     sleep "$interval"
 done

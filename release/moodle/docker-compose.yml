@@ -18,7 +18,7 @@ services:
       - ${MOODLE_SECRETS_DIR:?Set the root-owned secrets directory}/moodle-db-password:/run/moodle-secrets/moodle-db-password:ro
       - ${MOODLE_SECRETS_DIR:?Set the root-owned secrets directory}/rds-ca.pem:/run/moodle-secrets/rds-ca.pem:ro
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/healthz"]
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/healthz.php"]
       interval: 15s
       timeout: 5s
       retries: 2

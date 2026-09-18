@@ -37,7 +37,7 @@ resource "aws_lb_target_group" "moodle" {
     enabled             = true
     protocol            = "HTTP"
     port                = "traffic-port"
-    path                = "/healthz"
+    path                = "/healthz.php"
     matcher             = "200"
     interval            = 15
     timeout             = 5

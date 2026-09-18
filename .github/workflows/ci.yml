@@ -61,6 +61,11 @@ jobs:
             local/moodle:ci-${{ github.sha }} \
             sh -ec 'grep -F "\$CFG->dbpass = '\''moodle-test-password'\'';" /var/www/html/config.php'
 
+      - name: Test Moodle public web root layout
+        run: |
+          docker run --rm --entrypoint /bin/sh local/moodle:ci-${{ github.sha }} \
+            -c 'test -f /var/www/html/public/healthz.php && grep -qx "DocumentRoot /var/www/html/public" /etc/apache2/sites-enabled/000-default.conf'
+
       - name: Validate Docker Compose files
         run: |
           cp release/.env.example release/.env.staging
