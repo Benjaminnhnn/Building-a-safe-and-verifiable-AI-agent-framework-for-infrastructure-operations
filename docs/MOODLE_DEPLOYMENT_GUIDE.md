@@ -314,6 +314,37 @@ lưu credential trong `/root/.docker/config.json` với mode `0600`; không có
 token trong release Compose hoặc runtime environment. Revoke PAT sau demo hoặc
 khi không còn dùng môi trường này.
 
+### Stage RDS role và runtime secrets (chưa deploy)
+
+Tạo hai file password cục bộ với quyền chỉ owner đọc. Thư mục artifacts bị Git
+ignore; giữ bản sao admin password ở password manager nếu cần đăng nhập sau khi
+cài đặt lần đầu.
+
+```bash
+umask 077
+mkdir -p terraform/.artifacts/moodle-secrets
+openssl rand -hex 32 > terraform/.artifacts/moodle-secrets/moodle-db-password
+openssl rand -base64 32 > terraform/.artifacts/moodle-secrets/moodle-admin-password
+chmod 600 terraform/.artifacts/moodle-secrets/moodle-*-password
+```
+
+Sau khi review, stage release bằng image SHA đã kiểm tra. Script mở SSH tunnel
+tạm thời qua `moodle-app-a`, đọc RDS master secret từ Secrets Manager mà không
+in nó, tạo/rotate role `moodle_app` với quyền `CONNECT` và `USAGE, CREATE` trên
+schema `public`, xác minh TLS `verify-full`, rồi chép secret root-only và
+runtime config đến A/B. Nó **không chạy installer, web hay cron**.
+
+```bash
+bash automation/stage-moodle-release.sh \
+  ghcr.io/benjaminnhnn/moodle:669f0fe5e9c95b417d7d27e513314ec3c0d73500 \
+  terraform/.artifacts/moodle-secrets/moodle-db-password \
+  terraform/.artifacts/moodle-secrets/moodle-admin-password
+```
+
+Không xóa hai file password cục bộ trước khi xác nhận login thành công. Khi
+Moodle đã cài xong, xóa `moodle-admin-password` trên hai EC2; database password
+vẫn cần cho `moodle-web` và `moodle-cron`.
+
 ## Kết quả kiểm tra và phần còn lại
 
 - Terraform fmt/validate pass; 20/20 mock tests pass, kiểm tra network, storage, compute,
