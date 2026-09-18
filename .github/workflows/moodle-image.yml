@@ -32,13 +32,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve lowercase image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/moodle" >> "$GITHUB_OUTPUT"
+
       - name: Build and push immutable Moodle image
         uses: docker/build-push-action@v6
         with:
           context: ./moodle
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/moodle:${{ github.sha }}
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
