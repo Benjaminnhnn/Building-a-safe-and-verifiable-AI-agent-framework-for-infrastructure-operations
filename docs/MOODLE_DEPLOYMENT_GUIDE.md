@@ -297,6 +297,23 @@ chọn một trong hai cách trước khi chạy deployment: đặt package publ
 Runtime file phải chứa `MOODLE_DATA_ROOT=/var/moodledata`; đây là đường dẫn
 trong container, khác với `MOODLE_DATA_DIR=/mnt/efs/moodledata` trên host.
 
+### GHCR private package access
+
+Tạo **PAT classic** với duy nhất scope `read:packages` và thời hạn ngắn. Không
+đặt token vào `.env`, Ansible inventory, shell history hoặc Git. Từ workstation
+đã có SSH config được Terraform xuất, chạy helper sau; token được nhập ẩn và
+chỉ gửi qua stdin đến `docker login` chạy bằng root trên hai Moodle node:
+
+```bash
+bash automation/configure-moodle-ghcr-access.sh \
+  ghcr.io/benjaminnhnn/moodle:<commit-sha-da-build-thanh-cong>
+```
+
+Helper kiểm tra image reference bất biến có pull được trên cả hai node. Docker
+lưu credential trong `/root/.docker/config.json` với mode `0600`; không có
+token trong release Compose hoặc runtime environment. Revoke PAT sau demo hoặc
+khi không còn dùng môi trường này.
+
 ## Kết quả kiểm tra và phần còn lại
 
 - Terraform fmt/validate pass; 20/20 mock tests pass, kiểm tra network, storage, compute,
