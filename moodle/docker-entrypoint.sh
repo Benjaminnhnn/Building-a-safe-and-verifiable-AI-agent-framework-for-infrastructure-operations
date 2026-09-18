@@ -46,6 +46,14 @@ case "${MOODLE_SSL_PROXY:-false}" in
         ;;
 esac
 
+case "${MOODLE_REVERSE_PROXY:-false}" in
+    true|false) ;;
+    *)
+        echo 'MOODLE_REVERSE_PROXY must be true or false' >&2
+        exit 64
+        ;;
+esac
+
 mkdir -p "$MOODLE_DATA_ROOT" "$MOODLE_DATA_ROOT/cache" "$MOODLE_DATA_ROOT/localcache" \
     "$MOODLE_DATA_ROOT/sessions" "$MOODLE_DATA_ROOT/temp" "$MOODLE_DATA_ROOT/trashdir"
 chmod 0770 "$MOODLE_DATA_ROOT" "$MOODLE_DATA_ROOT/cache" "$MOODLE_DATA_ROOT/localcache" \
@@ -79,7 +87,7 @@ global \$CFG;
 \$CFG->wwwroot = $(php_env_literal MOODLE_WWWROOT);
 \$CFG->dataroot = $(php_env_literal MOODLE_DATA_ROOT);
 \$CFG->directorypermissions = 02770;
-\$CFG->reverseproxy = true;
+\$CFG->reverseproxy = ${MOODLE_REVERSE_PROXY:-false};
 \$CFG->sslproxy = ${MOODLE_SSL_PROXY};
 require_once(__DIR__ . '/lib/setup.php');
 EOF

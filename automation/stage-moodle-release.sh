@@ -212,6 +212,7 @@ MOODLE_DB_NAME=$db_name
 MOODLE_DB_USER=$app_user
 MOODLE_WWWROOT=$app_url
 MOODLE_SSL_PROXY=$moodle_ssl_proxy
+MOODLE_REVERSE_PROXY=false
 MOODLE_SITE_FULLNAME=Moodle Staging
 MOODLE_SITE_SHORTNAME=Moodle
 MOODLE_SITE_SUMMARY=Infrastructure operations test environment
