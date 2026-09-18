@@ -333,6 +333,8 @@ tạm thời qua `moodle-app-a`, đọc RDS master secret từ Secrets Manager m
 in nó, tạo/rotate role `moodle_app` với quyền `CONNECT` và `USAGE, CREATE` trên
 schema `public`, xác minh TLS `verify-full`, rồi chép secret root-only và
 runtime config đến A/B. Nó **không chạy installer, web hay cron**.
+`MOODLE_WWWROOT` và `MOODLE_SSL_PROXY` được đọc từ Terraform hiện tại, nên phù
+hợp cả HTTP smoke-test lẫn ALB HTTPS khi certificate/hostname đã được cấu hình.
 
 ```bash
 bash automation/stage-moodle-release.sh \

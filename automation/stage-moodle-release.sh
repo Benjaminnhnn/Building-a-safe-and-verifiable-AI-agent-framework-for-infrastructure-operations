@@ -73,6 +73,7 @@ filesystem_json="$(terraform -chdir="$terraform_dir" output -json moodle_filesys
 
 region="$(jq -r '.alb_arn | split(":")[3]' <<<"$application_json")"
 app_url="$(jq -r '.url' <<<"$application_json")"
+app_scheme="$(jq -r '.scheme' <<<"$application_json")"
 db_endpoint="$(jq -r '.endpoint' <<<"$database_json")"
 db_port="$(jq -r '.port' <<<"$database_json")"
 db_name="$(jq -r '.database_name' <<<"$database_json")"
@@ -83,6 +84,15 @@ data_mount_path="$(jq -r '.host_mount_path' <<<"$filesystem_json")"
   echo "Terraform state does not expose an RDS master secret ARN." >&2
   exit 65
 }
+
+case "$app_scheme" in
+  http) moodle_ssl_proxy=false ;;
+  https) moodle_ssl_proxy=true ;;
+  *)
+    echo "Unexpected Moodle application scheme from Terraform: $app_scheme" >&2
+    exit 65
+    ;;
+esac
 
 aws sts get-caller-identity --profile "$aws_profile" --output json >/dev/null
 master_secret_json="$(aws secretsmanager get-secret-value \
@@ -197,7 +207,7 @@ MOODLE_DB_PORT=$db_port
 MOODLE_DB_NAME=$db_name
 MOODLE_DB_USER=$app_user
 MOODLE_WWWROOT=$app_url
-MOODLE_SSL_PROXY=false
+MOODLE_SSL_PROXY=$moodle_ssl_proxy
 MOODLE_SITE_FULLNAME=Moodle Staging
 MOODLE_SITE_SHORTNAME=Moodle
 MOODLE_SITE_SUMMARY=Infrastructure operations test environment
