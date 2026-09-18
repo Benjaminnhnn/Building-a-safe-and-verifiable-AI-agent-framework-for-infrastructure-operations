@@ -2,7 +2,9 @@ services:
   moodle-web:
     image: ${MOODLE_IMAGE:?Set an immutable Moodle image reference}
     restart: unless-stopped
-    user: "1000:1000"
+    # GID 1999 can read the bind-mounted runtime secrets; it has no login user
+    # on the EC2 hosts. The application itself continues to run as UID 1000.
+    user: "1000:1999"
     env_file:
       - ${MOODLE_RUNTIME_ENV_FILE:-./moodle-runtime.env}
     environment:
@@ -29,7 +31,7 @@ services:
   moodle-cron:
     image: ${MOODLE_IMAGE:?Set an immutable Moodle image reference}
     restart: unless-stopped
-    user: "1000:1000"
+    user: "1000:1999"
     profiles: ["cron"]
     env_file:
       - ${MOODLE_RUNTIME_ENV_FILE:-./moodle-runtime.env}
@@ -49,7 +51,7 @@ services:
 
   moodle-install:
     image: ${MOODLE_IMAGE:?Set an immutable Moodle image reference}
-    user: "1000:1000"
+    user: "1000:1999"
     profiles: ["installer"]
     env_file:
       - ${MOODLE_RUNTIME_ENV_FILE:-./moodle-runtime.env}

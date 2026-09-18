@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Stage, but do not deploy, the Moodle release on both application nodes.
-# This script creates the least-privilege RDS role and root-only runtime files.
+# This script creates the least-privilege RDS role and runtime files readable
+# only by the Moodle container's dedicated numeric group.
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,6 +14,9 @@ image_ref="${1:-}"
 db_password_file="${2:-}"
 admin_password_file="${3:-}"
 app_user="moodle_app"
+# This numeric group is used only by the Moodle containers.  It must not be a
+# login group on the EC2 hosts; files remain inaccessible to the SSH user.
+moodle_secret_gid="1999"
 tunnel_port="${MOODLE_RDS_TUNNEL_PORT:-15432}"
 ca_bundle_url="https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem"
 hosts=(moodle-app-a moodle-app-b)
@@ -218,20 +222,22 @@ EOF
 chmod 0600 "$runtime_env"
 
 copy_as_root() {
-  local host="$1" source_path="$2" destination_path="$3" mode="$4"
+  local host="$1" source_path="$2" destination_path="$3" owner="$4" group="$5" mode="$6"
   cat "$source_path" | ssh -F "$ssh_config_path" "$host" \
-    "sudo install -d -o root -g root -m 0750 '$(dirname "$destination_path")' && sudo tee '$destination_path' >/dev/null && sudo chown root:root '$destination_path' && sudo chmod '$mode' '$destination_path'"
+    "sudo install -d -o root -g root -m 0750 '$(dirname "$destination_path")' && sudo tee '$destination_path' >/dev/null && sudo chown '$owner:$group' '$destination_path' && sudo chmod '$mode' '$destination_path'"
 }
 
 for host in "${hosts[@]}"; do
-  echo "Staging root-only Moodle release files on $host..."
-  copy_as_root "$host" "$compose_source" /opt/moodle/release/docker-compose.yml 0640
-  copy_as_root "$host" "$runtime_env" /opt/moodle/release/moodle-runtime.env 0640
-  copy_as_root "$host" "$work_dir/moodle-db-password" /opt/moodle/secrets/moodle-db-password 0600
-  copy_as_root "$host" "$work_dir/moodle-admin-password" /opt/moodle/secrets/moodle-admin-password 0600
-  copy_as_root "$host" "$ca_bundle_path" /opt/moodle/secrets/rds-ca.pem 0600
+  echo "Staging Moodle release files on $host..."
+  copy_as_root "$host" "$compose_source" /opt/moodle/release/docker-compose.yml root root 0640
+  copy_as_root "$host" "$runtime_env" /opt/moodle/release/moodle-runtime.env root root 0640
+  copy_as_root "$host" "$work_dir/moodle-db-password" /opt/moodle/secrets/moodle-db-password root "$moodle_secret_gid" 0640
+  copy_as_root "$host" "$work_dir/moodle-admin-password" /opt/moodle/secrets/moodle-admin-password root "$moodle_secret_gid" 0640
+  copy_as_root "$host" "$ca_bundle_path" /opt/moodle/secrets/rds-ca.pem root "$moodle_secret_gid" 0640
   ssh -F "$ssh_config_path" "$host" \
     "sudo docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml config >/dev/null"
+  ssh -F "$ssh_config_path" "$host" \
+    "sudo docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml --profile installer run --rm --no-deps --entrypoint /bin/sh moodle-install -c 'test -r /run/moodle-secrets/moodle-db-password && test -r /run/moodle-secrets/moodle-admin-password && test -r /run/moodle-secrets/rds-ca.pem' >/dev/null"
 done
 
 echo "Moodle release staging completed. No Moodle container has been started."
