@@ -51,7 +51,7 @@ mkdir -p "$MOODLE_DATA_ROOT" "$MOODLE_DATA_ROOT/cache" "$MOODLE_DATA_ROOT/localc
 chmod 0770 "$MOODLE_DATA_ROOT" "$MOODLE_DATA_ROOT/cache" "$MOODLE_DATA_ROOT/localcache" \
     "$MOODLE_DATA_ROOT/sessions" "$MOODLE_DATA_ROOT/temp" "$MOODLE_DATA_ROOT/trashdir"
 
-db_password_literal="$(php -r '$value = rtrim(stream_get_contents(STDIN), "\\r\\n"); if ($value === "") { exit(1); } echo var_export($value, true);' < "$MOODLE_DB_PASSWORD_FILE")"
+db_password_literal="$(php -r '$value = rtrim(stream_get_contents(STDIN), "\r\n"); if ($value === "") { exit(1); } echo var_export($value, true);' < "$MOODLE_DB_PASSWORD_FILE")"
 if [ -z "$db_password_literal" ]; then
     echo 'Moodle database password must not be empty' >&2
     exit 64

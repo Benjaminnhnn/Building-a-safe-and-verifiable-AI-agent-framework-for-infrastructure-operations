@@ -42,6 +42,25 @@ jobs:
       - name: Build Moodle image
         run: docker build -t local/moodle:ci-${{ github.sha }} moodle
 
+      - name: Test Moodle secret-file handling
+        run: |
+          password_file="$(mktemp)"
+          trap 'rm -f "$password_file"' EXIT
+          printf '%s\n' 'moodle-test-password' > "$password_file"
+          chmod 0644 "$password_file"
+          docker run --rm \
+            -e MOODLE_WWWROOT=http://moodle.test \
+            -e MOODLE_DB_HOST=postgres.example.test \
+            -e MOODLE_DB_PORT=5432 \
+            -e MOODLE_DB_NAME=moodle \
+            -e MOODLE_DB_USER=moodle_app \
+            -e MOODLE_DATA_ROOT=/var/moodledata \
+            -e MOODLE_DB_PASSWORD_FILE=/run/moodle-secrets/moodle-db-password \
+            -e MOODLE_SSL_PROXY=false \
+            -v "$password_file:/run/moodle-secrets/moodle-db-password:ro" \
+            local/moodle:ci-${{ github.sha }} \
+            sh -ec 'grep -F "\$CFG->dbpass = '\''moodle-test-password'\'';" /var/www/html/config.php'
+
       - name: Validate Docker Compose files
         run: |
           cp release/.env.example release/.env.staging
