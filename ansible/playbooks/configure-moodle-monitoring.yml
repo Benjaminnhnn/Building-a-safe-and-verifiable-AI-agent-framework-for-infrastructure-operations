@@ -1,0 +1,383 @@
+---
+# Moodle-only observability. This does not reuse the legacy bank-web/core
+# monitoring configuration and does not change the Moodle release stack.
+- name: Deploy exporters on Moodle nodes
+  hosts: moodle
+  become: true
+  gather_facts: true
+
+  vars:
+    moodle_observability_root: /opt/moodle-observability
+
+  pre_tasks:
+    - name: Require Docker on Moodle nodes
+      ansible.builtin.command:
+        cmd: docker info --format '{{ "{{" }}.ServerVersion{{ "}}" }}'
+      changed_when: false
+
+  tasks:
+    - name: Create exporter runtime directory
+      ansible.builtin.file:
+        path: "{{ moodle_observability_root }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Install exporter Compose definition
+      ansible.builtin.copy:
+        dest: "{{ moodle_observability_root }}/docker-compose.yml"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          services:
+            node-exporter:
+              image: quay.io/prometheus/node-exporter:v1.8.2
+              container_name: moodle-node-exporter
+              restart: unless-stopped
+              network_mode: host
+              pid: host
+              command:
+                - --path.rootfs=/host
+                - --web.listen-address=:9100
+              volumes:
+                - /:/host:ro,rslave
+              read_only: true
+              security_opt:
+                - no-new-privileges:true
+              cap_drop:
+                - ALL
+
+            cadvisor:
+              image: gcr.io/cadvisor/cadvisor:v0.49.1
+              container_name: moodle-cadvisor
+              restart: unless-stopped
+              privileged: true
+              ports:
+                - "8088:8080"
+              volumes:
+                - /:/rootfs:ro
+                - /var/run:/var/run:ro
+                - /sys:/sys:ro
+                - /var/lib/docker:/var/lib/docker:ro
+                - /dev/disk:/dev/disk:ro
+
+    - name: Validate exporter Compose definition
+      ansible.builtin.command:
+        cmd: docker compose -f {{ moodle_observability_root }}/docker-compose.yml config
+      changed_when: false
+
+    - name: Start Moodle exporters
+      ansible.builtin.command:
+        cmd: docker compose -f {{ moodle_observability_root }}/docker-compose.yml up -d
+      changed_when: true
+
+    - name: Wait for Node Exporter
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9100/metrics
+        status_code: 200
+      register: node_exporter_ready
+      retries: 12
+      delay: 5
+      until: node_exporter_ready.status == 200
+
+    - name: Wait for cAdvisor
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8088/metrics
+        status_code: 200
+      register: cadvisor_ready
+      retries: 12
+      delay: 5
+      until: cadvisor_ready.status == 200
+
+- name: Deploy the Moodle monitoring control plane
+  hosts: monitor
+  become: true
+  gather_facts: true
+
+  vars:
+    moodle_observability_root: /opt/moodle-observability
+    moodle_compose_version: v2.29.7
+    moodle_compose_sha256: 383ce6698cd5d5bbf958d2c8489ed75094e34a77d340404d9f32c4ae9e12baf0
+
+  pre_tasks:
+    - name: Require Terraform-derived Moodle monitoring values
+      ansible.builtin.assert:
+        that:
+          - moodle_monitor_public_url is defined
+          - moodle_monitor_public_url is match('^https?://')
+          - moodle_monitor_rds_endpoint is defined
+          - moodle_monitor_rds_endpoint is match('^[A-Za-z0-9.-]+$')
+        fail_msg: Run the monitoring automation script rather than this playbook directly.
+
+  tasks:
+    - name: Install Docker
+      ansible.builtin.dnf:
+        name: docker
+        state: present
+        update_cache: true
+
+    - name: Enable Docker service
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Create Docker CLI plugin directory
+      ansible.builtin.file:
+        path: /usr/local/lib/docker/cli-plugins
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Install pinned Docker Compose plugin
+      ansible.builtin.get_url:
+        url: "https://github.com/docker/compose/releases/download/{{ moodle_compose_version }}/docker-compose-linux-x86_64"
+        dest: /usr/local/lib/docker/cli-plugins/docker-compose
+        owner: root
+        group: root
+        mode: '0755'
+        checksum: "sha256:{{ moodle_compose_sha256 }}"
+
+    - name: Create monitoring configuration directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - "{{ moodle_observability_root }}"
+        - "{{ moodle_observability_root }}/prometheus"
+        - "{{ moodle_observability_root }}/prometheus/rules"
+        - "{{ moodle_observability_root }}/blackbox"
+        - "{{ moodle_observability_root }}/alertmanager"
+
+    - name: Create Prometheus data directory
+      ansible.builtin.file:
+        path: "{{ moodle_observability_root }}/prometheus/data"
+        state: directory
+        owner: '65534'
+        group: '65534'
+        mode: '0755'
+
+    - name: Create Alertmanager data directory
+      ansible.builtin.file:
+        path: "{{ moodle_observability_root }}/alertmanager/data"
+        state: directory
+        owner: '65534'
+        group: '65534'
+        mode: '0755'
+
+    - name: Install Prometheus configuration
+      ansible.builtin.copy:
+        dest: "{{ moodle_observability_root }}/prometheus/prometheus.yml"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          global:
+            scrape_interval: 15s
+            evaluation_interval: 15s
+            external_labels:
+              environment: staging
+              system: moodle
+          alerting:
+            alertmanagers:
+              - static_configs:
+                  - targets: ['alertmanager:9093']
+          rule_files:
+            - /etc/prometheus/rules/moodle.yml
+          scrape_configs:
+            - job_name: prometheus
+              static_configs:
+                - targets: ['prometheus:9090']
+            - job_name: moodle_node
+              static_configs:
+                - targets: ['{{ hostvars["moodle-app-a"].ansible_host }}:9100']
+                  labels: {instance: moodle-app-a}
+                - targets: ['{{ hostvars["moodle-app-b"].ansible_host }}:9100']
+                  labels: {instance: moodle-app-b}
+            - job_name: moodle_cadvisor
+              static_configs:
+                - targets: ['{{ hostvars["moodle-app-a"].ansible_host }}:8088']
+                  labels: {instance: moodle-app-a}
+                - targets: ['{{ hostvars["moodle-app-b"].ansible_host }}:8088']
+                  labels: {instance: moodle-app-b}
+            - job_name: blackbox_moodle_public
+              metrics_path: /probe
+              params: {module: [http_2xx]}
+              static_configs:
+                - targets: ['{{ moodle_monitor_public_url }}/healthz.php']
+                  labels: {service: moodle, probe: healthz}
+                - targets: ['{{ moodle_monitor_public_url }}/login/index.php']
+                  labels: {service: moodle, probe: login}
+              relabel_configs:
+                - source_labels: [__address__]
+                  target_label: __param_target
+                - target_label: __address__
+                  replacement: blackbox-exporter:9115
+                - source_labels: [__param_target]
+                  target_label: target
+            - job_name: blackbox_moodle_rds
+              metrics_path: /probe
+              params: {module: [tcp_connect]}
+              static_configs:
+                - targets: ['{{ moodle_monitor_rds_endpoint }}:5432']
+                  labels: {service: moodle-rds}
+              relabel_configs:
+                - source_labels: [__address__]
+                  target_label: __param_target
+                - target_label: __address__
+                  replacement: blackbox-exporter:9115
+                - source_labels: [__param_target]
+                  target_label: target
+
+    - name: Install Moodle alert rules
+      ansible.builtin.copy:
+        dest: "{{ moodle_observability_root }}/prometheus/rules/moodle.yml"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          groups:
+            - name: moodle-availability
+              rules:
+                - alert: MoodleNodeExporterDown
+                  expr: up{job="moodle_node"} == 0
+                  for: 1m
+                  labels: {severity: critical, service: moodle, runbook: moodle-node-exporter}
+                  annotations: {summary: Moodle node metrics unavailable}
+                - alert: MoodleCAdvisorDown
+                  expr: up{job="moodle_cadvisor"} == 0
+                  for: 1m
+                  labels: {severity: warning, service: moodle, runbook: moodle-cadvisor}
+                  annotations: {summary: Moodle container metrics unavailable}
+                - alert: MoodlePublicProbeFailed
+                  expr: probe_success{job="blackbox_moodle_public"} == 0
+                  for: 30s
+                  labels: {severity: critical, service: moodle, runbook: moodle-public-probe}
+                  annotations: {summary: "Moodle public {{ "{{" }} $labels.probe {{ "}}" }} probe failed"}
+                - alert: MoodleRdsTcpProbeFailed
+                  expr: probe_success{job="blackbox_moodle_rds"} == 0
+                  for: 1m
+                  labels: {severity: critical, service: moodle-rds, runbook: moodle-rds-probe}
+                  annotations: {summary: Moodle RDS TCP probe failed}
+                - alert: MoodleEfsMountMissing
+                  expr: absent(node_filesystem_size_bytes{job="moodle_node",mountpoint="/mnt/efs/moodledata",fstype="nfs4"})
+                  for: 1m
+                  labels: {severity: critical, service: moodle, runbook: moodle-efs}
+                  annotations: {summary: Moodle EFS mount is not observed}
+
+    - name: Install Blackbox Exporter configuration
+      ansible.builtin.copy:
+        dest: "{{ moodle_observability_root }}/blackbox/blackbox.yml"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          modules:
+            http_2xx:
+              prober: http
+              timeout: 10s
+              http:
+                method: GET
+                preferred_ip_protocol: ip4
+                valid_status_codes: [200]
+            tcp_connect:
+              prober: tcp
+              timeout: 10s
+
+    - name: Install Alertmanager baseline configuration
+      ansible.builtin.copy:
+        dest: "{{ moodle_observability_root }}/alertmanager/alertmanager.yml"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          global:
+            resolve_timeout: 5m
+          route:
+            receiver: baseline
+            group_by: [alertname, instance, service]
+            group_wait: 30s
+            group_interval: 5m
+            repeat_interval: 4h
+          receivers:
+            - name: baseline
+
+    - name: Install monitoring Compose definition
+      ansible.builtin.copy:
+        dest: "{{ moodle_observability_root }}/docker-compose.yml"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          services:
+            prometheus:
+              image: prom/prometheus:v2.53.3
+              container_name: moodle-prometheus
+              restart: unless-stopped
+              ports: ["127.0.0.1:9090:9090"]
+              volumes:
+                - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+                - ./prometheus/rules:/etc/prometheus/rules:ro
+                - ./prometheus/data:/prometheus
+              command:
+                - --config.file=/etc/prometheus/prometheus.yml
+                - --storage.tsdb.path=/prometheus
+                - --storage.tsdb.retention.time=15d
+            blackbox-exporter:
+              image: prom/blackbox-exporter:v0.25.0
+              container_name: moodle-blackbox-exporter
+              restart: unless-stopped
+              ports: ["127.0.0.1:9115:9115"]
+              volumes:
+                - ./blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+              command: [--config.file=/etc/blackbox_exporter/config.yml]
+            alertmanager:
+              image: prom/alertmanager:v0.27.0
+              container_name: moodle-alertmanager
+              restart: unless-stopped
+              ports: ["127.0.0.1:9093:9093"]
+              volumes:
+                - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+                - ./alertmanager/data:/alertmanager
+              command:
+                - --config.file=/etc/alertmanager/alertmanager.yml
+                - --storage.path=/alertmanager
+
+    - name: Validate monitoring Compose definition
+      ansible.builtin.command:
+        cmd: docker compose -f {{ moodle_observability_root }}/docker-compose.yml config
+      changed_when: false
+
+    - name: Start Moodle monitoring stack
+      ansible.builtin.command:
+        cmd: docker compose -f {{ moodle_observability_root }}/docker-compose.yml up -d
+      changed_when: true
+
+    - name: Wait for Prometheus readiness
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9090/-/ready
+        status_code: 200
+      register: prometheus_ready
+      retries: 18
+      delay: 5
+      until: prometheus_ready.status == 200
+
+    - name: Wait for Alertmanager readiness
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9093/-/ready
+        status_code: 200
+      register: alertmanager_ready
+      retries: 18
+      delay: 5
+      until: alertmanager_ready.status == 200
+
+    - name: Verify Prometheus configuration
+      ansible.builtin.command:
+        cmd: docker exec moodle-prometheus promtool check config /etc/prometheus/prometheus.yml
+      changed_when: false
