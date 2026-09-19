@@ -233,6 +233,19 @@
         - "{{ moodle_observability_root }}/prometheus/rules"
         - "{{ moodle_observability_root }}/blackbox"
         - "{{ moodle_observability_root }}/alertmanager"
+        - "{{ moodle_observability_root }}/grafana"
+        - "{{ moodle_observability_root }}/grafana/provisioning"
+        - "{{ moodle_observability_root }}/grafana/provisioning/datasources"
+        - "{{ moodle_observability_root }}/grafana/provisioning/dashboards"
+        - "{{ moodle_observability_root }}/grafana/dashboards"
+
+    - name: Create monitoring secrets directory
+      ansible.builtin.file:
+        path: "{{ moodle_observability_root }}/secrets"
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
 
     - name: Create Prometheus data directory
       ansible.builtin.file:
@@ -249,6 +262,44 @@
         owner: '65534'
         group: '65534'
         mode: '0755'
+
+    - name: Create Grafana data directory
+      ansible.builtin.file:
+        path: "{{ moodle_observability_root }}/grafana/data"
+        state: directory
+        owner: '472'
+        group: '0'
+        mode: '0750'
+
+    - name: Check Grafana administrator password
+      ansible.builtin.stat:
+        path: "{{ moodle_observability_root }}/secrets/grafana-admin-password"
+      register: grafana_admin_password_file
+
+    - name: Generate Grafana administrator password
+      ansible.builtin.command:
+        cmd: openssl rand -base64 32
+      register: generated_grafana_admin_password
+      changed_when: true
+      no_log: true
+      when: not grafana_admin_password_file.stat.exists
+
+    - name: Store Grafana administrator password
+      ansible.builtin.copy:
+        dest: "{{ moodle_observability_root }}/secrets/grafana-admin-password"
+        content: "{{ generated_grafana_admin_password.stdout }}\n"
+        owner: root
+        group: root
+        mode: '0640'
+      no_log: true
+      when: not grafana_admin_password_file.stat.exists
+
+    - name: Allow the Grafana root group to read its administrator secret
+      ansible.builtin.file:
+        path: "{{ moodle_observability_root }}/secrets/grafana-admin-password"
+        owner: root
+        group: root
+        mode: '0640'
 
     - name: Install Prometheus configuration
       ansible.builtin.copy:
@@ -387,6 +438,30 @@
           receivers:
             - name: baseline
 
+    - name: Provision Grafana Prometheus datasource
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../files/moodle-monitoring/grafana/prometheus-datasource.yml"
+        dest: "{{ moodle_observability_root }}/grafana/provisioning/datasources/prometheus.yml"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Provision Grafana dashboard provider
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../files/moodle-monitoring/grafana/dashboard-provider.yml"
+        dest: "{{ moodle_observability_root }}/grafana/provisioning/dashboards/moodle.yml"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Install Moodle infrastructure dashboard
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../files/moodle-monitoring/grafana/moodle-infrastructure.json"
+        dest: "{{ moodle_observability_root }}/grafana/dashboards/moodle-infrastructure.json"
+        owner: root
+        group: root
+        mode: '0644'
+
     - name: Install monitoring Compose definition
       ansible.builtin.copy:
         dest: "{{ moodle_observability_root }}/docker-compose.yml"
@@ -427,6 +502,29 @@
               command:
                 - --config.file=/etc/alertmanager/alertmanager.yml
                 - --storage.path=/alertmanager
+            grafana:
+              image: grafana/grafana:13.2.0
+              container_name: moodle-grafana
+              restart: unless-stopped
+              ports: ["127.0.0.1:3000:3000"]
+              environment:
+                GF_SECURITY_ADMIN_USER: admin
+                GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+                GF_USERS_ALLOW_SIGN_UP: "false"
+                GF_AUTH_ANONYMOUS_ENABLED: "false"
+                GF_ANALYTICS_REPORTING_ENABLED: "false"
+                GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+              secrets:
+                - grafana_admin_password
+              volumes:
+                - ./grafana/data:/var/lib/grafana
+                - ./grafana/provisioning:/etc/grafana/provisioning:ro
+                - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+              depends_on:
+                - prometheus
+          secrets:
+            grafana_admin_password:
+              file: ./secrets/grafana-admin-password
 
     - name: Validate monitoring Compose definition
       ansible.builtin.command:
@@ -441,6 +539,11 @@
     - name: Reload Prometheus after monitoring configuration changes
       ansible.builtin.command:
         cmd: docker kill --signal HUP moodle-prometheus
+      changed_when: true
+
+    - name: Restart Grafana to apply provisioned configuration
+      ansible.builtin.command:
+        cmd: docker compose -f {{ moodle_observability_root }}/docker-compose.yml up -d --force-recreate grafana
       changed_when: true
 
     - name: Wait for Prometheus readiness
@@ -460,6 +563,55 @@
       retries: 18
       delay: 5
       until: alertmanager_ready.status == 200
+
+    - name: Wait for Grafana readiness
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3000/api/health
+        status_code: 200
+      register: grafana_ready
+      retries: 18
+      delay: 5
+      until: grafana_ready.status == 200
+
+    - name: Read Grafana administrator password for provisioning checks
+      ansible.builtin.slurp:
+        src: "{{ moodle_observability_root }}/secrets/grafana-admin-password"
+      register: grafana_admin_password_secret
+      no_log: true
+
+    - name: Synchronize the Grafana administrator password
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - -i
+          - moodle-grafana
+          - grafana
+          - cli
+          - admin
+          - reset-admin-password
+          - --password-from-stdin
+        stdin: "{{ grafana_admin_password_secret.content | b64decode | trim }}"
+      changed_when: true
+      no_log: true
+
+    - name: Verify provisioned Prometheus datasource
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3000/api/datasources/uid/prometheus
+        user: admin
+        password: "{{ grafana_admin_password_secret.content | b64decode | trim }}"
+        force_basic_auth: true
+        status_code: 200
+      no_log: true
+
+    - name: Verify provisioned Moodle dashboard
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3000/api/dashboards/uid/moodle-infrastructure
+        user: admin
+        password: "{{ grafana_admin_password_secret.content | b64decode | trim }}"
+        force_basic_auth: true
+        status_code: 200
+      no_log: true
 
     - name: Verify Prometheus configuration
       ansible.builtin.command:

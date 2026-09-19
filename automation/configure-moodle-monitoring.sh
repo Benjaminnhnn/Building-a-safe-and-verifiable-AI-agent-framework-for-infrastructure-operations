@@ -16,8 +16,9 @@ usage() {
 Usage: bash automation/configure-moodle-monitoring.sh [--syntax-check]
 
 Deploys Moodle-only exporters on the two application nodes and Prometheus,
-Blackbox Exporter, and Alertmanager on the monitor node. It does not change
-the Moodle release Compose project, RDS, EFS, or external alert receivers.
+Blackbox Exporter, Alertmanager, and provisioned Grafana on the monitor node.
+It does not change the Moodle release Compose project, RDS, EFS, or external
+alert receivers.
 EOF
   exit 64
 }
