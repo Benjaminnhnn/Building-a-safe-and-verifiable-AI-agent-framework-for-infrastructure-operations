@@ -10,6 +10,14 @@ case "$interval" in
 esac
 
 while true; do
-    php /var/www/html/admin/cli/cron.php
-    sleep "$interval"
+    started_at="$(date +%s)"
+    php /var/www/html/admin/cli/cron.php --keep-alive=0
+    finished_at="$(date +%s)"
+    elapsed="$((finished_at - started_at))"
+
+    if [ "$elapsed" -lt "$interval" ]; then
+        sleep "$((interval - elapsed))"
+    else
+        echo "Cron runtime ${elapsed}s met or exceeded the ${interval}s interval; starting the next run immediately." >&2
+    fi
 done

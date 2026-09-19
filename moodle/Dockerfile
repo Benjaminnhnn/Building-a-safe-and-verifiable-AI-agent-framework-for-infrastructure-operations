@@ -47,6 +47,10 @@ RUN chown root:root /var/www/html \
     && sed -ri 's/^export APACHE_RUN_USER=.*/export APACHE_RUN_USER=moodle/' /etc/apache2/envvars \
     && sed -ri 's/^export APACHE_RUN_GROUP=.*/export APACHE_RUN_GROUP=moodle/' /etc/apache2/envvars
 
+COPY apache-moodle-router.conf /etc/apache2/conf-available/moodle-router.conf
+RUN a2enconf moodle-router \
+    && apache2ctl -t
+
 COPY --chown=moodle:moodle docker-entrypoint.sh cron-runner.sh moodle-install.sh healthz.php /usr/local/bin/
 RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh /usr/local/bin/cron-runner.sh /usr/local/bin/moodle-install.sh \
     && mv /usr/local/bin/healthz.php /var/www/html/public/healthz.php \

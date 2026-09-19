@@ -89,6 +89,7 @@ global \$CFG;
 \$CFG->directorypermissions = 02770;
 \$CFG->reverseproxy = ${MOODLE_REVERSE_PROXY:-false};
 \$CFG->sslproxy = ${MOODLE_SSL_PROXY};
+\$CFG->routerconfigured = true;
 require_once(__DIR__ . '/lib/setup.php');
 EOF
 
