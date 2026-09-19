@@ -64,7 +64,7 @@ jobs:
       - name: Test Moodle public web root layout
         run: |
           docker run --rm --entrypoint /bin/sh local/moodle:ci-${{ github.sha }} \
-            -c 'test -f /var/www/html/public/healthz.php && grep -qx "DocumentRoot /var/www/html/public" /etc/apache2/sites-enabled/000-default.conf'
+            -c 'test -f /var/www/html/public/healthz.php && grep -Eq "^[[:space:]]*DocumentRoot /var/www/html/public$" /etc/apache2/sites-enabled/000-default.conf'
 
       - name: Validate Docker Compose files
         run: |
