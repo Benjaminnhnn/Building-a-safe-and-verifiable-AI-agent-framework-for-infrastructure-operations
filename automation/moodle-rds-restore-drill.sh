@@ -98,15 +98,24 @@ restore_endpoint="$(aws rds describe-db-instances \
   --query 'DBInstances[0].Endpoint.Address' --output text)"
 
 connection_result="$(ssh -F "$ssh_config" moodle-app-a \
-  "sudo docker exec -e MOODLE_RESTORE_HOST='$restore_endpoint' release-moodle-web-1 php -r '\''\
-    \$password = rtrim(file_get_contents(getenv(\"MOODLE_DB_PASSWORD_FILE\")), \"\\r\\n\"); \
-    putenv(\"PGPASSWORD=\" . \$password); \
-    \$connection = pg_connect(\"host=\" . getenv(\"MOODLE_RESTORE_HOST\") . \" port=5432 dbname=moodle user=moodle_app sslmode=verify-full sslrootcert=/run/moodle-secrets/rds-ca.pem connect_timeout=10\"); \
-    if (!\$connection) { fwrite(STDERR, \"restore_connection_failed\\n\"); exit(1); } \
-    \$result = pg_query(\$connection, \"SELECT current_database(), current_user\"); \
-    \$row = pg_fetch_row(\$result); \
-    echo \$row[0] . \"|\" . \$row[1] . PHP_EOL;\
-  '\''")"
+  "sudo docker exec -i -e MOODLE_RESTORE_HOST='$restore_endpoint' release-moodle-web-1 php" <<'PHP'
+<?php
+$password = rtrim(file_get_contents(getenv('MOODLE_DB_PASSWORD_FILE')), "\r\n");
+putenv('PGPASSWORD=' . $password);
+$connection = pg_connect(
+    'host=' . getenv('MOODLE_RESTORE_HOST') .
+    ' port=5432 dbname=moodle user=moodle_app' .
+    ' sslmode=verify-full sslrootcert=/run/moodle-secrets/rds-ca.pem connect_timeout=10'
+);
+if (!$connection) {
+    fwrite(STDERR, "restore_connection_failed\n");
+    exit(1);
+}
+$result = pg_query($connection, 'SELECT current_database(), current_user');
+$row = pg_fetch_row($result);
+echo $row[0] . '|' . $row[1] . PHP_EOL;
+PHP
+)"
 
 [[ "$connection_result" == "moodle|moodle_app" ]] || {
   echo "Unexpected restore connectivity result." >&2
