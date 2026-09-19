@@ -24,6 +24,84 @@
         group: root
         mode: '0755'
 
+    - name: Create Node Exporter textfile directory
+      ansible.builtin.file:
+        path: /var/lib/node_exporter/textfile_collector
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Install EFS mount metric collector
+      ansible.builtin.copy:
+        dest: /usr/local/sbin/moodle-efs-metric
+        owner: root
+        group: root
+        mode: '0755'
+        content: |
+          #!/usr/bin/env sh
+          set -eu
+          output_dir=/var/lib/node_exporter/textfile_collector
+          output_file=$output_dir/moodle_efs.prom
+          temporary_file=$(mktemp "$output_dir/.moodle_efs.XXXXXX")
+          if findmnt --noheadings --target /mnt/efs/moodledata --output FSTYPE \
+              | grep -Eq '^(nfs4|efs)$'; then
+            value=1
+          else
+            value=0
+          fi
+          printf '%s\n' \
+            '# HELP moodle_efs_mount_available Whether the Moodle EFS mount is present.' \
+            '# TYPE moodle_efs_mount_available gauge' \
+            "moodle_efs_mount_available $value" > "$temporary_file"
+          chmod 0644 "$temporary_file"
+          mv "$temporary_file" "$output_file"
+
+    - name: Install EFS mount metric service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/moodle-efs-metric.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Publish Moodle EFS mount metric for Node Exporter
+          After=network-online.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/moodle-efs-metric
+
+    - name: Install EFS mount metric timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/moodle-efs-metric.timer
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Periodically publish Moodle EFS mount metric
+
+          [Timer]
+          OnBootSec=15s
+          OnUnitActiveSec=30s
+          Unit=moodle-efs-metric.service
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Start EFS mount metric collector
+      ansible.builtin.systemd:
+        name: moodle-efs-metric.service
+        state: started
+        daemon_reload: true
+
+    - name: Enable EFS mount metric timer
+      ansible.builtin.systemd:
+        name: moodle-efs-metric.timer
+        enabled: true
+        state: started
+
     - name: Install exporter Compose definition
       ansible.builtin.copy:
         dest: "{{ moodle_observability_root }}/docker-compose.yml"
@@ -41,6 +119,7 @@
               command:
                 - --path.rootfs=/host
                 - --web.listen-address=:9100
+                - --collector.textfile.directory=/host/var/lib/node_exporter/textfile_collector
               volumes:
                 - /:/host:ro,rslave
               read_only: true
@@ -266,7 +345,7 @@
                   labels: {severity: critical, service: moodle-rds, runbook: moodle-rds-probe}
                   annotations: {summary: Moodle RDS TCP probe failed}
                 - alert: MoodleEfsMountMissing
-                  expr: absent(node_filesystem_size_bytes{job="moodle_node",mountpoint="/mnt/efs/moodledata",fstype="nfs4"})
+                  expr: moodle_efs_mount_available{job="moodle_node"} == 0 or absent(moodle_efs_mount_available{job="moodle_node"})
                   for: 1m
                   labels: {severity: critical, service: moodle, runbook: moodle-efs}
                   annotations: {summary: Moodle EFS mount is not observed}
