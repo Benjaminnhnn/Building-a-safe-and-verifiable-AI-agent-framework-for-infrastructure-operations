@@ -77,6 +77,7 @@ reset() {
   remote moodle-app-a "
     sudo docker exec -i release-moodle-web-1 php <<'PHP'
 <?php
+define('CLI_SCRIPT', true);
 require '/var/www/html/config.php';
 unset_all_config_for_plugin('local_synthetic');
 PHP

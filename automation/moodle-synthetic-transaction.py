@@ -58,7 +58,13 @@ def json_request(opener, url: str, data: dict[str, str] | None = None) -> dict:
         raise RuntimeError(f"expected JSON from {final_url}, received HTTP {status}") from exc
     if status != 200 or payload.get("status") != "ok":
         reason = payload.get("reason", "unknown")
-        raise RuntimeError(f"transaction endpoint returned HTTP {status}: {reason}")
+        diagnostics = {
+            key: payload[key]
+            for key in ("node", "db_exists", "efs_exists")
+            if key in payload
+        }
+        detail = f" ({json.dumps(diagnostics, sort_keys=True)})" if diagnostics else ""
+        raise RuntimeError(f"transaction endpoint returned HTTP {status}: {reason}{detail}")
     return payload
 
 
@@ -71,6 +77,7 @@ def transaction(base_url: str, username: str, password: str) -> dict:
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
     endpoint = f"{base_url}/synthetic-transaction.php"
     sesskey = None
+    request_nodes: list[str] = []
     stage = "login"
     try:
         status, body, _ = request(opener, f"{base_url}/login/index.php")
@@ -89,31 +96,37 @@ def transaction(base_url: str, username: str, password: str) -> dict:
 
         stage = "read_initial"
         state = json_request(opener, f"{endpoint}?{urllib.parse.urlencode({'action': 'read', 'fixture_id': fixture_id})}")
+        request_nodes.append(str(state.get("node", "unknown")))
         sesskey = state.get("sesskey")
         if not sesskey or state.get("exists"):
             raise RuntimeError("unexpected initial fixture state")
 
         stage = "create"
-        json_request(opener, endpoint, {"action": "create", "fixture_id": fixture_id, "value": initial_value, "sesskey": sesskey})
+        state = json_request(opener, endpoint, {"action": "create", "fixture_id": fixture_id, "value": initial_value, "sesskey": sesskey})
+        request_nodes.append(str(state.get("node", "unknown")))
         stage = "read_created"
         state = json_request(opener, f"{endpoint}?{urllib.parse.urlencode({'action': 'read', 'fixture_id': fixture_id})}")
+        request_nodes.append(str(state.get("node", "unknown")))
         if state.get("value") != initial_value or not state.get("consistent"):
             raise RuntimeError("created fixture did not match in RDS and EFS")
 
         stage = "update"
-        json_request(opener, endpoint, {"action": "update", "fixture_id": fixture_id, "value": updated_value, "sesskey": sesskey})
+        state = json_request(opener, endpoint, {"action": "update", "fixture_id": fixture_id, "value": updated_value, "sesskey": sesskey})
+        request_nodes.append(str(state.get("node", "unknown")))
         stage = "read_updated"
         state = json_request(opener, f"{endpoint}?{urllib.parse.urlencode({'action': 'read', 'fixture_id': fixture_id})}")
+        request_nodes.append(str(state.get("node", "unknown")))
         if state.get("value") != updated_value or not state.get("consistent"):
             raise RuntimeError("updated fixture did not match in RDS and EFS")
 
         stage = "delete"
-        json_request(opener, endpoint, {"action": "delete", "fixture_id": fixture_id, "sesskey": sesskey})
+        state = json_request(opener, endpoint, {"action": "delete", "fixture_id": fixture_id, "sesskey": sesskey})
+        request_nodes.append(str(state.get("node", "unknown")))
         stage = "logout"
         status, _, _ = request(opener, f"{base_url}/login/logout.php?sesskey={urllib.parse.quote(sesskey)}")
         if status != 200:
             raise RuntimeError(f"logout returned HTTP {status}")
-        return {"success": True, "stage": "complete", "error": None, "latency_seconds": round(time.monotonic() - started, 6)}
+        return {"success": True, "stage": "complete", "error": None, "nodes": request_nodes, "latency_seconds": round(time.monotonic() - started, 6)}
     except Exception as exc:  # evidence must capture the failed stage without a traceback or secret
         if sesskey:
             try:
@@ -121,7 +134,7 @@ def transaction(base_url: str, username: str, password: str) -> dict:
                 request(opener, f"{base_url}/login/logout.php?sesskey={urllib.parse.quote(sesskey)}")
             except Exception:
                 pass
-        return {"success": False, "stage": stage, "error": str(exc)[:300], "latency_seconds": round(time.monotonic() - started, 6)}
+        return {"success": False, "stage": stage, "error": str(exc)[:300], "nodes": request_nodes, "latency_seconds": round(time.monotonic() - started, 6)}
 
 
 def atomic_json(path: Path, payload: dict) -> None:

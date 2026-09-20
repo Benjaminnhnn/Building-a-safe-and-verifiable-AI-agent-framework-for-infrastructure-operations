@@ -11,6 +11,7 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
 function synthetic_response(int $status, array $payload): never {
+    $payload['node'] = gethostname();
     http_response_code($status);
     echo json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     exit;
@@ -64,6 +65,8 @@ if ($action === 'read') {
         'status' => 'ok',
         'action' => 'read',
         'exists' => $exists,
+        'db_exists' => $dbvalue !== false,
+        'efs_exists' => $filevalue !== false,
         'consistent' => $dbvalue !== false && $filevalue !== false && hash_equals((string)$dbvalue, (string)$filevalue),
         'value' => $dbvalue === false ? null : (string)$dbvalue,
         'sesskey' => sesskey(),
@@ -94,7 +97,12 @@ if ($action === 'create' && ($existing !== false || is_file($fixturefile))) {
     synthetic_response(409, ['status' => 'error', 'reason' => 'fixture_exists']);
 }
 if ($action === 'update' && ($existing === false || !is_file($fixturefile))) {
-    synthetic_response(404, ['status' => 'error', 'reason' => 'fixture_missing']);
+    synthetic_response(404, [
+        'status' => 'error',
+        'reason' => 'fixture_missing',
+        'db_exists' => $existing !== false,
+        'efs_exists' => is_file($fixturefile),
+    ]);
 }
 
 if (!is_dir($fixturedir) && !make_writable_directory($fixturedir)) {
