@@ -5,7 +5,20 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/moodle-fault-common.sh"
 
 action="${1:-}"
+duration_seconds=7200
+shift || true
+
+if [[ "$action" == start && "${1:-}" == --duration-seconds ]]; then
+  [[ $# -eq 2 && "$2" =~ ^[1-9][0-9]*$ ]] || {
+    echo "Usage: $0 start [--duration-seconds <positive-integer>]" >&2
+    exit 64
+  }
+  duration_seconds="$2"
+  shift 2
+fi
+
 case "$action" in start|status|collect|stop) ;; *) echo "Usage: $0 <start|status|collect|stop>" >&2; exit 64 ;; esac
+[[ $# -eq 0 ]] || { echo "Unexpected argument: $1" >&2; exit 64; }
 load_moodle_environment
 local_state="$artifacts_dir/moodle-synthetic-soak"
 current_file="$local_state/current-run-id"
@@ -29,9 +42,9 @@ case "$action" in
         --url '$public_url' --username admin \
         --password-file /opt/moodle-observability/secrets/moodle-synthetic-password \
         --output-dir '/var/lib/moodle-synthetic/$run_id' \
-        --duration-seconds 7200 --interval-seconds 30 >/dev/null
+        --duration-seconds '$duration_seconds' --interval-seconds 30 >/dev/null
     "
-    echo "Started $run_id on monitor-ai-01; planned duration is 7200 seconds."
+    echo "Started $run_id on monitor-ai-01; planned duration is $duration_seconds seconds."
     ;;
   status)
     [[ -r "$current_file" ]] || { echo "No local soak run identifier is recorded." >&2; exit 66; }

@@ -11,7 +11,7 @@
     moodle_compose_version: v2.29.7
     moodle_compose_sha256: 383ce6698cd5d5bbf958d2c8489ed75094e34a77d340404d9f32c4ae9e12baf0
     moodle_efs_mount_path: "{{ host_mount_path | default('/mnt/efs/moodledata') }}"
-    moodle_efs_mount_options: "{{ mount_options | default('tls,_netdev') }}"
+    moodle_efs_mount_options: "{{ mount_options | default('tls,_netdev,noac') }}"
     moodle_efs_uid: "{{ uid | default(1000) }}"
     moodle_efs_gid: "{{ gid | default(1000) }}"
 
@@ -25,9 +25,10 @@
           - access_point_id is match('^fsap-[0-9a-f]+$')
           - moodle_efs_mount_options is search('accesspoint=' + access_point_id)
           - moodle_efs_mount_options is search('tls')
+          - moodle_efs_mount_options is search('noac')
         fail_msg: >-
           Export Moodle filesystem values with Terraform and pass them as extra
-          vars. Refusing an unencrypted or non-access-point EFS mount.
+          vars. Refusing an unencrypted, cached, or non-access-point EFS mount.
 
     - name: Require Amazon Linux 2023
       ansible.builtin.assert:
