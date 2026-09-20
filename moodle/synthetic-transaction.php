@@ -47,6 +47,34 @@ function synthetic_db_delete(string $name): void {
     $DB->delete_records('config_plugins', ['plugin' => 'local_synthetic', 'name' => $name]);
 }
 
+/**
+ * EFS is NFS-backed. A request routed to the other Moodle node immediately
+ * after a create can briefly retain a negative directory-entry cache. Clear
+ * PHP's stat cache and allow a bounded settle window before declaring the
+ * shared fixture unavailable. A real EFS permission/outage still fails.
+ */
+function synthetic_file_read(string $path, int $settle_microseconds = 0): string|false {
+    $deadline = microtime(true) + ($settle_microseconds / 1000000);
+    do {
+        clearstatcache(true, $path);
+        if (is_readable($path)) {
+            $value = file_get_contents($path);
+            if ($value !== false) {
+                return $value;
+            }
+        }
+        if (microtime(true) >= $deadline) {
+            break;
+        }
+        usleep(200000);
+    } while (true);
+    return false;
+}
+
+function synthetic_file_exists(string $path, int $settle_microseconds = 0): bool {
+    return synthetic_file_read($path, $settle_microseconds) !== false;
+}
+
 $action = optional_param('action', 'read', PARAM_ALPHA);
 $fixtureid = required_param('fixture_id', PARAM_ALPHANUMEXT);
 if (!preg_match('/^[a-zA-Z0-9_-]{8,64}$/', $fixtureid)) {
@@ -59,7 +87,7 @@ $fixturefile = $fixturedir . '/' . $configkey . '.txt';
 
 if ($action === 'read') {
     $dbvalue = synthetic_db_get($configkey);
-    $filevalue = is_readable($fixturefile) ? file_get_contents($fixturefile) : false;
+    $filevalue = synthetic_file_read($fixturefile, $dbvalue === false ? 0 : 3000000);
     $exists = $dbvalue !== false || $filevalue !== false;
     synthetic_response(200, [
         'status' => 'ok',
@@ -77,7 +105,7 @@ require_sesskey();
 
 if ($action === 'delete') {
     synthetic_db_delete($configkey);
-    if (is_file($fixturefile) && !unlink($fixturefile)) {
+    if (synthetic_file_exists($fixturefile, 3000000) && !unlink($fixturefile)) {
         synthetic_response(500, ['status' => 'error', 'reason' => 'efs_delete_failed']);
     }
     synthetic_response(200, ['status' => 'ok', 'action' => 'delete']);
@@ -93,16 +121,21 @@ if ($value === '' || strlen($value) > 256) {
 }
 
 $existing = synthetic_db_get($configkey);
-if ($action === 'create' && ($existing !== false || is_file($fixturefile))) {
+if ($action === 'create' && ($existing !== false || synthetic_file_exists($fixturefile))) {
     synthetic_response(409, ['status' => 'error', 'reason' => 'fixture_exists']);
 }
-if ($action === 'update' && ($existing === false || !is_file($fixturefile))) {
+if ($action === 'update') {
+    $fixturepresent = synthetic_file_exists($fixturefile, 3000000);
+    if ($existing !== false && $fixturepresent) {
+        // The file check has already crossed the bounded EFS settle window.
+    } else {
     synthetic_response(404, [
         'status' => 'error',
         'reason' => 'fixture_missing',
         'db_exists' => $existing !== false,
-        'efs_exists' => is_file($fixturefile),
+        'efs_exists' => $fixturepresent,
     ]);
+    }
 }
 
 if (!is_dir($fixturedir) && !make_writable_directory($fixturedir)) {
