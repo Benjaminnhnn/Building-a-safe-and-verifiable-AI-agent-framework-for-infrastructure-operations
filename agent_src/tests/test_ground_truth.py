@@ -10,14 +10,11 @@ from core.ground_truth import load_ground_truth, validate_ground_truth
 
 def _ground_truth_paths() -> list[Path]:
     # tests run with PYTHONPATH=agent_src, cwd is repo root
-    candidates = [
-        Path("evaluation/ground_truth/postgresql_chain.json"),
-    ]
+    ground_truth_root = Path("evaluation/ground_truth")
     # fallback relative to this file (agent_src/tests/ -> repo root)
-    if not candidates[0].exists():
-        base = Path(__file__).resolve().parents[2] / "evaluation" / "ground_truth"
-        candidates = [base / "postgresql_chain.json"]
-    return candidates
+    if not ground_truth_root.is_dir():
+        ground_truth_root = Path(__file__).resolve().parents[2] / "evaluation" / "ground_truth"
+    return sorted(ground_truth_root.rglob("*.json"))
 
 
 def _load(path: Path) -> dict:
@@ -86,6 +83,25 @@ def test_ground_truth_overall_validation_passes() -> None:
         data = _load(p)
         errs = validate_ground_truth(data, path=p)
         assert not errs, f"{p} validation failed: {errs}"
+
+
+def test_moodle_ground_truth_has_experiment_contract() -> None:
+    required = {
+        "initial_state",
+        "fault_trigger",
+        "observed_signals",
+        "recovery_criteria",
+        "communication_contract",
+        "rollback_plan",
+    }
+    moodle_paths = [path for path in _ground_truth_paths() if "moodle" in path.parts]
+    assert {path.stem for path in moodle_paths} == {"DB-01", "RES-01", "NET-01", "CON-01", "SEC-02"}
+    for path in moodle_paths:
+        data = _load(path)
+        assert not (required - data.keys()), f"{path}: missing {sorted(required - data.keys())}"
+        contract = data["communication_contract"]
+        assert all(contract.get(key) for key in ("allowed", "forbidden", "related")), path
+        assert data["rollback_plan"].get("idempotent") is True, path
 
 
 def test_validation_detects_overlap_and_leakage() -> None:

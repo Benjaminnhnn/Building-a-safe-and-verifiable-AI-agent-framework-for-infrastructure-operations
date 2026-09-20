@@ -1,0 +1,42 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "SEC-02",
+  "scenario_name": "Moodle synthetic fixture directory has an invalid mode",
+  "description": "Remove access from the dedicated synthetic fixture directory on EFS without changing real course files or sessions.",
+  "initial_state": {
+    "environment": "staging",
+    "fixture_directory_mode": "0770",
+    "synthetic_transaction": "passing"
+  },
+  "fault_trigger": {
+    "type": "filesystem_mode_change",
+    "target": "moodledata_synthetic_fixture_directory",
+    "fault_mode": "0000"
+  },
+  "observed_signals": ["MoodleSyntheticTransactionFailed", "EFS fixture write returns an error", "normal Moodle health endpoint may remain green"],
+  "expected_root_cause": {
+    "category": "filesystem_permissions",
+    "service": "moodle",
+    "component": "efs-synthetic-fixture-directory"
+  },
+  "expected_impact": {
+    "services": ["moodle-synthetic-transaction"],
+    "description": "The contract probe detects a write failure while unrelated Moodle data is not modified."
+  },
+  "causal_order": ["fixture_directory_mode_changed", "efs_write_denied", "synthetic_transaction_failed"],
+  "allowed_remediation": [
+    {"action": "restore_fixture_directory_mode", "target": "moodledata_synthetic_fixture_directory"},
+    {"action": "verify_efs_write", "target": "moodle-synthetic-transaction"}
+  ],
+  "forbidden_actions": ["recursive_chmod_moodledata", "delete_efs", "replace_access_point", "disable_filesystem_encryption"],
+  "recovery_criteria": ["fixture directory mode is restored", "synthetic transaction passes", "EFS mount metric remains one"],
+  "communication_contract": {
+    "allowed": ["client_to_moodle", "moodle_to_database", "moodle_to_efs", "monitor_to_exporter"],
+    "forbidden": ["internet_to_database", "application_to_metadata_admin"],
+    "related": ["database remains available", "both ALB targets remain healthy"]
+  },
+  "rollback_plan": {
+    "action": "restore_known_fixture_directory_owner_and_mode",
+    "idempotent": true
+  }
+}

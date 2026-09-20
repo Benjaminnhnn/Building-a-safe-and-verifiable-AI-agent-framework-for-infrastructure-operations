@@ -1,0 +1,49 @@
+name: Build AI Agent image
+
+on:
+  push:
+    branches:
+      - "feature/**"
+      - develop
+      - main
+    paths:
+      - "agent_src/**"
+      - ".github/workflows/agent-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve lowercase image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/aws-hybrid-ai-agent" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push immutable AI Agent image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./agent_src
+          push: true
+          tags: ${{ steps.image.outputs.name }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=ai-agent
+          cache-to: type=gha,mode=max,scope=ai-agent

@@ -15,6 +15,13 @@
         cmd: docker info --format '{{ "{{" }}.ServerVersion{{ "}}" }}'
       changed_when: false
 
+    - name: Require the Terraform-derived Moodle public URL
+      ansible.builtin.assert:
+        that:
+          - moodle_monitor_public_url is defined
+          - moodle_monitor_public_url is match('^https?://')
+        fail_msg: Run the monitoring automation script rather than this playbook directly.
+
   tasks:
     - name: Create exporter runtime directory
       ansible.builtin.file:
@@ -102,6 +109,75 @@
         enabled: true
         state: started
 
+    - name: Create synthetic transaction evidence directory
+      ansible.builtin.file:
+        path: /var/lib/moodle-synthetic/continuous
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+      when: inventory_hostname == 'moodle-app-a'
+
+    - name: Install authenticated Moodle synthetic transaction runner
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../automation/moodle-synthetic-transaction.py"
+        dest: /usr/local/sbin/moodle-synthetic-transaction
+        owner: root
+        group: root
+        mode: '0755'
+      when: inventory_hostname == 'moodle-app-a'
+
+    - name: Install Moodle synthetic transaction service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/moodle-synthetic-transaction.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Authenticated Moodle synthetic transaction
+          After=network-online.target docker.service
+          Wants=network-online.target
+
+          [Service]
+          Type=oneshot
+          User=root
+          Group=root
+          ExecStart=/usr/local/sbin/moodle-synthetic-transaction --once --url {{ moodle_monitor_public_url }} --username admin --password-file /opt/moodle/secrets/moodle-admin-password --output-dir /var/lib/moodle-synthetic/continuous --metrics-file /var/lib/node_exporter/textfile_collector/moodle_synthetic.prom
+          PrivateTmp=true
+          NoNewPrivileges=true
+      when: inventory_hostname == 'moodle-app-a'
+
+    - name: Install Moodle synthetic transaction timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/moodle-synthetic-transaction.timer
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Run the Moodle synthetic transaction every minute
+
+          [Timer]
+          OnBootSec=30s
+          OnUnitActiveSec=60s
+          AccuracySec=1s
+          Unit=moodle-synthetic-transaction.service
+
+          [Install]
+          WantedBy=timers.target
+      when: inventory_hostname == 'moodle-app-a'
+
+    - name: Enable Moodle synthetic transaction timer
+      ansible.builtin.systemd:
+        name: moodle-synthetic-transaction.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+      when:
+        - inventory_hostname == 'moodle-app-a'
+        - not ansible_check_mode
+
     - name: Install exporter Compose definition
       ansible.builtin.copy:
         dest: "{{ moodle_observability_root }}/docker-compose.yml"
@@ -188,7 +264,15 @@
           - moodle_monitor_public_url is match('^https?://')
           - moodle_monitor_rds_endpoint is defined
           - moodle_monitor_rds_endpoint is match('^[A-Za-z0-9.-]+$')
+          - moodle_agent_enabled is defined
         fail_msg: Run the monitoring automation script rather than this playbook directly.
+
+    - name: Require an immutable AI Agent image when the webhook receiver is enabled
+      ansible.builtin.assert:
+        that:
+          - moodle_agent_image is match('^ghcr\\.io/[a-z0-9-]+/aws-hybrid-ai-agent:[a-f0-9]{40}$')
+        fail_msg: Pass --agent-image with an immutable GHCR commit tag.
+      when: moodle_agent_enabled | bool
 
   tasks:
     - name: Install Docker
@@ -400,6 +484,26 @@
                   for: 1m
                   labels: {severity: critical, service: moodle, runbook: moodle-efs}
                   annotations: {summary: Moodle EFS mount is not observed}
+                - alert: MoodleSyntheticTransactionFailed
+                  expr: moodle_synthetic_success{job="moodle_node",instance="moodle-app-a"} == 0
+                  for: 30s
+                  labels: {severity: critical, service: moodle, runbook: moodle-synthetic}
+                  annotations: {summary: Authenticated Moodle read/write transaction failed}
+                - alert: MoodleSyntheticTransactionStale
+                  expr: time() - moodle_synthetic_last_run_timestamp_seconds{job="moodle_node",instance="moodle-app-a"} > 180
+                  for: 1m
+                  labels: {severity: warning, service: moodle, runbook: moodle-synthetic}
+                  annotations: {summary: Moodle synthetic transaction has not run recently}
+                - alert: MoodleNodeCpuHigh
+                  expr: 100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job="moodle_node",mode="idle"}[1m]))) > 70
+                  for: 1m
+                  labels: {severity: warning, service: moodle, runbook: moodle-cpu}
+                  annotations: {summary: Moodle node CPU usage exceeds 70 percent}
+                - alert: MoodleWebContainerMissing
+                  expr: up{job="moodle_cadvisor"} == 1 unless on(instance) container_last_seen{job="moodle_cadvisor",name="release-moodle-web-1"}
+                  for: 1m
+                  labels: {severity: critical, service: moodle, runbook: moodle-container}
+                  annotations: {summary: Moodle web container is missing from a monitored node}
 
     - name: Install Blackbox Exporter configuration
       ansible.builtin.copy:
@@ -430,13 +534,21 @@
           global:
             resolve_timeout: 5m
           route:
-            receiver: baseline
+            receiver: {{ 'ai-agent' if (moodle_agent_enabled | bool) else 'baseline' }}
             group_by: [alertname, instance, service]
             group_wait: 30s
             group_interval: 5m
             repeat_interval: 4h
           receivers:
+          {% if moodle_agent_enabled | bool %}
+            - name: ai-agent
+              webhook_configs:
+                - url: http://ai-agent:8000/webhook
+                  send_resolved: true
+                  max_alerts: 20
+          {% else %}
             - name: baseline
+          {% endif %}
 
     - name: Provision Grafana Prometheus datasource
       ansible.builtin.copy:
@@ -470,6 +582,65 @@
         mode: '0644'
         content: |
           services:
+          {% if moodle_agent_enabled | bool %}
+            agent-redis:
+              image: redis:7-alpine
+              container_name: moodle-agent-redis
+              restart: unless-stopped
+              command: [redis-server, --appendonly, "yes", --maxmemory, 256mb, --maxmemory-policy, noeviction]
+              volumes:
+                - agent-redis-data:/data
+              healthcheck:
+                test: [CMD, redis-cli, ping]
+                interval: 10s
+                timeout: 3s
+                retries: 6
+            ai-agent:
+              image: {{ moodle_agent_image }}
+              container_name: moodle-ai-agent
+              restart: unless-stopped
+              environment:
+                AI_AGENT_PORT: "8000"
+                REDIS_HOST: agent-redis
+                REDIS_PORT: "6379"
+                REDIS_DB: "0"
+                PROMETHEUS_URL: http://prometheus:9090
+                VECTOR_DB_PATH: /app/vector_db
+                GEMINI_MAX_ATTEMPTS: "1"
+                GEMINI_MAX_REMOTE_CALLS: "1"
+                PYTHONUNBUFFERED: "1"
+              ports: ["127.0.0.1:8000:8000"]
+              volumes:
+                - agent-vector-db:/app/vector_db
+              healthcheck:
+                test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
+                interval: 15s
+                timeout: 5s
+                retries: 12
+                start_period: 30s
+              depends_on:
+                agent-redis:
+                  condition: service_healthy
+            celery-worker:
+              image: {{ moodle_agent_image }}
+              container_name: moodle-agent-worker
+              restart: unless-stopped
+              environment:
+                REDIS_HOST: agent-redis
+                REDIS_PORT: "6379"
+                REDIS_DB: "0"
+                PROMETHEUS_URL: http://prometheus:9090
+                VECTOR_DB_PATH: /app/vector_db
+                GEMINI_MAX_ATTEMPTS: "1"
+                GEMINI_MAX_REMOTE_CALLS: "1"
+                PYTHONUNBUFFERED: "1"
+              command: [celery, -A, core.celery_app.celery_app, worker, --loglevel=INFO, --concurrency=1]
+              volumes:
+                - agent-vector-db:/app/vector_db
+              depends_on:
+                agent-redis:
+                  condition: service_healthy
+          {% endif %}
             prometheus:
               image: prom/prometheus:v2.53.3
               container_name: moodle-prometheus
@@ -502,6 +673,11 @@
               command:
                 - --config.file=/etc/alertmanager/alertmanager.yml
                 - --storage.path=/alertmanager
+          {% if moodle_agent_enabled | bool %}
+              depends_on:
+                ai-agent:
+                  condition: service_healthy
+          {% endif %}
             grafana:
               image: grafana/grafana:13.2.0
               container_name: moodle-grafana
@@ -525,6 +701,17 @@
           secrets:
             grafana_admin_password:
               file: ./secrets/grafana-admin-password
+          {% if moodle_agent_enabled | bool %}
+          volumes:
+            agent-redis-data:
+            agent-vector-db:
+          {% endif %}
+
+    - name: Pull the immutable AI Agent image
+      ansible.builtin.command:
+        cmd: docker pull {{ moodle_agent_image }}
+      changed_when: true
+      when: moodle_agent_enabled | bool
 
     - name: Validate monitoring Compose definition
       ansible.builtin.command:
@@ -563,6 +750,16 @@
       retries: 18
       delay: 5
       until: alertmanager_ready.status == 200
+
+    - name: Wait for AI Agent readiness
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8000/health
+        status_code: 200
+      register: agent_ready
+      retries: 24
+      delay: 5
+      until: agent_ready.status == 200
+      when: moodle_agent_enabled | bool
 
     - name: Wait for Grafana readiness
       ansible.builtin.uri:
@@ -616,4 +813,9 @@
     - name: Verify Prometheus configuration
       ansible.builtin.command:
         cmd: docker exec moodle-prometheus promtool check config /etc/prometheus/prometheus.yml
+      changed_when: false
+
+    - name: Verify Alertmanager configuration
+      ansible.builtin.command:
+        cmd: docker exec moodle-alertmanager amtool check-config /etc/alertmanager/alertmanager.yml
       changed_when: false

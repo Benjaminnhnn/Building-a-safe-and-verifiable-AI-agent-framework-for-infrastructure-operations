@@ -51,9 +51,11 @@ COPY apache-moodle-router.conf /etc/apache2/conf-available/moodle-router.conf
 RUN a2enconf moodle-router \
     && apache2ctl -t
 
-COPY --chown=moodle:moodle docker-entrypoint.sh cron-runner.sh moodle-install.sh healthz.php /usr/local/bin/
+COPY --chown=moodle:moodle docker-entrypoint.sh cron-runner.sh moodle-install.sh healthz.php synthetic-transaction.php /usr/local/bin/
 RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh /usr/local/bin/cron-runner.sh /usr/local/bin/moodle-install.sh \
     && mv /usr/local/bin/healthz.php /var/www/html/public/healthz.php \
+    && mv /usr/local/bin/synthetic-transaction.php /var/www/html/public/synthetic-transaction.php \
+    && php -l /var/www/html/public/synthetic-transaction.php \
     && printf '%s\n' \
         'memory_limit = 256M' \
         'max_execution_time = 300' \

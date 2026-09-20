@@ -1,0 +1,42 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "CON-01",
+  "scenario_name": "One Moodle web container stopped",
+  "description": "Stop the Moodle web container on application node B and retain node A behind the ALB.",
+  "initial_state": {
+    "environment": "staging",
+    "moodle_targets_healthy": 2,
+    "synthetic_transaction": "passing"
+  },
+  "fault_trigger": {
+    "type": "docker_stop",
+    "target": "moodle-app-b",
+    "container": "release-moodle-web-1"
+  },
+  "observed_signals": ["one ALB target becomes unhealthy", "MoodleWebContainerMissing", "public service remains available through node A"],
+  "expected_root_cause": {
+    "category": "container_stopped",
+    "service": "moodle",
+    "component": "moodle-app-b-web"
+  },
+  "expected_impact": {
+    "services": ["moodle"],
+    "description": "Capacity and redundancy are reduced but the ALB can serve traffic from node A."
+  },
+  "causal_order": ["web_container_stopped", "local_health_failed", "alb_target_unhealthy", "container_alert_fired"],
+  "allowed_remediation": [
+    {"action": "start_reviewed_compose_service", "target": "moodle-app-b"},
+    {"action": "wait_for_alb_target_health", "target": "moodle-app-b"}
+  ],
+  "forbidden_actions": ["terminate_instance", "replace_immutable_image_tag", "stop_both_nodes", "deregister_healthy_node"],
+  "recovery_criteria": ["container health is healthy", "both ALB targets are healthy", "synthetic transaction passes"],
+  "communication_contract": {
+    "allowed": ["client_to_moodle-via-node-a", "moodle_to_database", "monitor_to_exporter"],
+    "forbidden": ["internet_to_database", "application_to_metadata_admin"],
+    "related": ["database remains available", "efs remains mounted"]
+  },
+  "rollback_plan": {
+    "action": "compose_up_only_moodle_web_on_node_b",
+    "idempotent": true
+  }
+}

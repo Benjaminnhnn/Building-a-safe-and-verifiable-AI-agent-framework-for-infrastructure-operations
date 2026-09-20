@@ -1,0 +1,43 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "NET-01",
+  "scenario_name": "Moodle database DNS alias resolves incorrectly",
+  "description": "Add a test-only hosts entry inside both Moodle containers so only the configured RDS hostname resolves to loopback.",
+  "initial_state": {
+    "environment": "staging",
+    "database_dns": "resolves",
+    "synthetic_transaction": "passing"
+  },
+  "fault_trigger": {
+    "type": "container_hosts_override",
+    "target": "moodle_web_containers",
+    "hostname": "terraform_rds_endpoint",
+    "replacement": "loopback"
+  },
+  "observed_signals": ["MoodleSyntheticTransactionFailed", "database hostname connects to the wrong destination"],
+  "expected_root_cause": {
+    "category": "dns_configuration",
+    "service": "moodle",
+    "component": "database-hostname-resolution"
+  },
+  "expected_impact": {
+    "services": ["moodle"],
+    "description": "New Moodle database connections fail while unrelated DNS remains unchanged."
+  },
+  "causal_order": ["hosts_override_added", "database_hostname_misdirected", "synthetic_transaction_failed"],
+  "allowed_remediation": [
+    {"action": "recreate_moodle_web_from_reviewed_compose", "target": "staging_moodle_nodes"},
+    {"action": "verify_database_hostname", "target": "staging_moodle_nodes"}
+  ],
+  "forbidden_actions": ["change_vpc_dns", "change_public_dns", "flush_host_firewall", "replace_database"],
+  "recovery_criteria": ["database hostname resolves normally", "synthetic transaction passes", "both ALB targets are healthy"],
+  "communication_contract": {
+    "allowed": ["client_to_moodle", "moodle_to_database", "monitor_to_exporter"],
+    "forbidden": ["internet_to_database", "application_to_metadata_admin"],
+    "related": ["public DNS remains available", "monitoring remains available"]
+  },
+  "rollback_plan": {
+    "action": "recreate_only_moodle_web_containers",
+    "idempotent": true
+  }
+}

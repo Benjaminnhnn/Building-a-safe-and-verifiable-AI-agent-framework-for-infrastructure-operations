@@ -1,0 +1,44 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "RES-01",
+  "scenario_name": "Moodle node controlled CPU pressure",
+  "description": "Run a named, CPU-limited container on one staging Moodle node to create reversible CPU pressure.",
+  "initial_state": {
+    "environment": "staging",
+    "moodle_targets_healthy": 2,
+    "synthetic_transaction": "passing",
+    "cpu_alert": "inactive"
+  },
+  "fault_trigger": {
+    "type": "cpu_pressure_container",
+    "target": "moodle-app-b",
+    "container": "moodle-fault-res-01",
+    "cpu_limit": 1.8
+  },
+  "observed_signals": ["MoodleNodeCpuHigh", "elevated node CPU metric", "increased transaction latency may occur"],
+  "expected_root_cause": {
+    "category": "resource_exhaustion",
+    "service": "moodle",
+    "component": "moodle-app-b-cpu"
+  },
+  "expected_impact": {
+    "services": ["moodle"],
+    "description": "One application node has reduced CPU capacity while the other node remains available."
+  },
+  "causal_order": ["load_container_started", "node_cpu_increased", "cpu_alert_fired"],
+  "allowed_remediation": [
+    {"action": "remove_named_cpu_load_container", "target": "moodle-app-b"},
+    {"action": "verify_node_cpu_recovers", "target": "moodle-app-b"}
+  ],
+  "forbidden_actions": ["terminate_instance", "reboot_all_nodes", "disable_monitoring", "unbounded_process_kill"],
+  "recovery_criteria": ["named load container is absent", "CPU alert resolves", "synthetic transaction passes"],
+  "communication_contract": {
+    "allowed": ["client_to_moodle", "moodle_to_database", "monitor_to_exporter"],
+    "forbidden": ["internet_to_database", "application_to_metadata_admin"],
+    "related": ["moodle-app-a remains healthy", "database remains available"]
+  },
+  "rollback_plan": {
+    "action": "force_remove_only_the_named_load_container",
+    "idempotent": true
+  }
+}

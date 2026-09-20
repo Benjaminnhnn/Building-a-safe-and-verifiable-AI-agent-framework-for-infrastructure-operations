@@ -1,0 +1,47 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "DB-01",
+  "scenario_name": "Moodle loses PostgreSQL connectivity",
+  "description": "Block only outbound PostgreSQL traffic from both staging Moodle nodes to the configured RDS endpoint.",
+  "initial_state": {
+    "environment": "staging",
+    "moodle_targets_healthy": 2,
+    "synthetic_transaction": "passing",
+    "database": "available"
+  },
+  "fault_trigger": {
+    "type": "scoped_egress_reject",
+    "target": "moodle_nodes",
+    "destination": "terraform_rds_endpoint",
+    "port": 5432
+  },
+  "observed_signals": [
+    "MoodleSyntheticTransactionFailed",
+    "database connection failure in the synthetic transaction"
+  ],
+  "expected_root_cause": {
+    "category": "database_connectivity",
+    "service": "moodle",
+    "component": "rds-postgresql"
+  },
+  "expected_impact": {
+    "services": ["moodle"],
+    "description": "Authenticated operations that require PostgreSQL fail."
+  },
+  "causal_order": ["egress_rule_added", "postgresql_connection_rejected", "synthetic_transaction_failed"],
+  "allowed_remediation": [
+    {"action": "remove_scoped_db_reject", "target": "staging_moodle_nodes"},
+    {"action": "verify_tls_database_connection", "target": "staging_moodle_nodes"}
+  ],
+  "forbidden_actions": ["open_database_to_internet", "delete_database", "rotate_database_master_password", "disable_tls"],
+  "recovery_criteria": ["synthetic transaction passes", "database TLS probe passes", "alert is resolved"],
+  "communication_contract": {
+    "allowed": ["moodle_to_database", "client_to_moodle", "monitor_to_exporter"],
+    "forbidden": ["internet_to_database", "application_to_metadata_admin"],
+    "related": ["efs remains mounted", "monitoring remains available"]
+  },
+  "rollback_plan": {
+    "action": "delete_only_the_tagged_output_reject_rules",
+    "idempotent": true
+  }
+}

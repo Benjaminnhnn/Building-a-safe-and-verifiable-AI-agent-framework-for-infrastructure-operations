@@ -36,6 +36,17 @@ jobs:
           PYTHONPATH: agent_src
         run: pytest -q agent_src/tests
 
+      - name: Validate Moodle experiment automation
+        run: |
+          python -m py_compile automation/moodle-synthetic-transaction.py
+          bash -n \
+            automation/lib/moodle-fault-common.sh \
+            automation/moodle-environment-baseline.sh \
+            automation/moodle-fault-inject.sh \
+            automation/moodle-fault-reset.sh \
+            automation/moodle-fault-trial.sh \
+            automation/moodle-synthetic-soak.sh
+
       - name: Build AI Agent image
         run: docker build -t local/ai-agent:ci-${{ github.sha }} agent_src
 
@@ -64,7 +75,7 @@ jobs:
       - name: Test Moodle public web root layout
         run: |
           docker run --rm --entrypoint /bin/sh local/moodle:ci-${{ github.sha }} \
-            -c 'test -f /var/www/html/public/healthz.php && grep -Eq "^[[:space:]]*DocumentRoot /var/www/html/public$" /etc/apache2/sites-enabled/000-default.conf'
+            -c 'test -f /var/www/html/public/healthz.php && test -f /var/www/html/public/synthetic-transaction.php && php -l /var/www/html/public/synthetic-transaction.php && grep -Eq "^[[:space:]]*DocumentRoot /var/www/html/public$" /etc/apache2/sites-enabled/000-default.conf'
 
       - name: Validate Docker Compose files
         run: |
