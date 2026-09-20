@@ -275,8 +275,15 @@
         mode: '0700'
       loop:
         - "{{ moodle_observability_root }}/secrets"
-        - /var/lib/moodle-synthetic
         - /var/lib/moodle-synthetic/continuous
+
+    - name: Allow the monitor textfile exporter to traverse its metric directory
+      ansible.builtin.file:
+        path: /var/lib/moodle-synthetic
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
 
     - name: Install root-only Moodle synthetic account password
       ansible.builtin.copy:
@@ -754,9 +761,9 @@
         cmd: docker compose -f {{ moodle_observability_root }}/docker-compose.yml up -d
       changed_when: true
 
-    - name: Reload Prometheus after monitoring configuration changes
+    - name: Recreate metric and alert services after bind-mounted configuration changes
       ansible.builtin.command:
-        cmd: docker kill --signal HUP moodle-prometheus
+        cmd: docker compose -f {{ moodle_observability_root }}/docker-compose.yml up -d --force-recreate monitor-node-exporter prometheus alertmanager
       changed_when: true
 
     - name: Restart Grafana to apply provisioned configuration
