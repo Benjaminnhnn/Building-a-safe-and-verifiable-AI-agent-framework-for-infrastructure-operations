@@ -93,5 +93,5 @@ wait_for_alb_healthy() {
 }
 
 run_synthetic_once() {
-  remote moodle-app-a "sudo /usr/local/sbin/moodle-synthetic-transaction --once --url '$public_url' --username admin --password-file /opt/moodle/secrets/moodle-admin-password --output-dir /var/lib/moodle-synthetic/manual --metrics-file /var/lib/node_exporter/textfile_collector/moodle_synthetic.prom"
+  remote monitor-ai-01 "sudo /usr/local/sbin/moodle-synthetic-transaction --once --url '$public_url' --username admin --password-file /opt/moodle-observability/secrets/moodle-synthetic-password --output-dir /var/lib/moodle-synthetic/manual --metrics-file /var/lib/moodle-synthetic/moodle_synthetic.prom"
 }

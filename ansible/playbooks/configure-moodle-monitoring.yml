@@ -15,13 +15,6 @@
         cmd: docker info --format '{{ "{{" }}.ServerVersion{{ "}}" }}'
       changed_when: false
 
-    - name: Require the Terraform-derived Moodle public URL
-      ansible.builtin.assert:
-        that:
-          - moodle_monitor_public_url is defined
-          - moodle_monitor_public_url is match('^https?://')
-        fail_msg: Run the monitoring automation script rather than this playbook directly.
-
   tasks:
     - name: Create exporter runtime directory
       ansible.builtin.file:
@@ -109,74 +102,13 @@
         enabled: true
         state: started
 
-    - name: Create synthetic transaction evidence directory
-      ansible.builtin.file:
-        path: /var/lib/moodle-synthetic/continuous
-        state: directory
-        owner: root
-        group: root
-        mode: '0700'
-      when: inventory_hostname == 'moodle-app-a'
-
-    - name: Install authenticated Moodle synthetic transaction runner
-      ansible.builtin.copy:
-        src: "{{ playbook_dir }}/../../automation/moodle-synthetic-transaction.py"
-        dest: /usr/local/sbin/moodle-synthetic-transaction
-        owner: root
-        group: root
-        mode: '0755'
-      when: inventory_hostname == 'moodle-app-a'
-
-    - name: Install Moodle synthetic transaction service
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/moodle-synthetic-transaction.service
-        owner: root
-        group: root
-        mode: '0644'
-        content: |
-          [Unit]
-          Description=Authenticated Moodle synthetic transaction
-          After=network-online.target docker.service
-          Wants=network-online.target
-
-          [Service]
-          Type=oneshot
-          User=root
-          Group=root
-          ExecStart=/usr/local/sbin/moodle-synthetic-transaction --once --url {{ moodle_monitor_public_url }} --username admin --password-file /opt/moodle/secrets/moodle-admin-password --output-dir /var/lib/moodle-synthetic/continuous --metrics-file /var/lib/node_exporter/textfile_collector/moodle_synthetic.prom
-          PrivateTmp=true
-          NoNewPrivileges=true
-      when: inventory_hostname == 'moodle-app-a'
-
-    - name: Install Moodle synthetic transaction timer
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/moodle-synthetic-transaction.timer
-        owner: root
-        group: root
-        mode: '0644'
-        content: |
-          [Unit]
-          Description=Run the Moodle synthetic transaction every minute
-
-          [Timer]
-          OnBootSec=30s
-          OnUnitActiveSec=60s
-          AccuracySec=1s
-          Unit=moodle-synthetic-transaction.service
-
-          [Install]
-          WantedBy=timers.target
-      when: inventory_hostname == 'moodle-app-a'
-
-    - name: Enable Moodle synthetic transaction timer
-      ansible.builtin.systemd:
-        name: moodle-synthetic-transaction.timer
-        enabled: true
-        state: started
-        daemon_reload: true
-      when:
-        - inventory_hostname == 'moodle-app-a'
-        - not ansible_check_mode
+    - name: Remove legacy synthetic timer from application nodes
+      ansible.builtin.shell:
+        cmd: |
+          systemctl disable --now moodle-synthetic-transaction.timer >/dev/null 2>&1 || true
+          systemctl stop moodle-synthetic-transaction.service >/dev/null 2>&1 || true
+          rm -f /var/lib/node_exporter/textfile_collector/moodle_synthetic.prom
+      changed_when: false
 
     - name: Install exporter Compose definition
       ansible.builtin.copy:
@@ -265,6 +197,7 @@
           - moodle_monitor_rds_endpoint is defined
           - moodle_monitor_rds_endpoint is match('^[A-Za-z0-9.-]+$')
           - moodle_agent_enabled is defined
+          - moodle_synthetic_password_file is defined
         fail_msg: Run the monitoring automation script rather than this playbook directly.
 
     - name: Require an immutable AI Agent image when the webhook receiver is enabled
@@ -322,6 +255,84 @@
         - "{{ moodle_observability_root }}/grafana/provisioning/datasources"
         - "{{ moodle_observability_root }}/grafana/provisioning/dashboards"
         - "{{ moodle_observability_root }}/grafana/dashboards"
+        - /var/lib/moodle-synthetic
+        - /var/lib/moodle-synthetic/continuous
+
+    - name: Install authenticated Moodle synthetic transaction runner
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../automation/moodle-synthetic-transaction.py"
+        dest: /usr/local/sbin/moodle-synthetic-transaction
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Create root-only Moodle synthetic directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+      loop:
+        - "{{ moodle_observability_root }}/secrets"
+        - /var/lib/moodle-synthetic
+        - /var/lib/moodle-synthetic/continuous
+
+    - name: Install root-only Moodle synthetic account password
+      ansible.builtin.copy:
+        src: "{{ moodle_synthetic_password_file }}"
+        dest: "{{ moodle_observability_root }}/secrets/moodle-synthetic-password"
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+
+    - name: Install Moodle synthetic transaction service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/moodle-synthetic-transaction.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Authenticated Moodle synthetic transaction through the ALB
+          After=network-online.target docker.service
+          Wants=network-online.target
+
+          [Service]
+          Type=oneshot
+          User=root
+          Group=root
+          ExecStart=/usr/local/sbin/moodle-synthetic-transaction --once --url {{ moodle_monitor_public_url }} --username admin --password-file {{ moodle_observability_root }}/secrets/moodle-synthetic-password --output-dir /var/lib/moodle-synthetic/continuous --metrics-file /var/lib/moodle-synthetic/moodle_synthetic.prom
+          PrivateTmp=true
+          NoNewPrivileges=true
+
+    - name: Install Moodle synthetic transaction timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/moodle-synthetic-transaction.timer
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Run the Moodle synthetic transaction every minute
+
+          [Timer]
+          OnBootSec=15s
+          OnUnitActiveSec=60s
+          AccuracySec=1s
+          Unit=moodle-synthetic-transaction.service
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Enable Moodle synthetic transaction timer
+      ansible.builtin.systemd:
+        name: moodle-synthetic-transaction.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+      when: not ansible_check_mode
 
     - name: Create monitoring secrets directory
       ansible.builtin.file:
@@ -420,6 +431,10 @@
                   labels: {instance: moodle-app-a}
                 - targets: ['{{ hostvars["moodle-app-b"].ansible_host }}:8088']
                   labels: {instance: moodle-app-b}
+            - job_name: moodle_synthetic
+              static_configs:
+                - targets: ['monitor-node-exporter:9100']
+                  labels: {instance: monitor-ai-01}
             - job_name: blackbox_moodle_public
               metrics_path: /probe
               params: {module: [http_2xx]}
@@ -485,12 +500,12 @@
                   labels: {severity: critical, service: moodle, runbook: moodle-efs}
                   annotations: {summary: Moodle EFS mount is not observed}
                 - alert: MoodleSyntheticTransactionFailed
-                  expr: moodle_synthetic_success{job="moodle_node",instance="moodle-app-a"} == 0
+                  expr: moodle_synthetic_success{job="moodle_synthetic",instance="monitor-ai-01"} == 0
                   for: 30s
                   labels: {severity: critical, service: moodle, runbook: moodle-synthetic}
                   annotations: {summary: Authenticated Moodle read/write transaction failed}
                 - alert: MoodleSyntheticTransactionStale
-                  expr: time() - moodle_synthetic_last_run_timestamp_seconds{job="moodle_node",instance="moodle-app-a"} > 180
+                  expr: time() - moodle_synthetic_last_run_timestamp_seconds{job="moodle_synthetic",instance="monitor-ai-01"} > 180
                   for: 1m
                   labels: {severity: warning, service: moodle, runbook: moodle-synthetic}
                   annotations: {summary: Moodle synthetic transaction has not run recently}
@@ -641,6 +656,22 @@
                 agent-redis:
                   condition: service_healthy
           {% endif %}
+            monitor-node-exporter:
+              image: quay.io/prometheus/node-exporter:v1.8.2
+              container_name: moodle-monitor-node-exporter
+              restart: unless-stopped
+              command:
+                - --web.listen-address=:9100
+                - --collector.disable-defaults
+                - --collector.textfile
+                - --collector.textfile.directory=/textfiles
+              volumes:
+                - /var/lib/moodle-synthetic:/textfiles:ro
+              read_only: true
+              security_opt:
+                - no-new-privileges:true
+              cap_drop:
+                - ALL
             prometheus:
               image: prom/prometheus:v2.53.3
               container_name: moodle-prometheus

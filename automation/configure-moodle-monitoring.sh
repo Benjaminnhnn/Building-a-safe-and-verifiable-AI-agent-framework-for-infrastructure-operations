@@ -52,6 +52,11 @@ if [[ "$syntax_check" == true ]]; then
 fi
 
 agent_image_file="$artifacts_dir/moodle-agent-image"
+synthetic_password_file="$artifacts_dir/moodle-secrets/moodle-admin-password"
+[[ -r "$synthetic_password_file" ]] || {
+  echo "Missing root-only Moodle synthetic password file: $synthetic_password_file" >&2
+  exit 66
+}
 if [[ -n "$agent_image" ]]; then
   [[ "$agent_image" =~ ^ghcr\.io/[a-z0-9-]+/moodle-ai-agent:[a-f0-9]{40}$ ]] || {
     echo "Agent image must be an immutable GHCR image tagged by a 40-character commit SHA." >&2
@@ -90,5 +95,6 @@ ansible-playbook \
   "$playbook_path" \
   --extra-vars "moodle_monitor_public_url=$moodle_public_url" \
   --extra-vars "moodle_monitor_rds_endpoint=$moodle_rds_endpoint" \
+  --extra-vars "moodle_synthetic_password_file=$synthetic_password_file" \
   --extra-vars "moodle_agent_enabled=$agent_enabled" \
   --extra-vars "moodle_agent_image=$agent_image"
