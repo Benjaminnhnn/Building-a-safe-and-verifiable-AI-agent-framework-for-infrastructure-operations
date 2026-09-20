@@ -16,6 +16,36 @@ function synthetic_response(int $status, array $payload): never {
     exit;
 }
 
+function synthetic_db_get(string $name): string|false {
+    global $DB;
+    $record = $DB->get_record('config_plugins', ['plugin' => 'local_synthetic', 'name' => $name], 'id,value');
+    return $record === false ? false : (string)$record->value;
+}
+
+function synthetic_db_create(string $name, string $value): bool {
+    global $DB;
+    return (bool)$DB->insert_record('config_plugins', (object)[
+        'plugin' => 'local_synthetic',
+        'name' => $name,
+        'value' => $value,
+    ]);
+}
+
+function synthetic_db_update(string $name, string $value): bool {
+    global $DB;
+    $record = $DB->get_record('config_plugins', ['plugin' => 'local_synthetic', 'name' => $name], 'id,value');
+    if ($record === false) {
+        return false;
+    }
+    $record->value = $value;
+    return $DB->update_record('config_plugins', $record);
+}
+
+function synthetic_db_delete(string $name): void {
+    global $DB;
+    $DB->delete_records('config_plugins', ['plugin' => 'local_synthetic', 'name' => $name]);
+}
+
 $action = optional_param('action', 'read', PARAM_ALPHA);
 $fixtureid = required_param('fixture_id', PARAM_ALPHANUMEXT);
 if (!preg_match('/^[a-zA-Z0-9_-]{8,64}$/', $fixtureid)) {
@@ -27,7 +57,7 @@ $fixturedir = $CFG->dataroot . '/synthetic-fixtures';
 $fixturefile = $fixturedir . '/' . $configkey . '.txt';
 
 if ($action === 'read') {
-    $dbvalue = get_config('local_synthetic', $configkey);
+    $dbvalue = synthetic_db_get($configkey);
     $filevalue = is_readable($fixturefile) ? file_get_contents($fixturefile) : false;
     $exists = $dbvalue !== false || $filevalue !== false;
     synthetic_response(200, [
@@ -43,7 +73,7 @@ if ($action === 'read') {
 require_sesskey();
 
 if ($action === 'delete') {
-    unset_config($configkey, 'local_synthetic');
+    synthetic_db_delete($configkey);
     if (is_file($fixturefile) && !unlink($fixturefile)) {
         synthetic_response(500, ['status' => 'error', 'reason' => 'efs_delete_failed']);
     }
@@ -59,7 +89,7 @@ if ($value === '' || strlen($value) > 256) {
     synthetic_response(400, ['status' => 'error', 'reason' => 'invalid_value']);
 }
 
-$existing = get_config('local_synthetic', $configkey);
+$existing = synthetic_db_get($configkey);
 if ($action === 'create' && ($existing !== false || is_file($fixturefile))) {
     synthetic_response(409, ['status' => 'error', 'reason' => 'fixture_exists']);
 }
@@ -71,11 +101,14 @@ if (!is_dir($fixturedir) && !make_writable_directory($fixturedir)) {
     synthetic_response(500, ['status' => 'error', 'reason' => 'efs_directory_unavailable']);
 }
 
-if (!set_config($configkey, $value, 'local_synthetic')) {
+$databasewritten = $action === 'create'
+    ? synthetic_db_create($configkey, $value)
+    : synthetic_db_update($configkey, $value);
+if (!$databasewritten) {
     synthetic_response(500, ['status' => 'error', 'reason' => 'database_write_failed']);
 }
 if (file_put_contents($fixturefile, $value, LOCK_EX) === false) {
-    unset_config($configkey, 'local_synthetic');
+    synthetic_db_delete($configkey);
     synthetic_response(500, ['status' => 'error', 'reason' => 'efs_write_failed']);
 }
 chmod($fixturefile, 0660);
