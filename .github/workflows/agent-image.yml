@@ -34,7 +34,7 @@ jobs:
 
       - name: Resolve lowercase image name
         id: image
-        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/aws-hybrid-ai-agent" >> "$GITHUB_OUTPUT"
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/moodle-ai-agent" >> "$GITHUB_OUTPUT"
 
       - name: Build and push immutable AI Agent image
         uses: docker/build-push-action@v6

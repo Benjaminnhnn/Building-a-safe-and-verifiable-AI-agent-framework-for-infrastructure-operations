@@ -53,7 +53,7 @@ fi
 
 agent_image_file="$artifacts_dir/moodle-agent-image"
 if [[ -n "$agent_image" ]]; then
-  [[ "$agent_image" =~ ^ghcr\.io/[a-z0-9-]+/aws-hybrid-ai-agent:[a-f0-9]{40}$ ]] || {
+  [[ "$agent_image" =~ ^ghcr\.io/[a-z0-9-]+/moodle-ai-agent:[a-f0-9]{40}$ ]] || {
     echo "Agent image must be an immutable GHCR image tagged by a 40-character commit SHA." >&2
     exit 64
   }

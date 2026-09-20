@@ -270,7 +270,7 @@
     - name: Require an immutable AI Agent image when the webhook receiver is enabled
       ansible.builtin.assert:
         that:
-          - moodle_agent_image is match('^ghcr\\.io/[a-z0-9-]+/aws-hybrid-ai-agent:[a-f0-9]{40}$')
+          - moodle_agent_image is match('^ghcr\\.io/[a-z0-9-]+/moodle-ai-agent:[a-f0-9]{40}$')
         fail_msg: Pass --agent-image with an immutable GHCR commit tag.
       when: moodle_agent_enabled | bool
 
