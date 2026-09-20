@@ -95,3 +95,15 @@ wait_for_alb_healthy() {
 run_synthetic_once() {
   remote monitor-ai-01 "sudo /usr/local/sbin/moodle-synthetic-transaction --once --url '$public_url' --username admin --password-file /opt/moodle-observability/secrets/moodle-synthetic-password --output-dir /var/lib/moodle-synthetic/manual --metrics-file /var/lib/moodle-synthetic/moodle_synthetic.prom"
 }
+
+wait_for_prometheus_alert() {
+  local alert_name="$1" timeout_seconds="${2:-120}" elapsed=0 state
+  while (( elapsed < timeout_seconds )); do
+    state="$(remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=ALERTS{alertname=\"$alert_name\",alertstate=\"firing\"}' http://127.0.0.1:9090/api/v1/query | jq -r 'if (.data.result | length) > 0 then \"firing\" else \"inactive\" end'")"
+    [[ "$state" == firing ]] && return 0
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+  echo "Prometheus alert did not fire within ${timeout_seconds}s: $alert_name" >&2
+  return 1
+}

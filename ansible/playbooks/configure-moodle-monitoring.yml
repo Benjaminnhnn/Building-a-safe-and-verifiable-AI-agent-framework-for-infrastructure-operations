@@ -522,8 +522,8 @@
                   labels: {severity: warning, service: moodle, runbook: moodle-cpu}
                   annotations: {summary: Moodle node CPU usage exceeds 70 percent}
                 - alert: MoodleWebContainerMissing
-                  expr: up{job="moodle_cadvisor"} == 1 unless on(instance) container_last_seen{job="moodle_cadvisor",name="release-moodle-web-1"}
-                  for: 1m
+                  expr: (time() - max by (instance) (container_last_seen{job="moodle_cadvisor",name="release-moodle-web-1"}) > 30) and on(instance) (up{job="moodle_cadvisor"} == 1)
+                  for: 30s
                   labels: {severity: critical, service: moodle, runbook: moodle-container}
                   annotations: {summary: Moodle web container is missing from a monitored node}
 

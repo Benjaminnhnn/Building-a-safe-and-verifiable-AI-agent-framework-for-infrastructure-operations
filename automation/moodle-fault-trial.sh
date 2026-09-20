@@ -23,6 +23,7 @@ MOODLE_FAULT_CONFIRM=staging "$script_dir/moodle-fault-inject.sh" "$scenario" >/
 reset_needed=true
 observed=false
 observation=""
+expected_alert=""
 
 case "$scenario" in
   DB-01|NET-01|SEC-02)
@@ -31,12 +32,14 @@ case "$scenario" in
     else
       observed=true
       observation="synthetic transaction failed as expected"
+      expected_alert="MoodleSyntheticTransactionFailed"
     fi
     ;;
   RES-01)
     if remote moodle-app-b "test \"\$(sudo docker inspect --format '{{.State.Running}}' moodle-fault-res-01)\" = true"; then
       observed=true
       observation="bounded CPU load container is running"
+      expected_alert="MoodleNodeCpuHigh"
     fi
     ;;
   CON-01)
@@ -45,14 +48,16 @@ case "$scenario" in
       if [[ "$healthy_count" -eq 1 ]]; then observed=true; observation="one ALB target became unhealthy while one remained healthy"; break; fi
       sleep 5
     done
+    expected_alert="MoodleWebContainerMissing"
     ;;
 esac
 
 [[ "$observed" == true ]] || { echo "$scenario expected symptom was not observed: $observation" >&2; exit 1; }
+wait_for_prometheus_alert "$expected_alert" 150
 "$script_dir/moodle-fault-reset.sh" "$scenario" >/dev/null
 reset_needed=false
 "$script_dir/moodle-environment-baseline.sh" verify >/dev/null
 
-jq -n --arg run_id "$run_id" --arg scenario "$scenario" --arg observation "$observation" --arg completed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{run_id:$run_id,scenario_id:$scenario,status:"passed",observation:$observation,reset:"passed",baseline_after_reset:"passed",completed_at:$completed_at}' > "$result_file"
+jq -n --arg run_id "$run_id" --arg scenario "$scenario" --arg observation "$observation" --arg alert "$expected_alert" --arg completed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{run_id:$run_id,scenario_id:$scenario,status:"passed",observation:$observation,prometheus_alert:$alert,reset:"passed",baseline_after_reset:"passed",completed_at:$completed_at}' > "$result_file"
 chmod 0600 "$result_file"
 echo "$scenario trial passed; evidence: $result_file"
