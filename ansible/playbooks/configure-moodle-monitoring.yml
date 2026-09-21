@@ -508,7 +508,11 @@
                   annotations: {summary: Moodle EFS mount is not observed}
                 - alert: MoodleSyntheticTransactionFailed
                   expr: moodle_synthetic_success{job="moodle_synthetic",instance="monitor-ai-01"} == 0
-                  for: 30s
+                  # The synthetic runner publishes a completed transaction
+                  # result and is scraped every 15s. One pending evaluation is
+                  # sufficient for the bounded staging drill and avoids a
+                  # 60-second boundary race in DB/NET/SEC detection.
+                  for: 15s
                   labels: {severity: critical, service: moodle, runbook: moodle-synthetic}
                   annotations: {summary: Authenticated Moodle read/write transaction failed}
                 - alert: MoodleSyntheticTransactionStale

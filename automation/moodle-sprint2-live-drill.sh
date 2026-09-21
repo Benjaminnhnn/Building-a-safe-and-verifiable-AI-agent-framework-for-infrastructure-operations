@@ -83,6 +83,23 @@ expected_alert() {
   esac
 }
 
+wait_for_prometheus_alert_since() {
+  local alert_name="$1" injected_at="$2" timeout_seconds=150 elapsed=0 active_at active_epoch
+  while (( elapsed < timeout_seconds )); do
+    active_at="$(remote monitor-ai-01 "curl --fail --silent http://127.0.0.1:9090/api/v1/alerts | jq -r --arg alert '$alert_name' '.data.alerts[] | select(.labels.alertname == \$alert and .state == \"firing\") | .activeAt' | head -1")"
+    if [[ -n "$active_at" && "$active_at" != null ]]; then
+      active_epoch="$(date -u -d "$active_at" +%s)"
+      if (( active_epoch >= injected_at )); then
+        return 0
+      fi
+    fi
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+  echo "Prometheus alert did not fire after fault injection: $alert_name" >&2
+  return 1
+}
+
 run_pipeline_reset() {
   local scenario="$1" run_id="$2" evidence_dir="$3"
   PYTHONPATH="$repo_root/agent_src${PYTHONPATH:+:$PYTHONPATH}" \
@@ -142,7 +159,7 @@ run_one() (
   t_inject="$(now_epoch)"
   fault_active=true
   observe_expected_symptom "$scenario"
-  wait_for_prometheus_alert "$(expected_alert "$scenario")" 150
+  wait_for_prometheus_alert_since "$(expected_alert "$scenario")" "$t_inject"
   t_detect="$(now_epoch)"
 
   t_execute_start="$(now_epoch)"

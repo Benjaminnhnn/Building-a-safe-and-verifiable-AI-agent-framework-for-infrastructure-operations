@@ -56,6 +56,18 @@ verify() {
   done
   wait_for_alb_healthy 2
   run_synthetic_once >/dev/null
+  # The transaction runner writes a Node Exporter textfile. Wait until
+  # Prometheus has scraped this *successful* result before declaring the
+  # baseline clean; otherwise a prior failed sample can race a new drill.
+  remote monitor-ai-01 '
+    for attempt in $(seq 1 12); do
+      value=$(curl --fail --silent --get --data-urlencode "query=moodle_synthetic_success{job=\"moodle_synthetic\",instance=\"monitor-ai-01\"}" http://127.0.0.1:9090/api/v1/query | jq -r ".data.result[0].value[1] // \"\"")
+      test "$value" = 1 && exit 0
+      sleep 5
+    done
+    echo "Prometheus did not scrape a successful Moodle synthetic result" >&2
+    exit 1
+  '
   remote moodle-app-a "sudo docker ps --format '{{.Names}}' | grep -qx release-moodle-cron-1"
   remote monitor-ai-01 "
     test \"\$(curl --fail --silent http://127.0.0.1:9090/api/v1/targets | jq '[.data.activeTargets[] | select(.health != \"up\")] | length')\" = 0
