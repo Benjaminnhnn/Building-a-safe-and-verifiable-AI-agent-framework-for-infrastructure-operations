@@ -38,7 +38,9 @@ jobs:
 
       - name: Validate Moodle experiment automation
         run: |
-          python -m py_compile automation/moodle-synthetic-transaction.py
+          python -m py_compile \
+            automation/moodle-synthetic-transaction.py \
+            automation/moodle-pipeline-replay.py
           bash -n \
             automation/lib/moodle-fault-common.sh \
             automation/moodle-environment-baseline.sh \
