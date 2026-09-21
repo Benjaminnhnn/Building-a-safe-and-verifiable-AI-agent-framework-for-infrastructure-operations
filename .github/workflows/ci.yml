@@ -47,7 +47,8 @@ jobs:
             automation/moodle-fault-inject.sh \
             automation/moodle-fault-reset.sh \
             automation/moodle-fault-trial.sh \
-            automation/moodle-synthetic-soak.sh
+            automation/moodle-synthetic-soak.sh \
+            automation/moodle-sprint2-live-drill.sh
 
       - name: Build AI Agent image
         run: docker build -t local/ai-agent:ci-${{ github.sha }} agent_src
