@@ -12,8 +12,8 @@ usage() {
 Usage: moodle-sprint2-live-drill.sh <DB-01|RES-01|NET-01|CON-01|SEC-02|all> [--runs 3] [--stability-seconds 120]
 
 Runs only the five reviewed Moodle staging faults. It never accepts an
-arbitrary command or target. Results are written under
-terraform/.artifacts/moodle-sprint2-live/.
+arbitrary command or target. Results are written under a timestamped campaign
+in terraform/.artifacts/moodle-sprint2-live/.
 USAGE
 }
 
@@ -41,7 +41,9 @@ fi
 
 command -v python3 >/dev/null 2>&1 || { echo "Required command not found: python3" >&2; exit 127; }
 load_moodle_environment
-live_artifacts="$artifacts_dir/moodle-sprint2-live"
+campaign_id="${MOODLE_SPRINT2_CAMPAIGN:-campaign-$(date -u +%Y%m%dT%H%M%SZ)}"
+[[ "$campaign_id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || { echo "invalid MOODLE_SPRINT2_CAMPAIGN" >&2; exit 64; }
+live_artifacts="$artifacts_dir/moodle-sprint2-live/$campaign_id"
 umask 077
 mkdir -p "$live_artifacts"
 
@@ -134,8 +136,10 @@ run_one() (
   trap cleanup EXIT
 
   "$script_dir/moodle-environment-baseline.sh" verify >/dev/null
-  t_inject="$(now_epoch)"
   MOODLE_FAULT_CONFIRM=staging "$script_dir/moodle-fault-inject.sh" "$scenario" >/dev/null
+  # Detection time starts only once the injector has confirmed the fault is
+  # installed, not while it is still establishing an SSH connection/rule.
+  t_inject="$(now_epoch)"
   fault_active=true
   observe_expected_symptom "$scenario"
   wait_for_prometheus_alert "$(expected_alert "$scenario")" 150
@@ -169,6 +173,10 @@ run_one() (
     '{run_id:$run_id,scenario_id:$scenario_id,status:$status,prometheus_alert:$alert,t_inject:$t_inject,t_detect:$t_detect,t_execute_start:$t_execute_start,t_execute_end:$t_execute_end,t_verify:$t_verify,t_resolved:$t_resolved,mttd_seconds:$mttd_seconds,recovery_seconds:$recovery_seconds,stability_seconds:$stability_seconds,baseline_after_stability:"passed",pipeline_report:$pipeline_report}' \
     > "$result"
   chmod 0600 "$result" "$pipeline_report"
+  if [[ "$status" != passed ]]; then
+    echo "$scenario run $sequence failed an SLO: $result" >&2
+    return 1
+  fi
   echo "$scenario run $sequence passed: $result"
 )
 
