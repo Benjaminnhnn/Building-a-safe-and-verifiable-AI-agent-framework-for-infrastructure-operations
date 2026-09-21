@@ -517,13 +517,20 @@
                   labels: {severity: warning, service: moodle, runbook: moodle-synthetic}
                   annotations: {summary: Moodle synthetic transaction has not run recently}
                 - alert: MoodleNodeCpuHigh
-                  expr: 100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job="moodle_node",mode="idle"}[1m]))) > 70
-                  for: 1m
+                  # The bounded RES-01 CPU injector is a Sprint 2 detection
+                  # benchmark. A 30s observation window plus one 15s pending
+                  # evaluation gives a <=60s MTTD while still requiring two
+                  # fresh node-exporter samples before the alert fires.
+                  expr: 100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job="moodle_node",mode="idle"}[30s]))) > 70
+                  for: 15s
                   labels: {severity: warning, service: moodle, runbook: moodle-cpu}
                   annotations: {summary: Moodle node CPU usage exceeds 70 percent}
                 - alert: MoodleWebContainerMissing
-                  expr: (time() - max by (instance) (container_last_seen{job="moodle_cadvisor",name="release-moodle-web-1"}) > 30) and on(instance) (up{job="moodle_cadvisor"} == 1)
-                  for: 30s
+                  # CON-01 is intentionally scoped to one non-primary Moodle
+                  # node. Two 15s observations (stale threshold + pending
+                  # period) keep the live benchmark MTTD within 60 seconds.
+                  expr: (time() - max by (instance) (container_last_seen{job="moodle_cadvisor",name="release-moodle-web-1"}) > 15) and on(instance) (up{job="moodle_cadvisor"} == 1)
+                  for: 15s
                   labels: {severity: critical, service: moodle, runbook: moodle-container}
                   annotations: {summary: Moodle web container is missing from a monitored node}
 
