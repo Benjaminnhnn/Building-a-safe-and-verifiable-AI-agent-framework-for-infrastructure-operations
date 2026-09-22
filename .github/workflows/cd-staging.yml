@@ -1,116 +1,28 @@
-name: CD Staging
+name: CD Staging Moodle
 
 on:
   push:
     branches: [develop]
+    paths:
+      - "moodle/**"
+      - "release/moodle/**"
+      - "automation/github-deploy-moodle.sh"
+      - ".github/workflows/cd-staging.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: moodle-staging-deploy
+  cancel-in-progress: false
+
 jobs:
-  detect-changes:
+  build-moodle:
     runs-on: ubuntu-latest
     outputs:
-      owner_lc: ${{ steps.vars.outputs.owner_lc }}
-      image_tag: ${{ steps.vars.outputs.image_tag }}
-      build_matrix: ${{ steps.changes.outputs.build_matrix }}
-      deploy_matrix: ${{ steps.changes.outputs.deploy_matrix }}
-      has_builds: ${{ steps.changes.outputs.has_builds }}
-      has_deploys: ${{ steps.changes.outputs.has_deploys }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Prepare image variables
-        id: vars
-        run: |
-          echo "owner_lc=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
-          echo "image_tag=staging-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-
-      - name: Detect changed deploy roles
-        id: changes
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BEFORE_SHA: ${{ github.event.before }}
-        run: |
-          set -euo pipefail
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            git ls-files > /tmp/changed_files
-          elif [ -n "${BEFORE_SHA:-}" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
-            git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA" > /tmp/changed_files
-          else
-            git ls-files > /tmp/changed_files
-          fi
-
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          changed = Path("/tmp/changed_files").read_text().splitlines()
-          event_name = os.environ["EVENT_NAME"]
-
-          roles = {
-              "monitor": {
-                  "role": "monitor",
-                  "image": "aws-hybrid-ai-agent",
-                  "context": "./agent_src",
-                  "latest": "staging-latest",
-                  "paths": ("agent_src/",),
-              },
-              "core": {
-                  "role": "core",
-                  "image": "aws-hybrid-payment-api",
-                  "context": "./demo-web/backend",
-                  "latest": "staging-latest",
-                  "paths": ("demo-web/backend/", "demo-web/database/"),
-              },
-              "web": {
-                  "role": "web",
-                  "image": "aws-hybrid-frontend",
-                  "context": "./demo-web/frontend",
-                  "latest": "staging-latest",
-                  "paths": ("demo-web/frontend/",),
-              },
-          }
-          shared_paths = ("release/", "automation/", ".github/workflows/cd-staging.yml")
-
-          build_all = event_name == "workflow_dispatch" or any(
-              path.startswith(shared_paths) for path in changed
-          )
-
-          selected = []
-          for role, spec in roles.items():
-              if build_all or any(path.startswith(spec["paths"]) for path in changed):
-                  selected.append({key: spec[key] for key in ("role", "image", "context", "latest")})
-
-          build_matrix = {"include": selected}
-          deploy_matrix = {"include": [{"role": item["role"]} for item in selected]}
-
-          output_path = Path(os.environ["GITHUB_OUTPUT"])
-          with output_path.open("a") as fh:
-              fh.write(f"build_matrix={json.dumps(build_matrix, separators=(',', ':'))}\n")
-              fh.write(f"deploy_matrix={json.dumps(deploy_matrix, separators=(',', ':'))}\n")
-              fh.write(f"has_builds={'true' if selected else 'false'}\n")
-              fh.write(f"has_deploys={'true' if selected else 'false'}\n")
-
-          print("Changed files:")
-          for path in changed:
-              print(f"  {path}")
-          print("Selected roles:", ", ".join(item["role"] for item in selected) or "none")
-          PY
-
-  build-and-push:
-    runs-on: ubuntu-latest
-    needs: detect-changes
-    if: needs.detect-changes.outputs.has_builds == 'true'
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.detect-changes.outputs.build_matrix) }}
+      image: ${{ steps.image.outputs.name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -122,165 +34,61 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ secrets.GHCR_USERNAME }}
-          password: ${{ secrets.GHCR_TOKEN }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & push ${{ matrix.role }}
+      - name: Resolve immutable image reference
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/moodle:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Moodle image
         uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.context }}
+          context: ./moodle
           push: true
-          tags: |
-            ghcr.io/${{ needs.detect-changes.outputs.owner_lc }}/${{ matrix.image }}:${{ needs.detect-changes.outputs.image_tag }}
-            ghcr.io/${{ needs.detect-changes.outputs.owner_lc }}/${{ matrix.image }}:${{ matrix.latest }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          tags: ${{ steps.image.outputs.name }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=moodle
+          cache-to: type=gha,mode=max,scope=moodle
 
-  deploy-staging:
+  deploy-moodle:
     runs-on: ubuntu-latest
-    needs: [detect-changes, build-and-push]
-    if: needs.detect-changes.outputs.has_deploys == 'true' && needs.build-and-push.result == 'success'
+    needs: build-moodle
     environment: staging
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.detect-changes.outputs.deploy_matrix) }}
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare environment files
+      - name: Verify deployment configuration
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          AI_AGENT_PUBLIC_URL: ${{ secrets.AI_AGENT_PUBLIC_URL }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          STAGING_PAYMENT_API_UPSTREAM: ${{ secrets.STAGING_PAYMENT_API_UPSTREAM }}
-          PAYMENT_API_UPSTREAM: ${{ secrets.PAYMENT_API_UPSTREAM }}
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}
-        run: |
-          cp release/.env.example release/.env.staging
-          sed -i "s/^GHCR_OWNER=.*/GHCR_OWNER=${{ needs.detect-changes.outputs.owner_lc }}/" release/.env.staging
-          python - <<'PY'
-          import os
-          from pathlib import Path
-
-          def inventory_value(group: str, key: str) -> str:
-              inventory = Path("ansible/inventory.ini")
-              if not inventory.exists():
-                  return ""
-
-              in_group = False
-              for line in inventory.read_text().splitlines():
-                  stripped = line.strip()
-                  if stripped == f"[{group}]":
-                      in_group = True
-                      continue
-                  if stripped.startswith("["):
-                      in_group = False
-                  if not in_group or "ansible_host=" not in stripped:
-                      continue
-                  for part in stripped.split():
-                      if part.startswith(f"{key}="):
-                          return part.split("=", 1)[1]
-              return ""
-
-          core_host = inventory_value("core", "private_ip") or inventory_value("core", "ansible_host")
-          inventory_payment_api_upstream = f"http://{core_host}:18080" if core_host else ""
-          payment_api_upstream = (
-              os.environ.get("STAGING_PAYMENT_API_UPSTREAM")
-              or os.environ.get("PAYMENT_API_UPSTREAM")
-              or inventory_payment_api_upstream
-          )
-          if not payment_api_upstream:
-              raise SystemExit("Missing required environment variable: STAGING_PAYMENT_API_UPSTREAM")
-          payment_api_upstream = payment_api_upstream.strip()
-          if not payment_api_upstream.startswith(("http://", "https://")):
-              raise SystemExit("STAGING_PAYMENT_API_UPSTREAM must include http:// or https://")
-          values = {
-              "ENVIRONMENT": "staging",
-              "PAYMENT_API_UPSTREAM": payment_api_upstream,
-          }
-          for key in (
-              "GEMINI_API_KEY",
-              "TELEGRAM_TOKEN",
-              "TELEGRAM_CHAT_ID",
-              "AI_AGENT_PUBLIC_URL",
-              "DATABASE_URL",
-              "SECRET_KEY",
-          ):
-              value = os.environ.get(key, "")
-              if value:
-                  values[key] = value
-
-          env_file = Path("release/.env.staging")
-          lines = env_file.read_text().splitlines()
-          existing = {line.split("=", 1)[0] for line in lines if "=" in line and not line.startswith("#")}
-          updated = []
-          for line in lines:
-              key = line.split("=", 1)[0] if "=" in line and not line.startswith("#") else None
-              updated.append(f"{key}={values[key]}" if key in values else line)
-          for key, value in values.items():
-              if key not in existing:
-                  updated.append(f"{key}={value}")
-          env_file.write_text("\n".join(updated) + "\n")
-          PY
-
-      - name: Package database init scripts
-        run: |
-          mkdir -p release/database
-          cp demo-web/database/*.sql release/database/
-
-      - name: Resolve deploy host
-        id: deploy-host
-        env:
-          MONITOR_SSH_HOST: ${{ secrets.MONITOR_SSH_HOST }}
-          CORE_SSH_HOST: ${{ secrets.CORE_SSH_HOST }}
-          WEB_SSH_HOST: ${{ secrets.WEB_SSH_HOST }}
-          DEPLOY_ROLE: ${{ matrix.role }}
-        run: |
-          set -euo pipefail
-          inventory_host() {
-            local group="$1"
-            awk -v group="[$group]" '
-              $0 == group { in_group=1; next }
-              /^\[/ { in_group=0 }
-              in_group && /ansible_host=/ {
-                for (i = 1; i <= NF; i++) {
-                  if ($i ~ /^ansible_host=/) {
-                    sub(/^ansible_host=/, "", $i)
-                    print $i
-                    exit
-                  }
-                }
-              }
-            ' ansible/inventory.ini
-          }
-
-          case "$DEPLOY_ROLE" in
-            monitor) host="$(inventory_host monitor)" ;;
-            core) host="$(inventory_host core)" ;;
-            web) host="$(inventory_host web)" ;;
-          esac
-          if [ -z "$host" ]; then
-            case "$DEPLOY_ROLE" in
-              monitor) host="$MONITOR_SSH_HOST" ;;
-              core) host="$CORE_SSH_HOST" ;;
-              web) host="$WEB_SSH_HOST" ;;
-            esac
-          fi
-          test -n "$host"
-          echo "host=$host" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy ${{ matrix.role }} to EC2
-        env:
-          TARGET_HOST: ${{ steps.deploy-host.outputs.host }}
+          MOODLE_BASTION_HOST: ${{ secrets.MOODLE_BASTION_HOST }}
+          MOODLE_APP_A_HOST: ${{ secrets.MOODLE_APP_A_HOST }}
+          MOODLE_APP_B_HOST: ${{ secrets.MOODLE_APP_B_HOST }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-          DEPLOY_ENVIRONMENT: staging
-          DEPLOY_ROLE: ${{ matrix.role }}
-          IMAGE_TAG: ${{ needs.detect-changes.outputs.image_tag }}
-          GHCR_OWNER: ${{ needs.detect-changes.outputs.owner_lc }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-        run: bash automation/github-deploy-role.sh
+        run: |
+          set -euo pipefail
+          for variable in \
+            MOODLE_BASTION_HOST MOODLE_APP_A_HOST MOODLE_APP_B_HOST \
+            SSH_PRIVATE_KEY GHCR_USERNAME GHCR_TOKEN; do
+            test -n "${!variable:-}" || {
+              echo "Missing required staging secret: $variable" >&2
+              exit 1
+            }
+          done
+
+      - name: Roll out Moodle to both application nodes
+        env:
+          MOODLE_IMAGE: ${{ needs.build-moodle.outputs.image }}
+          MOODLE_BASTION_HOST: ${{ secrets.MOODLE_BASTION_HOST }}
+          MOODLE_APP_A_HOST: ${{ secrets.MOODLE_APP_A_HOST }}
+          MOODLE_APP_B_HOST: ${{ secrets.MOODLE_APP_B_HOST }}
+          MOODLE_PUBLIC_URL: ${{ secrets.MOODLE_PUBLIC_URL }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: bash automation/github-deploy-moodle.sh
