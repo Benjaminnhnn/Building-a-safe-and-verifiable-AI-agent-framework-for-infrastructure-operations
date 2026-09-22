@@ -5,13 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from core.moodle_pipeline import (
+    SCENARIOS,
     GateDecision,
     MoodleIncidentPipeline,
     MoodleSafetyGate,
     PipelineError,
-    SCENARIOS,
     TypedAction,
     load_moodle_catalog,
 )
@@ -79,3 +78,14 @@ def test_pipeline_never_accepts_sensitive_evidence(tmp_path: Path) -> None:
     event["labels"]["password"] = "not-a-real-password"
     with pytest.raises(PipelineError):
         pipeline.process(event, scenario_id="DB-01")
+
+
+def test_evaluation_pipeline_cannot_execute_live_remediation(tmp_path: Path) -> None:
+    pipeline = MoodleIncidentPipeline(tmp_path)
+    with pytest.raises(PipelineError, match="evaluation-only"):
+        pipeline.process(
+            _event("DB-01"),
+            scenario_id="DB-01",
+            mode="execute",
+            live_verify=True,
+        )

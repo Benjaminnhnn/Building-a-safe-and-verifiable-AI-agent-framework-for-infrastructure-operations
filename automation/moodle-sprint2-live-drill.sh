@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Run reproducible, safety-gated live Moodle Sprint 2 drills in staging only.
 #
-# One iteration performs baseline -> inject -> observe alert -> allowlisted
-# pipeline reset -> independent verification -> 120-second stability check.
+# One iteration performs baseline -> inject -> observe alert -> unified AI
+# shadow evidence -> allowlisted harness reset -> independent verification ->
+# 120-second stability check.  The AI shadow never executes remediation.
 set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/moodle-fault-common.sh"
@@ -100,48 +101,41 @@ wait_for_prometheus_alert_since() {
   return 1
 }
 
-run_pipeline_reset() {
-  local scenario="$1" run_id="$2" evidence_dir="$3"
-  PYTHONPATH="$repo_root/agent_src${PYTHONPATH:+:$PYTHONPATH}" \
-  MOODLE_PIPELINE_EXECUTION_CONFIRM=staging \
-  python3 - "$scenario" "$run_id" "$evidence_dir" "$repo_root" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-from core.moodle_pipeline import MoodleExecutionAdapter, MoodleIncidentPipeline
-
-scenario_id, run_id, evidence_dir, repo_root = sys.argv[1:]
-event = {
-    "schema_version": "2.0",
-    "event_id": run_id,
-    "fingerprint": f"live-{run_id}",
-    "source": "synthetic",
-    "event_type": "service_health_failed",
-    "observed_at": "live-run",
-    "labels": {
-        "alertname": "MoodleSprint2LiveDrill",
-        "scenario_id": scenario_id,
-        "environment": "staging",
-    },
+shadow_observed_count() {
+  remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=sum(aiops_unified_shadow_events_total{status=\"observed\"})' http://127.0.0.1:9090/api/v1/query | jq -r '.data.result[0].value[1] // \"0\"'"
 }
-adapter = MoodleExecutionAdapter(repo_root=Path(repo_root), allow_live_execution=True)
-pipeline = MoodleIncidentPipeline(Path(evidence_dir), adapter=adapter)
-report = pipeline.process(event, scenario_id=scenario_id, mode="execute", live_verify=True)
-if report["state"] != "RESOLVED":
-    raise SystemExit(f"pipeline did not resolve {scenario_id}: {report['state']}")
-print(json.dumps(report, indent=2))
-PY
+
+wait_for_ai_shadow_observation() {
+  local before="$1" timeout_seconds=180 elapsed=0 current
+  while (( elapsed < timeout_seconds )); do
+    current="$(shadow_observed_count)"
+    if awk -v current="$current" -v before="$before" 'BEGIN {exit !(current > before)}'; then
+      return 0
+    fi
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+  echo "Unified AI shadow did not record the Alertmanager event within ${timeout_seconds}s." >&2
+  echo "Redeploy the merged agent and monitoring playbook with AIOPS_UNIFIED_CORE_MODE=shadow." >&2
+  return 1
+}
+
+run_controlled_reset() {
+  local scenario="$1" run_id="$2" report_path="$3"
+  "$script_dir/moodle-fault-reset.sh" "$scenario" >/dev/null
+  jq -n \
+    --arg run_id "$run_id" --arg scenario_id "$scenario" \
+    '{run_id:$run_id,scenario_id:$scenario_id,ai_layer_mode:"shadow",ai_execution:false,execution_authority:"allowlisted_test_harness",action:"moodle-fault-reset",status:"executed",mutated:true,evidence_store:"monitor-ai-01:moodle-ai-agent:/app/data/evidence.db"}' \
+    > "$report_path"
 }
 
 run_one() (
-  local scenario="$1" sequence="$2" run_id run_dir result pipeline_report evidence_dir
-  local t_inject t_detect t_execute_start t_execute_end t_verify t_resolved stability_started
-  local mttd recovery status fault_active=false
+  local scenario="$1" sequence="$2" run_id run_dir result pipeline_report
+  local t_inject t_detect t_ai_observed t_execute_start t_execute_end t_verify t_resolved stability_started
+  local mttd recovery status shadow_before fault_active=false
   run_id="${scenario}-run${sequence}-$(date -u +%Y%m%dT%H%M%SZ)"
   run_dir="$live_artifacts/$run_id"
   result="$run_dir/result.json"
-  evidence_dir="$run_dir/pipeline-evidence"
   pipeline_report="$run_dir/pipeline-report.json"
   mkdir -p "$run_dir"
 
@@ -153,6 +147,7 @@ run_one() (
   trap cleanup EXIT
 
   "$script_dir/moodle-environment-baseline.sh" verify >/dev/null
+  shadow_before="$(shadow_observed_count)"
   MOODLE_FAULT_CONFIRM=staging "$script_dir/moodle-fault-inject.sh" "$scenario" >/dev/null
   # Detection time starts only once the injector has confirmed the fault is
   # installed, not while it is still establishing an SSH connection/rule.
@@ -161,12 +156,15 @@ run_one() (
   observe_expected_symptom "$scenario"
   wait_for_prometheus_alert_since "$(expected_alert "$scenario")" "$t_inject"
   t_detect="$(now_epoch)"
+  wait_for_ai_shadow_observation "$shadow_before"
+  t_ai_observed="$(now_epoch)"
 
   t_execute_start="$(now_epoch)"
-  run_pipeline_reset "$scenario" "$run_id" "$evidence_dir" > "$pipeline_report"
+  run_controlled_reset "$scenario" "$run_id" "$pipeline_report"
   t_execute_end="$(now_epoch)"
   fault_active=false
-  t_verify="$(jq -r 'select(.kind == "verification") | .observed_at' "$evidence_dir/evidence.jsonl" | tail -1)"
+  "$script_dir/moodle-environment-baseline.sh" verify >/dev/null
+  t_verify="$(now_iso)"
   t_resolved="$(now_epoch)"
   stability_started="$(now_epoch)"
   sleep "$stability_seconds"
@@ -181,13 +179,14 @@ run_one() (
     --arg alert "$(expected_alert "$scenario")" \
     --arg t_inject "$(epoch_to_iso "$t_inject")" \
     --arg t_detect "$(epoch_to_iso "$t_detect")" \
+    --arg t_ai_observed "$(epoch_to_iso "$t_ai_observed")" \
     --arg t_execute_start "$(epoch_to_iso "$t_execute_start")" \
     --arg t_execute_end "$(epoch_to_iso "$t_execute_end")" \
     --arg t_verify "$t_verify" --arg t_resolved "$(epoch_to_iso "$t_resolved")" \
     --argjson mttd_seconds "$mttd" --argjson recovery_seconds "$recovery" \
     --argjson stability_seconds "$stability_seconds" \
     --arg pipeline_report "$pipeline_report" \
-    '{run_id:$run_id,scenario_id:$scenario_id,status:$status,prometheus_alert:$alert,t_inject:$t_inject,t_detect:$t_detect,t_execute_start:$t_execute_start,t_execute_end:$t_execute_end,t_verify:$t_verify,t_resolved:$t_resolved,mttd_seconds:$mttd_seconds,recovery_seconds:$recovery_seconds,stability_seconds:$stability_seconds,baseline_after_stability:"passed",pipeline_report:$pipeline_report}' \
+    '{run_id:$run_id,scenario_id:$scenario_id,status:$status,prometheus_alert:$alert,t_inject:$t_inject,t_detect:$t_detect,t_ai_observed:$t_ai_observed,ai_layer_mode:"shadow",ai_shadow_observed:"passed",t_execute_start:$t_execute_start,t_execute_end:$t_execute_end,t_verify:$t_verify,t_resolved:$t_resolved,mttd_seconds:$mttd_seconds,recovery_seconds:$recovery_seconds,stability_seconds:$stability_seconds,baseline_after_stability:"passed",pipeline_report:$pipeline_report}' \
     > "$result"
   chmod 0600 "$result" "$pipeline_report"
   if [[ "$status" != passed ]]; then

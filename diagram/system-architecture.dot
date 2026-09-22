@@ -1,0 +1,45 @@
+digraph architecture {
+graph [rankdir=LR, bgcolor="white", pad=0.35, nodesep=0.6, ranksep=0.65, splines=polyline, fontname="Arial", fontsize=22, fontcolor="#172B4D", labelloc=t, labeljust=l, newrank=true];
+node [shape=box, style="rounded,filled", fillcolor="white", color="#BCC9D6", fontname="Arial", fontsize=13, margin=0, penwidth=1.2];
+edge [color="#526779", penwidth=1.5, arrowsize=0.75, fontname="Arial", fontsize=11];
+
+label="01 / TARGET AWS ARCHITECTURE\nRead left to right: workload -> signals -> decisions -> recovery\n ";
+subgraph cluster_aws {
+label="AWS CLOUD  /  VPC  /  EC2 + DOCKER COMPOSE"; fontsize=17; color="#FF9900"; penwidth=2; style=rounded; margin=24;
+app [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#FFF0D9" ALIGN="LEFT"><B>1  APPLICATION PLANE</B><BR/><FONT POINT-SIZE="12">EC2 workload role(s)</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">Moodle + Nginx + cron<BR ALIGN="LEFT"/>PostgreSQL (internal access)<BR ALIGN="LEFT"/>EBS: moodledata + DB volumes<BR ALIGN="LEFT"/>Primary study: 15 fault scenarios</TD></TR></TABLE>>];
+observe [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#E8F3E8" ALIGN="LEFT"><B>2  OBSERVABILITY</B><BR/><FONT POINT-SIZE="12">EC2 monitor role</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">Node / DB / Blackbox exporters<BR ALIGN="LEFT"/>Prometheus: scrape + alert rules<BR ALIGN="LEFT"/>Alertmanager: webhook delivery<BR ALIGN="LEFT"/>Grafana: operational dashboards</TD></TR></TABLE>>];
+control [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#EFEAFB" ALIGN="LEFT"><B>3  AI CONTROL PLANE</B><BR/><FONT POINT-SIZE="12">EC2 agent role / isolated processes</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">API + Redis queue + workers<BR ALIGN="LEFT"/>Sequential Orchestrator<BR ALIGN="LEFT"/>Observer / Diagnosis / Planner<BR ALIGN="LEFT"/>Safety Gate + authenticated approval</TD></TR></TABLE>>];
+recover [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#E3F3F1" ALIGN="LEFT"><B>4  RECOVERY &amp; VERIFICATION</B><BR/><FONT POINT-SIZE="12">Separate execution / read-only identities</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">Executor: Docker / Ansible adapters<BR ALIGN="LEFT"/>Allowlist + timeout + idempotency<BR ALIGN="LEFT"/>Verifier: health + communication<BR ALIGN="LEFT"/>Stability window &#8594; incident verdict</TD></TR></TABLE>>];
+erp [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#FFF0D9" ALIGN="LEFT"><B>GENERALIZATION</B><BR/><FONT POINT-SIZE="12">Isolated ERPNext experiment stack</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">MariaDB / Redis / Nginx<BR ALIGN="LEFT"/>3 scenarios after Moodle baseline<BR ALIGN="LEFT"/>Reuse the same core + adapters</TD></TR></TABLE>>];
+collect [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#E8F3E8" ALIGN="LEFT"><B>OBSERVATION CONTRACT</B><BR/><FONT POINT-SIZE="12">Signals collected from target resources</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">Metrics + logs + config snapshots<BR ALIGN="LEFT"/>Dependency topology + timestamps<BR ALIGN="LEFT"/>Synthetic Moodle read/write probes</TD></TR></TABLE>>];
+stores [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#EFEAFB" ALIGN="LEFT"><B>PERSISTENT CONTEXT</B><BR/><FONT POINT-SIZE="12">Logical stores in the control plane</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">Incident state + append-only evidence<BR ALIGN="LEFT"/>Resource graph + RAG runbooks<BR ALIGN="LEFT"/>Action catalog + policy + audit log</TD></TR></TABLE>>];
+outcomes [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="12" WIDTH="255"><TR><TD BGCOLOR="#E3F3F1" ALIGN="LEFT"><B>RECOVERY CONTRACT</B><BR/><FONT POINT-SIZE="12">Results checked against fresh probes</FONT></TD></TR><TR><TD ALIGN="LEFT" BALIGN="LEFT">Allowed connections succeed<BR ALIGN="LEFT"/>Forbidden connections remain blocked<BR ALIGN="LEFT"/>Related services remain healthy<BR ALIGN="LEFT"/>Only Verifier may mark RESOLVED</TD></TR></TABLE>>];
+{rank=same; app; erp;}
+{rank=same; observe; collect;}
+{rank=same; control; stores;}
+{rank=same; recover; outcomes;}
+app -> observe [label="1. telemetry"];
+observe -> control [label="2. webhook"];
+control -> recover [label="3. gated action"];
+erp -> app [style=invis, weight=10];
+collect -> observe [style=invis, weight=10];
+stores -> control [style=invis, weight=10];
+outcomes -> recover [style=invis, weight=10];
+erp -> collect -> stores -> outcomes [style=invis, weight=20];
+}
+ops [shape=plain, label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="12" WIDTH="255"><TR><TD ALIGN="LEFT"><B>OPERATOR &amp; DELIVERY</B><BR ALIGN="LEFT"/>HTTPS access to Moodle<BR ALIGN="LEFT"/>Terraform / Ansible / CI/CD<BR ALIGN="LEFT"/>Approval + kill switch + review</TD></TR></TABLE>>];
+experiments [shape=plain, label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="12" WIDTH="255"><TR><TD ALIGN="LEFT"><B>EXPERIMENT HARNESS</B><BR ALIGN="LEFT"/>Fault injection / reset / checksum<BR ALIGN="LEFT"/>Same scenarios across 3 methods<BR ALIGN="LEFT"/>Manual / Ansible / AI Agent</TD></TR></TABLE>>];
+truth [shape=plain, label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="12" WIDTH="255"><TR><TD ALIGN="LEFT"><B>OFFLINE EVALUATION</B><BR ALIGN="LEFT"/>Ground truth + recorded run outputs<BR ALIGN="LEFT"/>Safety and verifier ablations<BR ALIGN="LEFT"/>Ground truth excluded from inference</TD></TR></TABLE>>];
+report [shape=plain, label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="12" WIDTH="255"><TR><TD ALIGN="LEFT"><B>THESIS RESULTS</B><BR ALIGN="LEFT"/>RCA accuracy / MTTD / recovery<BR ALIGN="LEFT"/>Unsafe action / false recovery rates<BR ALIGN="LEFT"/>Audit completeness / latency / cost</TD></TR></TABLE>>];
+{rank=same; app; erp; ops;}
+{rank=same; observe; collect; experiments;}
+{rank=same; control; stores; truth;}
+{rank=same; recover; outcomes; report;}
+ops -> erp [style=invis];
+experiments -> collect [style=invis];
+truth -> stores [style=invis];
+report -> outcomes [style=invis];
+ops -> experiments [style=invis];
+experiments -> truth -> report [color="#7B61A8", style=dashed];
+labelloc=t;
+}

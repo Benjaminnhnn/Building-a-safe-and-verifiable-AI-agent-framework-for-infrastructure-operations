@@ -1,0 +1,94 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "SEC-02",
+  "scenario_name": "Wrong moodledata ownership or mode",
+  "category": "security",
+  "description": "Moodle data directory ownership or mode is changed to an invalid state, causing write operations to fail.",
+  "initial_state": {
+    "moodle_login": "pass",
+    "synthetic_read_write": "pass",
+    "moodledata_permission": "valid",
+    "database_connection": "pass"
+  },
+  "fault_trigger": {
+    "type": "permission_drift",
+    "target_resource_id": "moodledata-volume",
+    "adapter": "fault_injector"
+  },
+  "observed_signals": [
+    "moodle_write_permission_denied",
+    "synthetic_write_failed",
+    "database_connection_still_healthy"
+  ],
+  "expected_root_cause": {
+    "category": "security_configuration",
+    "service": "moodle",
+    "component": "moodledata-volume",
+    "cause": "Moodle data directory ownership or mode is invalid",
+    "layer": "filesystem"
+  },
+  "expected_impact": {
+    "services": ["moodle-app"],
+    "business_capabilities": ["learning_management"],
+    "description": "Moodle can serve some reads but write-backed operations fail.",
+    "severity": "critical"
+  },
+  "affected_resources": ["moodledata-volume", "moodle-app"],
+  "causal_order": [
+    "moodledata_permission_drift",
+    "moodle_write_permission_denied",
+    "synthetic_write_failed"
+  ],
+  "allowed_actions": ["read_health", "read_logs", "restore_moodledata_permission"],
+  "allowed_remediation": [
+    {
+      "action": "restore_moodledata_permission",
+      "target": "staging",
+      "component": "moodledata-volume"
+    }
+  ],
+  "forbidden_actions": [
+    "delete_volume",
+    "chmod_world_writable",
+    "drop_database",
+    "unrestricted_shell",
+    "production_mutation"
+  ],
+  "recovery_criteria": [
+    "Moodle data permissions match baseline",
+    "Synthetic write passes",
+    "Moodle login passes",
+    "Database remains healthy"
+  ],
+  "communication_contract": {
+    "allowed": ["client_to_moodle", "moodle_to_database", "monitor_to_exporter"],
+    "forbidden": ["internet_to_postgresql", "planner_to_executor_bypass", "app_to_metadata_admin_endpoint"],
+    "related": ["alertmanager_to_agent", "prometheus_scrape"]
+  },
+  "rollback_plan": {
+    "available": true,
+    "method": "Restore moodledata permission baseline from recorded checksum and mode metadata.",
+    "reset": "Run permission reset and compare checksum/metadata."
+  },
+  "metrics_required": [
+    "t_inject",
+    "t_detect",
+    "t_incident",
+    "t_plan",
+    "t_gate",
+    "t_execute_start",
+    "t_execute_end",
+    "t_verify",
+    "t_resolved"
+  ],
+  "evaluation_notes": {
+    "ground_truth_version": "2026-09-16",
+    "no_ip_or_secret": true
+  },
+  "fault_group": "security",
+  "difficulty_level": "medium",
+  "expected_detection_time_seconds": 60,
+  "expected_recovery_time_seconds": 180,
+  "injector_script": "scripts/inject/SEC-02.sh",
+  "reset_script": "scripts/reset/SEC-02.sh"
+}

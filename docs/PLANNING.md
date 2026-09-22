@@ -96,6 +96,9 @@ Xây dựng framework AI Agent an toàn và có thể xác minh cho vận hành 
 ## 5. Kế hoạch 7 sprint / 14 tuần
 
 ### Sprint 1 — Moodle foundation trước framework
+O: Owner - Chịu trách nhiệm chính triển khai và hoàn thành hạng mục
+
+R: Reviewer - Người review chéo, kiểm tra thiết kế, chất lượng và mức độ chấp nhận
 
 | Tuần | Mục tiêu và task đủ nhỏ cho GitHub Issue | AI Engineer | Infrastructure Engineer | Dependency | Deliverable kiểm tra được | Acceptance/test | Rủi ro và dự phòng | Effort |
 |---|---|---|---|---|---|---|---|---|

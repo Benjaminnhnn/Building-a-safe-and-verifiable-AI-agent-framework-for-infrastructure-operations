@@ -1,0 +1,74 @@
+[
+  {
+    "resource_id": "moodle-app",
+    "name": "Moodle Web Application",
+    "type": "application",
+    "environment": "staging",
+    "owner_role": "infrastructure_engineer",
+    "host": "web-ec2",
+    "service_name": "moodle-web",
+    "endpoint": "http://127.0.0.1:18081/health",
+    "depends_on": ["postgres-db", "redis-cache"],
+    "tags": {"component": "lms", "tier": "frontend"}
+  },
+  {
+    "resource_id": "postgres-db",
+    "name": "PostgreSQL Database",
+    "type": "database",
+    "environment": "staging",
+    "owner_role": "infrastructure_engineer",
+    "host": "core-ec2",
+    "service_name": "postgres-staging",
+    "endpoint": null,
+    "depends_on": [],
+    "tags": {"component": "database", "tier": "data"}
+  },
+  {
+    "resource_id": "redis-cache",
+    "name": "Redis Cache",
+    "type": "container",
+    "environment": "staging",
+    "owner_role": "infrastructure_engineer",
+    "host": "core-ec2",
+    "service_name": "redis-staging",
+    "endpoint": null,
+    "depends_on": [],
+    "tags": {"component": "cache", "tier": "data"}
+  },
+  {
+    "resource_id": "nginx-proxy",
+    "name": "Nginx Reverse Proxy",
+    "type": "endpoint",
+    "environment": "staging",
+    "owner_role": "infrastructure_engineer",
+    "host": "web-ec2",
+    "service_name": "frontend-web-staging",
+    "endpoint": "http://127.0.0.1:18081",
+    "depends_on": ["moodle-app"],
+    "tags": {"component": "proxy", "tier": "frontend"}
+  },
+  {
+    "resource_id": "moodle-cron",
+    "name": "Moodle Cron Service",
+    "type": "container",
+    "environment": "staging",
+    "owner_role": "infrastructure_engineer",
+    "host": "web-ec2",
+    "service_name": "moodle-cron",
+    "endpoint": null,
+    "depends_on": ["moodle-app", "postgres-db"],
+    "tags": {"component": "scheduler", "tier": "backend"}
+  },
+  {
+    "resource_id": "postgres-exporter",
+    "name": "PostgreSQL Exporter",
+    "type": "endpoint",
+    "environment": "staging",
+    "owner_role": "infrastructure_engineer",
+    "host": "core-ec2",
+    "service_name": "postgres-exporter",
+    "endpoint": "http://127.0.0.1:9187/metrics",
+    "depends_on": ["postgres-db"],
+    "tags": {"component": "monitoring", "tier": "observability"}
+  }
+]

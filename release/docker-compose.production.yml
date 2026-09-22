@@ -68,12 +68,15 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_DB: "0"
+      AIOPS_UNIFIED_CORE_MODE: ${AIOPS_UNIFIED_CORE_MODE:-off}
+      AIOPS_EVIDENCE_DB_PATH: /app/data/evidence.db
       PYTHONUNBUFFERED: "1"
     ports:
       - "0.0.0.0:8000:8000"
     volumes:
       - runbook-workflow-prod:/app/config/runbook_workflow
       - runbook-published-prod:/app/config/knowledge_base/published
+      - aiops-evidence-prod:/app/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
       interval: 30s
@@ -96,11 +99,14 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_DB: "0"
+      AIOPS_UNIFIED_CORE_MODE: ${AIOPS_UNIFIED_CORE_MODE:-off}
+      AIOPS_EVIDENCE_DB_PATH: /app/data/evidence.db
       PYTHONUNBUFFERED: "1"
     volumes:
       - vector-db-prod:/app/vector_db
       - runbook-workflow-prod:/app/config/runbook_workflow
       - runbook-published-prod:/app/config/knowledge_base/published
+      - aiops-evidence-prod:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: ["celery", "-A", "core.celery_app.celery_app", "worker", "--loglevel=INFO", "--concurrency=${CELERY_WORKER_CONCURRENCY:-2}"]
@@ -215,3 +221,4 @@ volumes:
   vector-db-prod:
   runbook-workflow-prod:
   runbook-published-prod:
+  aiops-evidence-prod:

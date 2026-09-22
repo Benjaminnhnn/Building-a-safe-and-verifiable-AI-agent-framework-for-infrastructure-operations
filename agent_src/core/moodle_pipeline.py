@@ -4,17 +4,14 @@ The module intentionally keeps the decision path deterministic:
 
 ``alert -> incident -> evidence -> diagnosis -> plan -> gate -> execute -> verify``
 
-It is safe to use for local replay by default.  The only live action supported
-by the adapter is the existing, scenario-scoped staging reset script; it is
-disabled unless both the caller and environment explicitly opt in.
+This module is evaluation-only. Live staging drills use unified-core shadow
+observation and a separately allowlisted test harness for fault reset.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-import os
-import subprocess
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -22,7 +19,6 @@ from pathlib import Path
 from typing import Any
 
 from core.ground_truth import load_ground_truth, validate_ground_truth
-
 
 SCENARIOS = ("DB-01", "RES-01", "NET-01", "CON-01", "SEC-02")
 SENSITIVE_TERMS = ("password", "secret", "token", "credential", "private_key")
@@ -203,58 +199,21 @@ class MoodleSafetyGate:
 
 
 class MoodleExecutionAdapter:
-    """Maps a reviewed semantic action to exactly one scoped reset script.
+    """Render the reviewed semantic action for dry-run evidence only."""
 
-    The script has its own staging URL guards and only removes known injected
-    faults.  Arbitrary command text is never accepted from an alert.
-    """
-
-    def __init__(self, *, repo_root: Path | None = None, allow_live_execution: bool = False):
+    def __init__(self, *, repo_root: Path | None = None):
         self.repo_root = repo_root or _repo_root()
-        self.allow_live_execution = allow_live_execution
 
     def execute(self, action: TypedAction) -> dict[str, Any]:
         command = ["bash", "automation/moodle-fault-reset.sh", action.scenario_id]
         if action.mode == "dry-run":
             return {"status": "dry-run", "command": command, "mutated": False}
-        if not self.allow_live_execution:
-            raise PipelineError("live execution is disabled by adapter configuration")
-        if os.getenv("MOODLE_PIPELINE_EXECUTION_CONFIRM") != "staging":
-            raise PipelineError("set MOODLE_PIPELINE_EXECUTION_CONFIRM=staging for live execution")
-        completed = subprocess.run(
-            command,
-            cwd=self.repo_root,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=300,
-            env={**os.environ, "MOODLE_FAULT_CONFIRM": "staging"},
-        )
-        return {
-            "status": "executed" if completed.returncode == 0 else "failed",
-            "command": command,
-            "mutated": completed.returncode == 0,
-            "returncode": completed.returncode,
-            # Command output is deliberately not persisted: a future script
-            # change must not be able to leak credentials into the audit log.
-        }
+        raise PipelineError("evaluation adapter never executes live remediation")
 
     def verify(self, *, live: bool = False) -> dict[str, Any]:
-        if not live:
-            return {"status": "passed", "mode": "replay", "checks": ["contract", "allowlist", "idempotency"]}
-        completed = subprocess.run(
-            ["bash", "automation/moodle-environment-baseline.sh", "verify"],
-            cwd=self.repo_root,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        return {
-            "status": "passed" if completed.returncode == 0 else "failed",
-            "mode": "live",
-            "returncode": completed.returncode,
-        }
+        if live:
+            raise PipelineError("evaluation adapter cannot verify live infrastructure")
+        return {"status": "passed", "mode": "replay", "checks": ["contract", "allowlist", "idempotency"]}
 
 
 class MoodleIndependentVerifier:
@@ -324,6 +283,11 @@ class MoodleIncidentPipeline:
     ) -> dict[str, Any]:
         if scenario_id not in self.catalog:
             raise PipelineError(f"unknown scenario: {scenario_id}")
+        if mode != "dry-run" or live_verify:
+            raise PipelineError(
+                "MoodleIncidentPipeline is evaluation-only; live staging uses "
+                "unified-core shadow observation plus the allowlisted drill harness"
+            )
         _assert_no_sensitive_data(event)
         incident_id = self._incident_id(event, scenario_id)
         if incident_id in self.incidents:
