@@ -54,7 +54,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=moodle
 
   deploy-moodle:
-    runs-on: ubuntu-latest
+    # The monitor node is inside the VPC. A GitHub-hosted runner must not be
+    # granted inbound SSH access just to reach the private Moodle nodes.
+    runs-on: [self-hosted, linux, moodle-staging]
     needs: build-moodle
     environment: staging
     steps:
@@ -63,7 +65,6 @@ jobs:
 
       - name: Verify deployment configuration
         env:
-          MOODLE_BASTION_HOST: ${{ secrets.MOODLE_BASTION_HOST }}
           MOODLE_APP_A_HOST: ${{ secrets.MOODLE_APP_A_HOST }}
           MOODLE_APP_B_HOST: ${{ secrets.MOODLE_APP_B_HOST }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -72,7 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           for variable in \
-            MOODLE_BASTION_HOST MOODLE_APP_A_HOST MOODLE_APP_B_HOST \
+            MOODLE_APP_A_HOST MOODLE_APP_B_HOST \
             SSH_PRIVATE_KEY GHCR_USERNAME GHCR_TOKEN; do
             test -n "${!variable:-}" || {
               echo "Missing required staging secret: $variable" >&2
@@ -83,7 +84,6 @@ jobs:
       - name: Roll out Moodle to both application nodes
         env:
           MOODLE_IMAGE: ${{ needs.build-moodle.outputs.image }}
-          MOODLE_BASTION_HOST: ${{ secrets.MOODLE_BASTION_HOST }}
           MOODLE_APP_A_HOST: ${{ secrets.MOODLE_APP_A_HOST }}
           MOODLE_APP_B_HOST: ${{ secrets.MOODLE_APP_B_HOST }}
           MOODLE_PUBLIC_URL: ${{ secrets.MOODLE_PUBLIC_URL }}

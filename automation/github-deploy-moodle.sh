@@ -5,7 +5,6 @@ set -euo pipefail
 
 required_vars=(
   MOODLE_IMAGE
-  MOODLE_BASTION_HOST
   MOODLE_APP_A_HOST
   MOODLE_APP_B_HOST
   SSH_PRIVATE_KEY
@@ -46,7 +45,6 @@ ssh_base=(
   -o ConnectTimeout=15
   -i "$key_path"
   -p "$ssh_port"
-  -J "${ssh_user}@${MOODLE_BASTION_HOST}"
 )
 
 remote_deploy() {
