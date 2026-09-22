@@ -337,9 +337,9 @@
         group: nobody
         mode: '0644'
 
-    - name: Copy AlertManager configuration
-      copy:
-        src: "{{ playbook_dir }}/../config/alertmanager.yml"
+    - name: Deploy AlertManager configuration from template
+      template:
+        src: "{{ playbook_dir }}/../config/alertmanager.yml.j2"
         dest: /opt/alertmanager/alertmanager.yml
         owner: nobody
         group: nobody

@@ -41,7 +41,10 @@ alertmanager:
   enabled: yes
   port: 9093
   webhook_receiver: "aiops-webhook"
-  webhook_url: "http://localhost:8000/webhook"
+
+# AI Agent webhook port: staging=18000, production=8000.
+# Override per host or via --extra-vars ai_agent_webhook_port=8000 for production.
+ai_agent_webhook_port: "18000"
 
 # ============ Module 2: Log Watcher & Unified Monitor ============
 # Unified Monitoring System (Module 1 + Module 2)
