@@ -63,11 +63,11 @@ set -euo pipefail
 
 runtime_env=/opt/moodle/release/moodle-runtime.env
 compose_file=/opt/moodle/release/docker-compose.yml
-test -r "$runtime_env" || {
+sudo test -r "$runtime_env" || {
   echo "Moodle runtime has not been staged: $runtime_env" >&2
   exit 66
 }
-test -r "$compose_file" || {
+sudo test -r "$compose_file" || {
   echo "Moodle Compose file has not been staged: $compose_file" >&2
   exit 66
 }
