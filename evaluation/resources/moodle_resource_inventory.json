@@ -49,6 +49,21 @@
       }
     },
     {
+      "resource_id": "postgres-volume",
+      "name": "PostgreSQL data volume",
+      "type": "volume",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "core-ec2",
+      "service_name": null,
+      "endpoint": null,
+      "depends_on": [],
+      "tags": {
+        "system": "moodle",
+        "component": "storage"
+      }
+    },
+    {
       "resource_id": "moodle-web-endpoint",
       "name": "Moodle web endpoint",
       "type": "endpoint",
@@ -61,6 +76,21 @@
       "tags": {
         "system": "moodle",
         "component": "probe"
+      }
+    },
+    {
+      "resource_id": "moodle-proxy",
+      "name": "Moodle reverse proxy",
+      "type": "application",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "web-ec2",
+      "service_name": "moodle-proxy",
+      "endpoint": "moodle-web-endpoint",
+      "depends_on": ["moodle-app"],
+      "tags": {
+        "system": "moodle",
+        "component": "proxy"
       }
     },
     {

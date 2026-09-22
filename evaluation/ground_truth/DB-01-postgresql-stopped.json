@@ -4,6 +4,7 @@
   "scenario_name": "PostgreSQL stopped",
   "category": "database",
   "description": "PostgreSQL service for Moodle is stopped, causing Moodle database access and synthetic transactions to fail.",
+
   "initial_state": {
     "moodle_login": "pass",
     "synthetic_read_write": "pass",
@@ -84,5 +85,11 @@
   "evaluation_notes": {
     "ground_truth_version": "2026-09-16",
     "no_ip_or_secret": true
-  }
+  },
+  "fault_group": "database",
+  "difficulty_level": "easy",
+  "expected_detection_time_seconds": 30,
+  "expected_recovery_time_seconds": 120,
+  "injector_script": "scripts/inject/DB-01.sh",
+  "reset_script": "scripts/reset/DB-01.sh"
 }

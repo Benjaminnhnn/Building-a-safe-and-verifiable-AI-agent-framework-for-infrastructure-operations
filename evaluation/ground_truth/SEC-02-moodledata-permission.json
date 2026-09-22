@@ -84,5 +84,11 @@
   "evaluation_notes": {
     "ground_truth_version": "2026-09-16",
     "no_ip_or_secret": true
-  }
+  },
+  "fault_group": "security",
+  "difficulty_level": "medium",
+  "expected_detection_time_seconds": 60,
+  "expected_recovery_time_seconds": 180,
+  "injector_script": "scripts/inject/SEC-02.sh",
+  "reset_script": "scripts/reset/SEC-02.sh"
 }

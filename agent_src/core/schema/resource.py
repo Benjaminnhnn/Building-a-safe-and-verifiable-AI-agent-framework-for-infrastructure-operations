@@ -1,6 +1,6 @@
 # Mô hình Moodle/PostgreSQL/container/endpoint
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from .common import Environment, ResourceType
 
 class Resource(BaseModel):
@@ -27,9 +27,22 @@ class Resource(BaseModel):
     # PLACEHOLDER: Endpoint thật để probe, ví dụ URL Moodle hoặc blackbox target.
     endpoint: str | None = None
 
+    # Docker image, e.g. moodle:4.3
+    image: str | None = None
+    compose_project: str | None = None
+    version: str | None = None
+
     # PLACEHOLDER: Danh sách resource_id thật mà resource này phụ thuộc.
     # Ví dụ Moodle phụ thuộc PostgreSQL thì depends_on chứa ID của PostgreSQL.
     depends_on: list[str] = Field(default_factory=list)
     # PLACEHOLDER: Tag thật để lọc theo hệ thống, môi trường, component hoặc owner.
     tags: dict[str, str] = Field(default_factory=dict)
     
+    @model_validator(mode='after')
+    def validate_resource(self):
+        if self.resource_id in self.depends_on:
+            raise ValueError("Resource cannot depend on itself")
+        if self.endpoint is not None and "://" in self.endpoint:
+            if not (self.endpoint.startswith("http://") or self.endpoint.startswith("https://")):
+                raise ValueError("Endpoint URL must start with http:// or https://")
+        return self

@@ -33,4 +33,5 @@ class VerificationResult(BaseModel):
 
     # PLACEHOLDER: Verdict thật của Verifier sau khi kiểm tra health, communication contract và stability.
     verdict: str = Field(..., examples=["resolved", "not_resolved"])
+    simulated: bool = False
     checked_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

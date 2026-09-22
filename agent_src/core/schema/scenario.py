@@ -2,8 +2,19 @@
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
+class CommunicationContract(BaseModel):
+    allowed: list[str] = Field(default_factory=list)
+    forbidden: list[str] = Field(default_factory=list)
+    related: list[str] = Field(default_factory=list)
+
+    @model_validator(mode='after')
+    def check_overlap(self):
+        overlap = set(self.allowed) & set(self.forbidden)
+        if overlap:
+            raise ValueError(f"overlap between allowed and forbidden: {overlap}")
+        return self
 
 class ScenarioGroundTruth(BaseModel):
     schema_version: str = "2.0"
@@ -18,6 +29,7 @@ class ScenarioGroundTruth(BaseModel):
     scenario_name: str
     # PLACEHOLDER: Nhóm scenario thật, ví dụ database, resource, network, container, security.
     category: str
+    fault_group: str | None = None
 
     # PLACEHOLDER: Trạng thái ban đầu thật trước khi inject fault.
     initial_state: dict
@@ -26,7 +38,6 @@ class ScenarioGroundTruth(BaseModel):
     # PLACEHOLDER: Tín hiệu quan sát thật từ Prometheus, Alertmanager, log, blackbox probe.
     observed_signals: list[str]
 
-    # PLACEHOLDER: Root cause đúng theo ground truth.
     # PLACEHOLDER: Root cause đúng theo ground truth.
     # Dùng dict để tương thích validator hiện tại: category, service, component, cause, layer.
     expected_root_cause: dict[str, Any]
@@ -49,5 +60,14 @@ class ScenarioGroundTruth(BaseModel):
     # PLACEHOLDER: Kế hoạch rollback/reset thật của scenario.
     rollback_plan: dict
 
+    injector_script: str | None = None
+    reset_script: str | None = None
+    expected_detection_time_seconds: int | None = None
+    expected_recovery_time_seconds: int | None = None
+    difficulty_level: str = "medium"
+
     # PLACEHOLDER: Danh sách metric hoặc timestamp thật cần thu cho benchmark.
     metrics_required: list[str] = Field(default_factory=list)
+
+    def get_communication_contract(self) -> CommunicationContract:
+        return CommunicationContract(**self.communication_contract)

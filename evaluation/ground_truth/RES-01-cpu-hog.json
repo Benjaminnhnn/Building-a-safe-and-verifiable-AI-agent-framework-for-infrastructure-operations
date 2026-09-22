@@ -84,5 +84,11 @@
   "evaluation_notes": {
     "ground_truth_version": "2026-09-16",
     "no_ip_or_secret": true
-  }
+  },
+  "fault_group": "resource",
+  "difficulty_level": "medium",
+  "expected_detection_time_seconds": 30,
+  "expected_recovery_time_seconds": 180,
+  "injector_script": "scripts/inject/RES-01.sh",
+  "reset_script": "scripts/reset/RES-01.sh"
 }

@@ -4,6 +4,7 @@
   "scenario_name": "Moodle container stopped",
   "category": "container",
   "description": "Moodle application container is stopped while PostgreSQL and monitoring remain healthy.",
+
   "initial_state": {
     "moodle_login": "pass",
     "synthetic_read_write": "pass",
@@ -83,5 +84,11 @@
   "evaluation_notes": {
     "ground_truth_version": "2026-09-16",
     "no_ip_or_secret": true
-  }
+  },
+  "fault_group": "container",
+  "difficulty_level": "easy",
+  "expected_detection_time_seconds": 30,
+  "expected_recovery_time_seconds": 60,
+  "injector_script": "scripts/inject/CON-01.sh",
+  "reset_script": "scripts/reset/CON-01.sh"
 }

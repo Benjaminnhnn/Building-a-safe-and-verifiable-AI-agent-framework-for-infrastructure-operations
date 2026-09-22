@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from core.mvp_pipeline import IncidentCore, replay_scenario
-from core.schema.common import ActionDecision
+from core.mvp_pipeline import IncidentCore, evaluate_safety, replay_scenario
+from core.schema.action import RollbackPlan
+from core.schema.common import ActionDecision, Environment
 from core.schema.scenario import ScenarioGroundTruth
 
 
@@ -53,3 +54,26 @@ def test_incident_core_deduplicates_same_scenario() -> None:
 
     assert first.incident_id == second.incident_id
     assert first.fingerprint == second.fingerprint
+
+
+def test_deny_precedence_cannot_be_overwritten_by_approval_rules() -> None:
+    data = json.loads(
+        Path("evaluation/ground_truth/DB-01-postgresql-stopped.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    scenario = ScenarioGroundTruth(**data)
+    replay = replay_scenario(data)
+    action = replay["action"].model_copy(
+        update={
+            "environment": Environment.PRODUCTION,
+            "rollback_plan": RollbackPlan(available=False),
+        }
+    )
+    scenario.forbidden_actions.append(action.action_type.value)
+
+    decision = evaluate_safety(action, scenario)
+
+    assert decision.decision == ActionDecision.DENY
+    assert "action is forbidden by ground truth" in decision.reasons
+    assert "non-staging environment requires approval" in decision.reasons

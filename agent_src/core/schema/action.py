@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field
 
-from .common import ActionType, Environment
+from .common import ActionStatus, ActionType, Environment
 
 
 class RollbackPlan(BaseModel):
@@ -21,6 +21,8 @@ class TypedAction(BaseModel):
     # SỬA NHƯ NÀO:
     # Khi test có thể dùng "act-db-01-start-container", khi chạy thật nên sinh tự động và ghi vào audit.
     action_id: str
+    status: ActionStatus = ActionStatus.PROPOSED
+    idempotency_key: str | None = None
     # PLACEHOLDER: ID incident thật mà action này xử lý.
     incident_id: str
 

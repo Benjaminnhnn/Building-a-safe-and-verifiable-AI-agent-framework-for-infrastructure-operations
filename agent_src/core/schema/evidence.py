@@ -1,7 +1,9 @@
 # Bằng chứng agent thu thập
 
 from datetime import datetime, timezone
-from pydantic import BaseModel, Field
+import re
+from pydantic import BaseModel, Field, model_validator
+from .common import EvidenceType
 
 class Evidence(BaseModel):
     # PLACEHOLDER LÀ GÌ:
@@ -16,6 +18,8 @@ class Evidence(BaseModel):
     # PLACEHOLDER: ID resource thật mà evidence nói tới. Phải trùng với Resource.resource_id.
     resource_id: str
 
+    evidence_type: EvidenceType = EvidenceType.PROBE
+
     # PLACEHOLDER: Nguồn thu thập thật. Ví dụ "prometheus", "blackbox", "docker", "log".
     source: str = Field(..., examples=["prometheus", "blackbox", "docker", "log"])
     collected_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -27,7 +31,13 @@ class Evidence(BaseModel):
     # PLACEHOLDER: Hash thật của nội dung evidence đã lưu, dùng để chứng minh evidence không bị sửa.
     content_hash: str
 
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     redacted: bool = True
     # PLACEHOLDER: Metadata thật theo từng nguồn, ví dụ query Prometheus, container_name, log_file.
     metadata: dict[str, str] = Field(default_factory=dict)
     
+    @model_validator(mode='after')
+    def validate_content_hash(self):
+        if not self.content_hash.startswith("pending") and not self.content_hash.startswith("sha256:"):
+            raise ValueError("content_hash must start with 'sha256:' or 'pending'")
+        return self

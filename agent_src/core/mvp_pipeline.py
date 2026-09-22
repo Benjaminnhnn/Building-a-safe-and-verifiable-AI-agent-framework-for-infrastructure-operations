@@ -20,7 +20,6 @@ from core.schema.safety import SafetyDecision
 from core.schema.scenario import ScenarioGroundTruth
 from core.schema.verification import ProbeResult, VerificationResult
 
-
 ACTION_MAP: dict[str, ActionType] = {
     "DB-01": ActionType.START_CONTAINER,
     "CON-01": ActionType.START_CONTAINER,
@@ -208,20 +207,27 @@ def plan_action(
 
 def evaluate_safety(action: TypedAction, scenario: ScenarioGroundTruth) -> SafetyDecision:
     reasons: list[str] = []
-    decision = ActionDecision.ALLOW
+    deny_reasons: list[str] = []
+    approval_reasons: list[str] = []
 
     if not action.evidence_refs:
-        decision = ActionDecision.DENY
-        reasons.append("action has no evidence")
+        deny_reasons.append("action has no evidence")
     if action.action_type.value in scenario.forbidden_actions:
-        decision = ActionDecision.DENY
-        reasons.append("action is forbidden by ground truth")
+        deny_reasons.append("action is forbidden by ground truth")
     if action.environment != Environment.STAGING:
-        decision = ActionDecision.REQUIRE_APPROVAL
-        reasons.append("non-staging environment requires approval")
+        approval_reasons.append("non-staging environment requires approval")
     if not action.rollback_plan.available:
+        approval_reasons.append("rollback is not ready")
+
+    if deny_reasons:
+        decision = ActionDecision.DENY
+        reasons.extend(deny_reasons)
+        reasons.extend(approval_reasons)
+    elif approval_reasons:
         decision = ActionDecision.REQUIRE_APPROVAL
-        reasons.append("rollback is not ready")
+        reasons.extend(approval_reasons)
+    else:
+        decision = ActionDecision.ALLOW
 
     if not reasons:
         reasons.append("staging dry-run action has evidence and rollback plan")
@@ -263,6 +269,7 @@ def verify_dry_run(incident: Incident, scenario: ScenarioGroundTruth) -> Verific
         forbidden_probes=forbidden,
         related_probes=related,
         verdict="resolved",
+        simulated=True,
     )
 
 

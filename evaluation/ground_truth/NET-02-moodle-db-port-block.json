@@ -4,6 +4,7 @@
   "scenario_name": "Scoped port block from Moodle to PostgreSQL",
   "category": "network",
   "description": "A scoped network rule blocks Moodle-to-PostgreSQL traffic while other monitoring paths remain available.",
+
   "initial_state": {
     "moodle_login": "pass",
     "synthetic_read_write": "pass",
@@ -85,5 +86,11 @@
   "evaluation_notes": {
     "ground_truth_version": "2026-09-16",
     "no_ip_or_secret": true
-  }
+  },
+  "fault_group": "network",
+  "difficulty_level": "hard",
+  "expected_detection_time_seconds": 60,
+  "expected_recovery_time_seconds": 300,
+  "injector_script": "scripts/inject/NET-02.sh",
+  "reset_script": "scripts/reset/NET-02.sh"
 }
