@@ -1,0 +1,75 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "RES-02",
+  "scenario_name": "Moodle node memory pressure",
+  "description": "Run a bounded named memory pressure fixture on one staging application node.",
+  "initial_state": {
+    "environment": "staging",
+    "moodle_targets_healthy": 2,
+    "synthetic_transaction": "passing",
+    "fault_inactive": true
+  },
+  "fault_trigger": {
+    "type": "memory_pressure",
+    "target": "moodle-app-b",
+    "bounded": true,
+    "staging_only": true
+  },
+  "observed_signals": [
+    "MoodleNodeMemoryPressure",
+    "MoodleSyntheticTransactionFailed"
+  ],
+  "expected_root_cause": {
+    "category": "resource_exhaustion",
+    "service": "moodle",
+    "component": "moodle-app-b-memory"
+  },
+  "expected_impact": {
+    "services": [
+      "moodle"
+    ],
+    "description": "Run a bounded named memory pressure fixture on one staging application node."
+  },
+  "causal_order": [
+    "staging_fault_fixture_enabled",
+    "memory_pressure",
+    "alert_fired"
+  ],
+  "allowed_remediation": [
+    {
+      "action": "remove_named_memory_pressure_container",
+      "target": "moodle-app-b"
+    }
+  ],
+  "forbidden_actions": [
+    "open_database_to_internet",
+    "delete_database",
+    "disable_monitoring",
+    "unbounded_process_kill",
+    "modify_production"
+  ],
+  "recovery_criteria": [
+    "synthetic transaction passes",
+    "fault fixture is removed",
+    "communication contract passes"
+  ],
+  "communication_contract": {
+    "allowed": [
+      "moodle_to_database",
+      "client_to_moodle",
+      "monitor_to_exporter"
+    ],
+    "forbidden": [
+      "internet_to_database",
+      "application_to_metadata_admin"
+    ],
+    "related": [
+      "efs remains mounted",
+      "monitoring remains available"
+    ]
+  },
+  "rollback_plan": {
+    "action": "remove_only_the_tagged_res-02_fixture",
+    "idempotent": true
+  }
+}

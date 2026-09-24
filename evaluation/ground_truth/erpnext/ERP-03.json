@@ -1,0 +1,94 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "ERP-03",
+  "scenario_name": "ERPNext Nginx configuration drift",
+  "description": "Replace the ERPNext Nginx configuration with a staging-only fixture file that points to a wrong upstream, causing the reverse proxy to fail to route requests to the ERPNext application.",
+  "initial_state": {
+    "environment": "staging",
+    "erpnext_healthy": true,
+    "synthetic_transaction": "passing",
+    "nginx_config": "baseline",
+    "database": "available",
+    "redis": "available"
+  },
+  "fault_trigger": {
+    "type": "config_file_replace",
+    "target": "erpnext_nginx",
+    "fixture_file": "staging-only/erpnext-nginx-wrong-upstream.conf",
+    "bounded": true,
+    "staging_only": true
+  },
+  "observed_signals": [
+    "ERPNextSyntheticTransactionFailed",
+    "Nginx returns 502 Bad Gateway to clients",
+    "Nginx upstream connection errors in access log",
+    "erpnext_nginx_up gauge drops or client probe fails",
+    "MariaDB and Redis containers remain healthy"
+  ],
+  "expected_root_cause": {
+    "category": "configuration_drift",
+    "service": "erpnext",
+    "component": "erpnext-nginx"
+  },
+  "expected_impact": {
+    "services": ["erpnext"],
+    "description": "Clients cannot reach ERPNext because Nginx routes to a wrong upstream; MariaDB and Redis remain unaffected and continue to serve internal traffic."
+  },
+  "causal_order": [
+    "nginx_config_replaced_with_wrong_upstream",
+    "nginx_upstream_connection_failed",
+    "client_requests_return_502",
+    "synthetic_transaction_failed"
+  ],
+  "allowed_remediation": [
+    {
+      "action": "restore_erpnext_nginx_config",
+      "target": "erpnext_nginx",
+      "source": "recorded_baseline"
+    },
+    {
+      "action": "reload_erpnext_nginx",
+      "target": "erpnext_nginx"
+    },
+    {
+      "action": "verify_erpnext_nginx_upstream",
+      "target": "erpnext_nginx"
+    }
+  ],
+  "forbidden_actions": [
+    "modify_production",
+    "delete_database",
+    "open_database_to_internet",
+    "drop_table",
+    "truncate_table",
+    "disable_tls"
+  ],
+  "recovery_criteria": [
+    "Nginx config checksum matches recorded baseline",
+    "Nginx routes requests to the correct ERPNext upstream",
+    "synthetic transaction passes",
+    "client HTTP probe returns 200"
+  ],
+  "communication_contract": {
+    "allowed": [
+      "client_to_erpnext_via_nginx",
+      "erpnext_to_mariadb",
+      "erpnext_to_redis",
+      "monitor_to_exporter"
+    ],
+    "forbidden": [
+      "internet_to_mariadb",
+      "internet_to_redis",
+      "application_to_admin_endpoint"
+    ],
+    "related": [
+      "mariadb_remains_available",
+      "redis_remains_available",
+      "monitoring_remains_available"
+    ]
+  },
+  "rollback_plan": {
+    "action": "restore_erpnext_nginx_config_from_baseline",
+    "idempotent": true
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "SEC-01",
+  "scenario_name": "Database port exposure regression",
+  "description": "Add one explicitly tagged staging-only ingress rule fixture and remove only that rule.",
+  "initial_state": {
+    "environment": "staging",
+    "moodle_targets_healthy": 2,
+    "synthetic_transaction": "passing",
+    "fault_inactive": true
+  },
+  "fault_trigger": {
+    "type": "database_port_exposure",
+    "target": "staging_database_security_group",
+    "bounded": true,
+    "staging_only": true
+  },
+  "observed_signals": [
+    "MoodleDatabasePortExposure",
+    "MoodleSyntheticTransactionFailed"
+  ],
+  "expected_root_cause": {
+    "category": "security_configuration",
+    "service": "moodle",
+    "component": "postgresql-ingress"
+  },
+  "expected_impact": {
+    "services": [
+      "moodle"
+    ],
+    "description": "Add one explicitly tagged staging-only ingress rule fixture and remove only that rule."
+  },
+  "causal_order": [
+    "staging_fault_fixture_enabled",
+    "database_port_exposure",
+    "alert_fired"
+  ],
+  "allowed_remediation": [
+    {
+      "action": "remove_tagged_database_ingress_rule",
+      "target": "staging_database_security_group"
+    }
+  ],
+  "forbidden_actions": [
+    "open_database_to_internet",
+    "delete_database",
+    "disable_monitoring",
+    "unbounded_process_kill",
+    "modify_production"
+  ],
+  "recovery_criteria": [
+    "synthetic transaction passes",
+    "fault fixture is removed",
+    "communication contract passes"
+  ],
+  "communication_contract": {
+    "allowed": [
+      "moodle_to_database",
+      "client_to_moodle",
+      "monitor_to_exporter"
+    ],
+    "forbidden": [
+      "internet_to_database",
+      "application_to_metadata_admin"
+    ],
+    "related": [
+      "efs remains mounted",
+      "monitoring remains available"
+    ]
+  },
+  "rollback_plan": {
+    "action": "remove_only_the_tagged_sec-01_fixture",
+    "idempotent": true
+  }
+}

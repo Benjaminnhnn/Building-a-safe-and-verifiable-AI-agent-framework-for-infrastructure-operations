@@ -13,6 +13,7 @@ resource "aws_efs_file_system" "moodledata" {
     prevent_destroy = true
   }
 
+
   tags = merge(local.moodle_tags, { Name = "${local.moodle_prefix}-efs" })
 
 }

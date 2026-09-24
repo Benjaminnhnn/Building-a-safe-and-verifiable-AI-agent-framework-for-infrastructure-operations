@@ -109,22 +109,24 @@ import json
 import sys
 from pathlib import Path
 
+from core.event_schema import normalize_alert
 from core.moodle_pipeline import MoodleExecutionAdapter, MoodleIncidentPipeline
 
 scenario_id, run_id, evidence_dir, repo_root = sys.argv[1:]
-event = {
-    "schema_version": "2.0",
-    "event_id": run_id,
-    "fingerprint": f"live-{run_id}",
-    "source": "synthetic",
-    "event_type": "service_health_failed",
-    "observed_at": "live-run",
-    "labels": {
-        "alertname": "MoodleSprint2LiveDrill",
-        "scenario_id": scenario_id,
-        "environment": "staging",
+event = normalize_alert(
+    {
+        "status": "firing",
+        "fingerprint": f"live-{run_id}",
+        "labels": {
+            "alertname": "MoodleSprint2LiveDrill",
+            "scenario_id": scenario_id,
+            "environment": "staging",
+            "severity": "critical",
+        },
+        "annotations": {"summary": f"Live drill signal for {scenario_id}"},
     },
-}
+    correlation_id=run_id,
+)
 adapter = MoodleExecutionAdapter(repo_root=Path(repo_root), allow_live_execution=True)
 pipeline = MoodleIncidentPipeline(Path(evidence_dir), adapter=adapter)
 report = pipeline.process(event, scenario_id=scenario_id, mode="execute", live_verify=True)

@@ -5,6 +5,10 @@ commands from the repository root. Terraform owns AWS resources; Ansible owns
 host configuration; the release scripts own Moodle runtime files; no secret,
 state file, private key, or `.artifacts` file is committed.
 
+The evidence described in sections 5 and 7 is not stored in this checkout.
+Treat recorded campaign values as reported external evidence until the manual
+commands in this runbook reproduce them under `terraform/.artifacts/`.
+
 ## 1. Preconditions
 
 Install Terraform, AWS CLI, OpenSSH, Ansible, Docker, `jq`, `curl`, and
@@ -277,7 +281,7 @@ terraform -chdir=terraform plan \
 The expected result is `No changes`. Keep all evidence under
 `terraform/.artifacts/`; it is intentionally not committed.
 
-## 7. Verified Sprint 2 evidence record
+## 7. Reported Sprint 2 evidence record (requires local re-verification)
 
 The final campaign `final-evidence-20260921T160700Z` completed 15 live runs
 with fresh Prometheus alerts, scoped resets, verifier verdicts, and a clean
@@ -291,9 +295,11 @@ baseline after every 120-second stability window.
 | CON-01 | 3/3 | 38s | 61s | 120s |
 | SEC-02 | 3/3 | 51s | 45s | 120s |
 
-All results meet the Sprint 2 limits: MTTD ≤60 seconds, recovery ≤600 seconds,
-stability ≥120 seconds, and zero forbidden execution. The raw per-run evidence
-is deliberately retained only under `terraform/.artifacts/moodle-sprint2-live/`.
+The report claims that all results meet the Sprint 2 limits: MTTD ≤60 seconds,
+recovery ≤600 seconds, stability ≥120 seconds, and zero forbidden execution.
+The raw per-run evidence is deliberately retained only under
+`terraform/.artifacts/moodle-sprint2-live/`; Sprint 2 is accepted for this
+checkout only after the manual campaign summary reproduces those values.
 
 ## 8. Safe failure handling
 

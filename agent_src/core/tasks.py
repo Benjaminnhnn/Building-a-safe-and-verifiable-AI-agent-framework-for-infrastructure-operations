@@ -18,6 +18,7 @@ from google.genai import types
 
 from core.celery_app import celery_app
 from core.metrics import ACTIVE_TASKS, AI_WORKFLOW_LATENCY_SECONDS, ALERTS_PROCESSED_TOTAL
+from core.moodle_alert_integration import process_moodle_alert
 from core.rag_engine import get_rag_instance
 from core.runbook_registry import create_runbook_draft
 from tools.diag_tools import AGENT_TOOLS
@@ -907,7 +908,11 @@ async def process_single_alert(alert: dict) -> None:
 
         if alert.get("status") == "resolved":
             _clear_alert_cooldown(alert)
-            resolved_incident_id = _mark_matching_incident_resolved(alert)
+            labels = alert.get("labels") or {}
+            moodle_shadow_event = labels.get("service") == "moodle" and labels.get("environment") == "staging"
+            # Alertmanager recovery is an observation, not the authority to
+            # transition a Moodle incident to RESOLVED.
+            resolved_incident_id = None if moodle_shadow_event else _mark_matching_incident_resolved(alert)
             if not _reserve_alert_notification(alert, "resolved"):
                 logger.info(
                     "Skipping duplicate resolved notification: alert=%s instance=%s",
@@ -917,7 +922,14 @@ async def process_single_alert(alert: dict) -> None:
                 ALERTS_PROCESSED_TOTAL.labels(status='deduped').inc()
                 return
             incident_suffix = f" (ID: `{resolved_incident_id}`)" if resolved_incident_id else ""
-            send_telegram_message(f"✅ *ĐÃ KHÔI PHỤC:* {alert_name} trên `{instance}`{incident_suffix}")
+            if moodle_shadow_event:
+                send_telegram_message(
+                    f"Alertmanager báo hết cảnh báo Moodle: {alert_name} trên `{instance}`. "
+                    "Incident chưa được đánh dấu RESOLVED; cần kết quả Independent Verifier.",
+                    parse_mode=None,
+                )
+            else:
+                send_telegram_message(f"✅ *ĐÃ KHÔI PHỤC:* {alert_name} trên `{instance}`{incident_suffix}")
             ALERTS_PROCESSED_TOTAL.labels(status='resolved').inc()
             return
 
@@ -938,6 +950,25 @@ async def process_single_alert(alert: dict) -> None:
                 instance,
             )
             ALERTS_PROCESSED_TOTAL.labels(status='deduped').inc()
+            return
+
+        # Moodle Sprint pipeline is integrated in shadow mode only. It requires
+        # an explicit staging scenario label and a matching firing signal; all
+        # unmatched alerts are escalated safely and are never sent to execution.
+        moodle_report = process_moodle_alert(alert)
+        if moodle_report is not None:
+            duration = time.time() - start_time
+            AI_WORKFLOW_LATENCY_SECONDS.observe(duration)
+            ALERTS_PROCESSED_TOTAL.labels(status='success').inc()
+            send_telegram_message(
+                "Moodle AI pipeline: "
+                f"{moodle_report['status']} | scenario={moodle_report.get('scenario_id', 'unknown')} | "
+                f"incident={moodle_report.get('incident_id', 'unassigned')} | "
+                f"execution_permitted={moodle_report.get('execution_permitted', False)} | "
+                f"resolution_eligible={moodle_report.get('resolution_eligible', False)}",
+                parse_mode=None,
+            )
+            logger.info("Moodle shadow pipeline result: %s", json.dumps(moodle_report, sort_keys=True))
             return
 
         incident_details = build_incident_details(alert)

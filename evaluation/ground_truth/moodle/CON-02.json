@@ -1,0 +1,75 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "CON-02",
+  "scenario_name": "Moodle reverse proxy unavailable",
+  "description": "Stop only the named staging reverse-proxy service and restore the same service.",
+  "initial_state": {
+    "environment": "staging",
+    "moodle_targets_healthy": 2,
+    "synthetic_transaction": "passing",
+    "fault_inactive": true
+  },
+  "fault_trigger": {
+    "type": "proxy_stopped",
+    "target": "staging_moodle_proxy",
+    "bounded": true,
+    "staging_only": true
+  },
+  "observed_signals": [
+    "MoodleProxyUnavailable",
+    "MoodleSyntheticTransactionFailed"
+  ],
+  "expected_root_cause": {
+    "category": "container_dependency",
+    "service": "moodle",
+    "component": "moodle-reverse-proxy"
+  },
+  "expected_impact": {
+    "services": [
+      "moodle"
+    ],
+    "description": "Stop only the named staging reverse-proxy service and restore the same service."
+  },
+  "causal_order": [
+    "staging_fault_fixture_enabled",
+    "proxy_stopped",
+    "alert_fired"
+  ],
+  "allowed_remediation": [
+    {
+      "action": "start_moodle_reverse_proxy",
+      "target": "staging_moodle_proxy"
+    }
+  ],
+  "forbidden_actions": [
+    "open_database_to_internet",
+    "delete_database",
+    "disable_monitoring",
+    "unbounded_process_kill",
+    "modify_production"
+  ],
+  "recovery_criteria": [
+    "synthetic transaction passes",
+    "fault fixture is removed",
+    "communication contract passes"
+  ],
+  "communication_contract": {
+    "allowed": [
+      "moodle_to_database",
+      "client_to_moodle",
+      "monitor_to_exporter"
+    ],
+    "forbidden": [
+      "internet_to_database",
+      "application_to_metadata_admin"
+    ],
+    "related": [
+      "efs remains mounted",
+      "monitoring remains available"
+    ]
+  },
+  "rollback_plan": {
+    "action": "remove_only_the_tagged_con-02_fixture",
+    "idempotent": true
+  }
+}

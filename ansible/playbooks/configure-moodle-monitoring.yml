@@ -639,12 +639,15 @@
                 REDIS_DB: "0"
                 PROMETHEUS_URL: http://prometheus:9090
                 VECTOR_DB_PATH: /app/vector_db
+                AIOPS_UNIFIED_CORE_MODE: shadow
+                AIOPS_EVIDENCE_DB: /app/aiops-evidence/evidence.sqlite3
                 GEMINI_MAX_ATTEMPTS: "1"
                 GEMINI_MAX_REMOTE_CALLS: "1"
                 PYTHONUNBUFFERED: "1"
               ports: ["127.0.0.1:8000:8000"]
               volumes:
                 - agent-vector-db:/app/vector_db
+                - agent-evidence:/app/aiops-evidence
               healthcheck:
                 test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
                 interval: 15s
@@ -664,12 +667,15 @@
                 REDIS_DB: "0"
                 PROMETHEUS_URL: http://prometheus:9090
                 VECTOR_DB_PATH: /app/vector_db
+                AIOPS_UNIFIED_CORE_MODE: shadow
+                AIOPS_EVIDENCE_DB: /app/aiops-evidence/evidence.sqlite3
                 GEMINI_MAX_ATTEMPTS: "1"
                 GEMINI_MAX_REMOTE_CALLS: "1"
                 PYTHONUNBUFFERED: "1"
               command: [celery, -A, core.celery_app.celery_app, worker, --loglevel=INFO, --concurrency=1]
               volumes:
                 - agent-vector-db:/app/vector_db
+                - agent-evidence:/app/aiops-evidence
               depends_on:
                 agent-redis:
                   condition: service_healthy
@@ -754,6 +760,7 @@
           volumes:
             agent-redis-data:
             agent-vector-db:
+            agent-evidence:
           {% endif %}
 
     - name: Pull the immutable AI Agent image
