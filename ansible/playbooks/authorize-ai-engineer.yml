@@ -1,0 +1,31 @@
+---
+# Adds an explicitly supplied public key only to the monitor node. The key is
+# intentionally read from the control workstation, never committed to Git.
+- name: Authorize AI Engineer on Moodle monitor
+  hosts: monitor
+  become: true
+  gather_facts: false
+
+  vars:
+    ai_engineer_user: ec2-user
+
+  pre_tasks:
+    - name: Require a readable AI Engineer public key on the control workstation
+      ansible.builtin.assert:
+        that:
+          - ai_engineer_public_key_path is defined
+          - ai_engineer_public_key_path | length > 0
+          - lookup('ansible.builtin.file', ai_engineer_public_key_path) is match('^(ssh-ed25519|ssh-rsa|ecdsa-sha2-)')
+        fail_msg: >-
+          Pass -e ai_engineer_public_key_path=/absolute/path/to/ai-engineer.pub.
+          Never pass a private key.
+      delegate_to: localhost
+      run_once: true
+
+  tasks:
+    - name: Install the AI Engineer public key for the monitor SSH user
+      ansible.posix.authorized_key:
+        user: "{{ ai_engineer_user }}"
+        key: "{{ lookup('ansible.builtin.file', ai_engineer_public_key_path) }}"
+        state: present
+        manage_dir: true
