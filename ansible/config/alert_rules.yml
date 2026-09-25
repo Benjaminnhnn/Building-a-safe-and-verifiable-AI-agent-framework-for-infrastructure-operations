@@ -276,3 +276,225 @@ groups:
         annotations:
           summary: "Docker container redis-cache-staging is missing on monitor-ai-01"
           description: "cAdvisor no longer sees redis-cache-staging on monitor-ai-01."
+
+  - name: moodle_alerts
+    interval: 15s
+    rules:
+      - alert: MoodleWebContainerMissing
+        expr: |
+          absent(container_last_seen{name=~".*(moodle-web|release-moodle-web).*",instance="moodle-app-b"})
+          or (time() - max by (instance) (container_last_seen{name=~".*(moodle-web|release-moodle-web).*",instance="moodle-app-b"}) > 30)
+        for: 30s
+        labels:
+          severity: critical
+          service: moodle
+          environment: staging
+          scenario_id: "CON-01"
+          component: moodle-app-b-web
+        annotations:
+          summary: "Moodle web container is missing on moodle-app-b"
+          description: "cAdvisor reports release-moodle-web-1 container stopped or missing on moodle-app-b."
+
+      - alert: MoodleProxyUnavailable
+        expr: |
+          probe_success{job="blackbox_moodle_public"} == 0
+          or absent(container_last_seen{name=~".*(moodle-proxy|reverse-proxy).*",instance="moodle-app-a"})
+          or (time() - max by (instance) (container_last_seen{name=~".*(moodle-proxy|reverse-proxy).*",instance="moodle-app-a"}) > 30)
+        for: 30s
+        labels:
+          severity: critical
+          service: moodle
+          environment: staging
+          scenario_id: "CON-02"
+          component: moodle-reverse-proxy
+        annotations:
+          summary: "Moodle reverse proxy is unavailable"
+          description: "Public blackbox probe failed or Moodle reverse proxy container is unreachable."
+
+      - alert: MoodleContainerCrashLoop
+        expr: |
+          increase(container_start_time_seconds{name=~".*moodle-web.*"}[5m]) > 2
+          or (time() - max by (instance) (container_last_seen{name=~".*moodle-web.*"}) > 30)
+        for: 30s
+        labels:
+          severity: critical
+          service: moodle
+          environment: staging
+          scenario_id: "CON-03"
+          component: moodle-app-release
+        annotations:
+          summary: "Moodle application container crash loop detected"
+          description: "Moodle container is repeatedly restarting due to invalid release configuration drift."
+
+      - alert: MoodleSyntheticTransactionFailed
+        expr: |
+          probe_success{job="blackbox_moodle_rds"} == 0
+          or moodle_synthetic_success{job="moodle_synthetic"} == 0
+          or pg_up{runbook="postgresql"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: moodle
+          environment: staging
+          scenario_id: "DB-01"
+          component: rds-postgresql
+        annotations:
+          summary: "Moodle PostgreSQL database connectivity failed"
+          description: "Moodle nodes cannot connect to RDS PostgreSQL endpoint; synthetic transaction failed."
+
+      - alert: moodle_db_connections_high
+        expr: |
+          sum(pg_stat_activity_count) > 80
+          or sum(pg_stat_database_numbackends) > 80
+        for: 30s
+        labels:
+          severity: critical
+          service: moodle
+          environment: staging
+          scenario_id: "DB-02"
+          component: rds-postgresql-connections
+        annotations:
+          summary: "PostgreSQL active connections high for Moodle"
+          description: "PostgreSQL connection pool near exhaustion with active backend connections exceeding threshold."
+
+      - alert: MoodleDatabaseEndpointInvalid
+        expr: |
+          probe_success{job="blackbox_moodle_rds"} == 0
+          or (moodle_synthetic_success == 0 and on() pg_up == 1)
+        for: 30s
+        labels:
+          severity: critical
+          service: moodle
+          environment: staging
+          scenario_id: "DB-03"
+          component: moodle-db-endpoint
+        annotations:
+          summary: "Moodle database endpoint is invalid"
+          description: "Moodle application database endpoint configuration has drifted while database service is healthy."
+
+      - alert: MoodleSyntheticTransactionFailed
+        expr: |
+          moodle_synthetic_success{job="moodle_synthetic"} == 0
+          and on() (probe_success{job="blackbox_moodle_public"} == 1)
+        for: 30s
+        labels:
+          severity: critical
+          service: moodle
+          environment: staging
+          scenario_id: "NET-01"
+          component: database-hostname-resolution
+        annotations:
+          summary: "Moodle database DNS alias resolves incorrectly"
+          description: "Moodle container hosts override points RDS database hostname to loopback destination."
+
+      - alert: MoodleDatabasePortBlocked
+        expr: probe_success{job="blackbox_moodle_rds"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: moodle
+          environment: staging
+          scenario_id: "NET-02"
+          component: moodle-to-postgresql-port
+        annotations:
+          summary: "Moodle to PostgreSQL port 5432 is blocked"
+          description: "Blackbox TCP connection probe from Moodle nodes to PostgreSQL database port 5432 failed."
+
+      - alert: MoodleDatabaseLatencyHigh
+        expr: |
+          probe_duration_seconds{job="blackbox_moodle_rds"} > 0.5
+          or probe_duration_seconds{job="blackbox_moodle_public"} > 1.5
+        for: 30s
+        labels:
+          severity: critical
+          service: moodle
+          environment: staging
+          scenario_id: "NET-03"
+          component: moodle-to-postgresql-link
+        annotations:
+          summary: "High network latency between Moodle and PostgreSQL"
+          description: "Network latency or packet loss on Moodle-to-database link exceeds acceptable SLA thresholds."
+
+      - alert: MoodleNodeCpuHigh
+        expr: (100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle",instance=~".*moodle.*"}[1m])) * 100)) > 70
+        for: 30s
+        labels:
+          severity: critical
+          service: moodle
+          environment: staging
+          scenario_id: "RES-01"
+          component: moodle-app-b-cpu
+        annotations:
+          summary: "Moodle node CPU usage is high on {{ $labels.instance }}"
+          description: "Node CPU utilization exceeds 70% threshold on Moodle node {{ $labels.instance }}."
+
+      - alert: MoodleNodeMemoryPressure
+        expr: (100 - (node_memory_MemAvailable_bytes{instance=~".*moodle.*"} / node_memory_MemTotal_bytes{instance=~".*moodle.*"} * 100)) > 85
+        for: 30s
+        labels:
+          severity: critical
+          service: moodle
+          environment: staging
+          scenario_id: "RES-02"
+          component: moodle-app-b-memory
+        annotations:
+          summary: "Moodle node memory pressure on {{ $labels.instance }}"
+          description: "Available memory dropped below 15% on Moodle application node {{ $labels.instance }}."
+
+      - alert: MoodleDataVolumePressure
+        expr: (100 - (node_filesystem_avail_bytes{mountpoint=~".*moodle.*"} / node_filesystem_size_bytes{mountpoint=~".*moodle.*"} * 100)) > 85
+        for: 30s
+        labels:
+          severity: critical
+          service: moodle
+          environment: staging
+          scenario_id: "RES-03"
+          component: moodle-data-volume
+        annotations:
+          summary: "Moodle data volume disk space is critically low"
+          description: "Filesystem space utilization exceeds 85% on Moodle data volume mount."
+
+      - alert: MoodleDatabasePortExposure
+        expr: probe_success{job="blackbox_db_public_exposure"} == 1 or moodle_security_db_port_exposed == 1
+        for: 30s
+        labels:
+          severity: critical
+          service: moodle
+          environment: staging
+          scenario_id: "SEC-01"
+          component: postgresql-ingress
+        annotations:
+          summary: "PostgreSQL port 5432 exposed to unauthorized network"
+          description: "Regression detected: staging database security group permits ingress from non-application sources."
+
+      - alert: MoodleSyntheticTransactionFailed
+        expr: |
+          moodle_synthetic_success{job="moodle_synthetic"} == 0
+          and on() (probe_success{job="blackbox_moodle_public"} == 1)
+          and on() (pg_up == 1)
+        for: 30s
+        labels:
+          severity: critical
+          service: moodle
+          environment: staging
+          scenario_id: "SEC-02"
+          component: efs-synthetic-fixture-directory
+        annotations:
+          summary: "Moodle synthetic transaction failed on EFS fixture directory"
+          description: "Synthetic write fixture failed due to invalid filesystem permissions on shared EFS mount."
+
+      - alert: MoodleTrustedProxyMisconfigured
+        expr: |
+          probe_http_status_code{job="blackbox_moodle_public"} == 403
+          or moodle_trusted_proxy_valid == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: moodle
+          environment: staging
+          scenario_id: "SEC-03"
+          component: moodle-trusted-proxy
+        annotations:
+          summary: "Moodle trusted proxy misconfigured"
+          description: "Moodle rejected client requests due to misconfigured trusted proxy headers or drift."
+

@@ -42,11 +42,30 @@ def test_shadow_integration_fails_closed_on_signal_mismatch(tmp_path, monkeypatc
     assert report["resolution_eligible"] is False
 
 
-def test_shadow_integration_rejects_live_mode(tmp_path, monkeypatch) -> None:
+def test_live_mode_routes_to_pipeline_not_raises(tmp_path, monkeypatch) -> None:
+    """Live mode must no longer raise RuntimeError; it should attempt pipeline routing.
+
+    Without a real Moodle environment the pipeline call will fail gracefully and
+    return an escalated report — but crucially it must NOT raise RuntimeError.
+    """
+    from unittest.mock import patch
     monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "live")
     monkeypatch.setenv("AIOPS_EVIDENCE_DB", str(tmp_path / "evidence.sqlite3"))
-    with pytest.raises(RuntimeError, match="live execution is not supported"):
-        process_moodle_alert(_alert())
+
+    # Patch _route_live so it returns a controlled escalated dict (avoids subprocess calls)
+    escalated = {
+        "status": "escalated",
+        "scenario_id": "DB-01",
+        "reason": "alert normalization failed (test stub)",
+        "execution_permitted": False,
+        "resolution_eligible": False,
+    }
+    with patch("core.moodle_alert_integration._route_live", return_value=escalated):
+        report = process_moodle_alert(_alert())
+
+    assert report is not None
+    assert report["execution_permitted"] is False
+    assert report["resolution_eligible"] is False
 
 
 def test_celery_worker_routes_staging_moodle_alert_to_unified_pipeline(monkeypatch) -> None:
