@@ -32,6 +32,16 @@ variable "ci_cd_ssh_cidr_blocks" {
   }
 }
 
+variable "ai_engineer_monitor_ssh_cidr_blocks" {
+  type        = list(string)
+  description = "Additional AI Engineer IPv4 CIDRs allowed to SSH only to the monitor node"
+  default     = []
+  validation {
+    condition     = alltrue([for cidr in var.ai_engineer_monitor_ssh_cidr_blocks : can(cidrnetmask(cidr)) && can(regex("/(2[4-9]|3[0-2])$", cidr))])
+    error_message = "Each AI Engineer SSH IPv4 CIDR must use prefix /24 through /32; do not allow all Internet clients."
+  }
+}
+
 variable "moodle_project_name" {
   type        = string
   default     = "moodle"

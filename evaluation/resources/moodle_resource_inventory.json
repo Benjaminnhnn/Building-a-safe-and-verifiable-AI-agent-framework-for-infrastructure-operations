@@ -1,0 +1,142 @@
+{
+  "schema_version": "1.0",
+  "environment": "staging",
+  "source": "Logical resource contract aligned with develop Terraform, Moodle release Compose, and monitoring Ansible; dynamic AWS values remain referenced by Terraform output names and contain no IPs or secrets.",
+  "resources": [
+    {
+      "resource_id": "moodle-app",
+      "name": "Moodle application",
+      "type": "application",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "moodle-app-a,moodle-app-b",
+      "service_name": "release-moodle-web-1",
+      "endpoint": "terraform:moodle_application.url",
+      "depends_on": ["postgres-db", "moodledata-volume"],
+      "tags": {
+        "system": "moodle",
+        "component": "web"
+      }
+    },
+    {
+      "resource_id": "postgres-db",
+      "name": "Moodle PostgreSQL database",
+      "type": "database",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "aws-rds",
+      "service_name": "moodle-postgresql-rds",
+      "endpoint": "terraform:moodle_database.endpoint",
+      "depends_on": ["postgres-volume"],
+      "tags": {
+        "system": "moodle",
+        "component": "database"
+      }
+    },
+    {
+      "resource_id": "moodledata-volume",
+      "name": "Moodle data volume",
+      "type": "volume",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "moodle-app-a,moodle-app-b",
+      "service_name": null,
+      "endpoint": "terraform:moodle_filesystem.file_system_id",
+      "depends_on": [],
+      "tags": {
+        "system": "moodle",
+        "component": "storage"
+      }
+    },
+    {
+      "resource_id": "postgres-volume",
+      "name": "RDS PostgreSQL managed storage",
+      "type": "volume",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "aws-rds",
+      "service_name": "moodle-postgresql-rds",
+      "endpoint": "terraform:moodle_database.endpoint",
+      "depends_on": [],
+      "tags": {
+        "system": "moodle",
+        "component": "storage"
+      }
+    },
+    {
+      "resource_id": "moodle-web-endpoint",
+      "name": "Moodle web endpoint",
+      "type": "endpoint",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "aws-alb",
+      "service_name": "moodle-alb",
+      "endpoint": "terraform:moodle_application.url",
+      "depends_on": ["moodle-app"],
+      "tags": {
+        "system": "moodle",
+        "component": "probe"
+      }
+    },
+    {
+      "resource_id": "moodle-proxy",
+      "name": "Moodle reverse proxy",
+      "type": "application",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "aws-alb",
+      "service_name": "moodle-alb",
+      "endpoint": "terraform:moodle_application.url",
+      "depends_on": ["moodle-app"],
+      "tags": {
+        "system": "moodle",
+        "component": "proxy"
+      }
+    },
+    {
+      "resource_id": "prometheus-monitor",
+      "name": "Prometheus monitoring",
+      "type": "application",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "monitor-ai-01",
+      "service_name": "moodle-prometheus",
+      "endpoint": "http://prometheus:9090",
+      "depends_on": ["moodle-app", "postgres-db"],
+      "tags": {
+        "system": "monitoring",
+        "component": "metrics"
+      }
+    },
+    {
+      "resource_id": "alertmanager",
+      "name": "Alertmanager",
+      "type": "application",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "monitor-ai-01",
+      "service_name": "moodle-alertmanager",
+      "endpoint": "http://alertmanager:9093",
+      "depends_on": ["prometheus-monitor"],
+      "tags": {
+        "system": "monitoring",
+        "component": "alerting"
+      }
+    },
+    {
+      "resource_id": "ai-agent",
+      "name": "Unified AIOps agent",
+      "type": "application",
+      "environment": "staging",
+      "owner_role": "ai_engineer",
+      "host": "monitor-ai-01",
+      "service_name": "moodle-ai-agent",
+      "endpoint": "http://ai-agent:8000",
+      "depends_on": ["alertmanager", "prometheus-monitor"],
+      "tags": {
+        "system": "monitoring",
+        "component": "ai-control-plane"
+      }
+    }
+  ]
+}

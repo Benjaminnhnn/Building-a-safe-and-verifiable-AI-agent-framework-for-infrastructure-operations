@@ -1,0 +1,94 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "RES-01",
+  "scenario_name": "CPU hog on Moodle host",
+  "category": "resource",
+  "description": "A controlled CPU hog causes Moodle latency and probe failures while the database remains reachable.",
+  "initial_state": {
+    "moodle_login": "pass",
+    "synthetic_read_write": "pass",
+    "host_cpu": "normal",
+    "database_connection": "pass"
+  },
+  "fault_trigger": {
+    "type": "cpu_hog",
+    "target_resource_id": "moodle-app",
+    "adapter": "fault_injector"
+  },
+  "observed_signals": [
+    "host_cpu_saturation",
+    "moodle_latency_high",
+    "synthetic_transaction_timeout"
+  ],
+  "expected_root_cause": {
+    "category": "resource",
+    "service": "moodle",
+    "component": "moodle-app",
+    "cause": "Controlled CPU hog on Moodle host",
+    "layer": "compute"
+  },
+  "expected_impact": {
+    "services": ["moodle-app"],
+    "business_capabilities": ["learning_management"],
+    "description": "Moodle is slow or intermittently unavailable.",
+    "severity": "warning"
+  },
+  "affected_resources": ["moodle-app"],
+  "causal_order": [
+    "cpu_hog_started",
+    "host_cpu_saturated",
+    "moodle_latency_high",
+    "synthetic_transaction_timeout"
+  ],
+  "allowed_actions": ["read_health", "read_logs", "stop_fault_injector"],
+  "allowed_remediation": [
+    {
+      "action": "stop_fault_injector",
+      "target": "staging",
+      "component": "moodle-app"
+    }
+  ],
+  "forbidden_actions": [
+    "host_reboot_without_approval",
+    "delete_volume",
+    "unrestricted_shell",
+    "production_mutation"
+  ],
+  "recovery_criteria": [
+    "CPU returns to normal range",
+    "Moodle latency returns below threshold",
+    "Synthetic read/write passes",
+    "Database connection remains healthy"
+  ],
+  "communication_contract": {
+    "allowed": ["client_to_moodle", "moodle_to_database", "monitor_to_exporter"],
+    "forbidden": ["internet_to_postgresql", "planner_to_executor_bypass"],
+    "related": ["alertmanager_to_agent", "prometheus_scrape"]
+  },
+  "rollback_plan": {
+    "available": true,
+    "method": "Stop the CPU hog process and reset workload container if latency remains degraded.",
+    "reset": "Clear injector process and verify host load is normal."
+  },
+  "metrics_required": [
+    "t_inject",
+    "t_detect",
+    "t_incident",
+    "t_plan",
+    "t_gate",
+    "t_execute_start",
+    "t_execute_end",
+    "t_verify",
+    "t_resolved"
+  ],
+  "evaluation_notes": {
+    "ground_truth_version": "2026-09-16",
+    "no_ip_or_secret": true
+  },
+  "fault_group": "resource",
+  "difficulty_level": "medium",
+  "expected_detection_time_seconds": 30,
+  "expected_recovery_time_seconds": 180,
+  "injector_script": "scripts/inject/RES-01.sh",
+  "reset_script": "scripts/reset/RES-01.sh"
+}

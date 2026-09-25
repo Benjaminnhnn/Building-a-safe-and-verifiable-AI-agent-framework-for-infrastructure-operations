@@ -58,6 +58,7 @@ env/
 
 # Runtime vector database (recreated at startup)
 agent_src/vector_db/
+agent_src/data/*.db*
 
 # VS Code & IDE
 .vscode/
@@ -83,4 +84,3 @@ keys/
 .pytest-tmp/
 .pytest_cache/
 *.sqlite3
-

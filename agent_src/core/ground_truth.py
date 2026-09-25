@@ -34,6 +34,8 @@ SENSITIVE_KEY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+ALLOWED_METADATA_KEYS = {"no_ip_or_secret"}
+
 SENSITIVE_VALUE_PATTERNS = [
     re.compile(r"AKIA[0-9A-Z]{16}"),
     re.compile(r"-----BEGIN (?:RSA )?PRIVATE KEY-----"),
@@ -50,7 +52,7 @@ def _scan_for_sensitive(obj: Any, path: str = "") -> list[str]:
     if isinstance(obj, dict):
         for k, v in obj.items():
             cur = f"{path}.{k}" if path else str(k)
-            if SENSITIVE_KEY_PATTERN.search(str(k)):
+            if str(k) not in ALLOWED_METADATA_KEYS and SENSITIVE_KEY_PATTERN.search(str(k)):
                 findings.append(f"{cur}: sensitive key")
             if isinstance(v, str):
                 if any(p.search(v) for p in SENSITIVE_VALUE_PATTERNS):

@@ -4,9 +4,8 @@ The module intentionally keeps the decision path deterministic:
 
 ``alert -> incident -> evidence -> diagnosis -> plan -> gate -> execute -> verify``
 
-It is safe to use for local replay by default.  The only live action supported
-by the adapter is the existing, scenario-scoped staging reset script; it is
-disabled unless both the caller and environment explicitly opt in.
+This module is evaluation-only. Live staging drills use unified-core shadow
+observation and a separately allowlisted test harness for fault reset.
 """
 
 from __future__ import annotations
@@ -25,7 +24,6 @@ from typing import Any
 
 from core.ground_truth import load_ground_truth, validate_ground_truth
 from core.event_schema import normalize_alert, validate_normalized_event
-
 
 SCENARIOS = (
     "DB-01", "DB-02", "DB-03",
@@ -285,8 +283,6 @@ class MoodleExecutionAdapter:
             "command": command,
             "mutated": completed.returncode == 0,
             "returncode": completed.returncode,
-            # Command output is deliberately not persisted: a future script
-            # change must not be able to leak credentials into the audit log.
         }
 
 class MoodleReadOnlyVerificationAdapter:

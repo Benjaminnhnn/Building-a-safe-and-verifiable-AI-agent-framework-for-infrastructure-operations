@@ -12,15 +12,19 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import redis
-from dotenv import load_dotenv
-from google import genai
-from google.genai import types
-
 from core.celery_app import celery_app
-from core.metrics import ACTIVE_TASKS, AI_WORKFLOW_LATENCY_SECONDS, ALERTS_PROCESSED_TOTAL
-from core.moodle_alert_integration import process_moodle_alert
+from core.metrics import (
+    ACTIVE_TASKS,
+    AI_WORKFLOW_LATENCY_SECONDS,
+    ALERTS_PROCESSED_TOTAL,
+    UNIFIED_SHADOW_EVENTS_TOTAL,
+)
 from core.rag_engine import get_rag_instance
 from core.runbook_registry import create_runbook_draft
+from core.shadow_pipeline import run_shadow_if_enabled
+from dotenv import load_dotenv
+from google import genai
+from core.moodle_alert_integration import process_moodle_alert
 from tools.diag_tools import AGENT_TOOLS
 from tools.prometheus_check import get_prometheus_checker
 from utils.telegram_bot import send_telegram_message
@@ -223,7 +227,7 @@ def _default_component(labels: dict, environment: str, prod_name: str, staging_n
 def _deploy_role_for_component(component: str) -> str:
     if component.startswith("frontend-web"):
         return "web"
-    if component.startswith("payment-api") or component.startswith("postgres"):
+    if component.startswith(("payment-api", "postgres")):
         return "core"
     return "monitor"
 
@@ -529,7 +533,12 @@ def _link_active_incident(alert: dict, incident_id: str, ttl: int = 86400) -> No
         logger.warning("Unable to link active incident %s: %s", incident_id, e)
 
 
-def _mark_matching_incident_resolved(alert: dict) -> str | None:
+def _mark_matching_incident_recovery_signal(alert: dict) -> str | None:
+    """Record Alertmanager recovery without declaring the incident resolved.
+
+    A resolved notification is only a recovery signal. The scheduled verifier
+    still has to check current metrics before the incident can be closed.
+    """
     if redis_client is None:
         return None
 
@@ -541,15 +550,21 @@ def _mark_matching_incident_resolved(alert: dict) -> str | None:
 
         context = _load_incident_from_redis(incident_id)
         if context is not None:
-            context["status"] = "resolved"
-            context["resolved_at"] = str(alert.get("endsAt") or datetime.now(VN_TZ).isoformat())
+            context["status"] = "verification_pending"
+            context["recovery_signal_at"] = str(
+                alert.get("endsAt") or datetime.now(VN_TZ).isoformat()
+            )
+            context["recovery_signal_source"] = "alertmanager"
             save_incident_to_redis(incident_id, context)
 
-        redis_client.delete(active_key)
         return incident_id
     except redis.RedisError as e:
-        logger.warning("Unable to mark matching incident resolved: %s", e)
+        logger.warning("Unable to record matching incident recovery signal: %s", e)
         return None
+
+
+# Backward-compatible alias for incident resolution/recovery
+_mark_matching_incident_resolved = _mark_matching_incident_recovery_signal
 
 
 def _parse_review_json(full_text: str) -> dict | None:
@@ -730,7 +745,7 @@ REVIEW_JSON: {{"status": "accepted|revised|rejected", "reviewed_solution": "..."
             "reviewed_solution": full_text.strip() or admin_feedback.strip(),
             "admin_message": "Agent đã đánh giá góp ý nhưng phản hồi AI không đúng định dạng JSON.",
         }
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - external model failures use deterministic fallback
         logger.warning("Gemini feedback review failed, using basic review: %s", e)
         return _basic_feedback_review(admin_feedback)
 
@@ -869,7 +884,7 @@ async def run_agent_workflow(incident_details: str, alert_name: str | None = Non
                 )
                 full_text = response.text or ""
                 return full_text if full_text else "AI không phản hồi.", parse_proposal(full_text)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - SDK exposes heterogeneous transport errors
                 last_error = e
                 retryable = is_retryable_gemini_error(e)
                 logger.warning(
@@ -903,15 +918,10 @@ async def process_single_alert(alert: dict) -> None:
     try:
         alert_name  = alert["labels"].get("alertname", "Unknown")
         instance    = alert["labels"].get("instance", "Unknown")
-        summary     = alert["annotations"].get("summary", "")
-        description = alert["annotations"].get("description", "")
-
         if alert.get("status") == "resolved":
             _clear_alert_cooldown(alert)
             labels = alert.get("labels") or {}
             moodle_shadow_event = labels.get("service") == "moodle" and labels.get("environment") == "staging"
-            # Alertmanager recovery is an observation, not the authority to
-            # transition a Moodle incident to RESOLVED.
             resolved_incident_id = None if moodle_shadow_event else _mark_matching_incident_resolved(alert)
             if not _reserve_alert_notification(alert, "resolved"):
                 logger.info(
@@ -928,9 +938,13 @@ async def process_single_alert(alert: dict) -> None:
                     "Incident chưa được đánh dấu RESOLVED; cần kết quả Independent Verifier.",
                     parse_mode=None,
                 )
+                ALERTS_PROCESSED_TOTAL.labels(status='verification_pending').inc()
             else:
-                send_telegram_message(f"✅ *ĐÃ KHÔI PHỤC:* {alert_name} trên `{instance}`{incident_suffix}")
-            ALERTS_PROCESSED_TOTAL.labels(status='resolved').inc()
+                send_telegram_message(
+                    f"🔎 *ALERT ĐÃ HẾT, ĐANG XÁC MINH:* {alert_name} "
+                    f"trên `{instance}`{incident_suffix}"
+                )
+                ALERTS_PROCESSED_TOTAL.labels(status='verification_pending').inc()
             return
 
         if not _reserve_alert_processing(alert):
@@ -952,9 +966,6 @@ async def process_single_alert(alert: dict) -> None:
             ALERTS_PROCESSED_TOTAL.labels(status='deduped').inc()
             return
 
-        # Moodle Sprint pipeline is integrated in shadow mode only. It requires
-        # an explicit staging scenario label and a matching firing signal; all
-        # unmatched alerts are escalated safely and are never sent to execution.
         moodle_report = process_moodle_alert(alert)
         if moodle_report is not None:
             duration = time.time() - start_time
@@ -970,6 +981,16 @@ async def process_single_alert(alert: dict) -> None:
             )
             logger.info("Moodle shadow pipeline result: %s", json.dumps(moodle_report, sort_keys=True))
             return
+
+        try:
+            shadow_result = run_shadow_if_enabled(alert)
+            if shadow_result is not None:
+                UNIFIED_SHADOW_EVENTS_TOTAL.labels(
+                    status=str(shadow_result.get("status", "skipped"))
+                ).inc()
+        except Exception:
+            UNIFIED_SHADOW_EVENTS_TOTAL.labels(status="error").inc()
+            logger.exception("Unified-core shadow failed; continuing legacy pipeline")
 
         incident_details = build_incident_details(alert)
         rule_analysis, rule_proposal = deterministic_diagnosis(alert)
@@ -1047,7 +1068,7 @@ async def verify_resolution(incident_id: str, alert_name: str, instance: str):
             ctx_raw = redis_client.get(f"incident:{incident_id}")
         except redis.RedisError as e:
             logger.error(f"Redis read error during verification: {e}")
-            send_telegram_message(f"⚠️ Không thể xác nhận kết quả vì Redis unavailable")
+            send_telegram_message("⚠️ Không thể xác nhận kết quả vì Redis unavailable")
             return
 
         if not ctx_raw:
@@ -1056,17 +1077,6 @@ async def verify_resolution(incident_id: str, alert_name: str, instance: str):
             return
 
         ctx = json.loads(ctx_raw)
-
-        if ctx.get("status") == "resolved":
-            logger.info(
-                "Skipping scheduled verification for incident %s because its alert event is already resolved",
-                incident_id,
-            )
-            try:
-                redis_client.delete(f"incident:{incident_id}")
-            except redis.RedisError as e:
-                logger.warning(f"Error deleting resolved incident from Redis: {e}")
-            return
 
         # Query Prometheus metrics để kiểm lại
         # Cách 1: Gọi các diagnostic tools tương tự như AI analysis
@@ -1120,9 +1130,9 @@ async def verify_resolution(incident_id: str, alert_name: str, instance: str):
             except redis.RedisError as e:
                 logger.warning(f"Error deleting resolved incident from Redis: {e}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - fail closed when a checker dependency errors
         logger.error(f"Error during verification: {e}")
-        send_telegram_message(f"⚠️ Lỗi kiểm tra kết quả: {str(e)}")
+        send_telegram_message(f"⚠️ Lỗi kiểm tra kết quả: {e!s}")
 
 
 async def check_alert_resolved(alert_name: str, instance: str, incident_context: dict | None = None) -> bool:
@@ -1157,7 +1167,7 @@ async def check_alert_resolved(alert_name: str, instance: str, incident_context:
 
         return is_resolved
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - Celery retry boundary
         logger.error(f"Error checking alert resolution: {e}")
         # Default to failed if can't determine
         return False
@@ -1176,7 +1186,7 @@ def verify_resolution_task(self, incident_id: str, alert_name: str, instance: st
     try:
         logger.info(f"🔄 Running verification for {incident_id}")
         asyncio.run(verify_resolution(incident_id, alert_name, instance))
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - Celery retry boundary
         logger.error(f"Verification task failed: {e}")
         # Retry 1 lần sau 1 phút
         raise self.retry(exc=e, countdown=60)
@@ -1191,7 +1201,7 @@ def process_admin_feedback_task(self, incident_id: str, admin_feedback: str, cha
     """Celery task xử lý góp ý của admin gửi qua Telegram."""
     try:
         asyncio.run(process_admin_feedback(incident_id, admin_feedback, chat_id))
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - Celery retry boundary
         logger.error("Admin feedback task failed: %s", e)
         raise self.retry(exc=e, countdown=30)
 
@@ -1204,7 +1214,7 @@ def review_tool_change_task(self, tool_name: str, revision_id: str):
         notification_sent = notify_runbook_draft_for_approval(draft)
         logger.info("Created runbook draft %s for tool %s revision %s", draft["draft_id"], tool_name, revision_id)
         return {"status": "draft_created", "draft_id": draft["draft_id"], "notification_sent": notification_sent}
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - Celery retry boundary
         logger.error("Tool change review failed: tool=%s revision=%s error=%s", tool_name, revision_id, e)
         raise self.retry(exc=e, countdown=30)
 

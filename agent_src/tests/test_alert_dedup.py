@@ -108,7 +108,7 @@ def test_resolved_alert_clears_firing_cooldown_without_resending_resolved() -> N
     assert send_telegram_message.call_count == 3
 
 
-def test_resolved_alert_marks_only_matching_alert_event_incident() -> None:
+def test_resolved_alert_marks_only_matching_incident_for_verification() -> None:
     alert = _alert("same-alert")
     alert["status"] = "resolved"
     alert["endsAt"] = "2026-06-04T02:05:00Z"
@@ -120,36 +120,37 @@ def test_resolved_alert_marks_only_matching_alert_event_incident() -> None:
         patch.object(tasks, "redis_client", redis_client),
         patch.object(tasks, "save_incident_to_redis") as save_incident_to_redis,
     ):
-        incident_id = tasks._mark_matching_incident_resolved(alert)
+        incident_id = tasks._mark_matching_incident_recovery_signal(alert)
 
     assert incident_id == "incident-1"
     saved_context = save_incident_to_redis.call_args.args[1]
-    assert saved_context["status"] == "resolved"
-    assert saved_context["resolved_at"] == "2026-06-04T02:05:00Z"
-    redis_client.delete.assert_called_once_with(tasks._active_incident_key(alert))
+    assert saved_context["status"] == "verification_pending"
+    assert saved_context["recovery_signal_at"] == "2026-06-04T02:05:00Z"
+    assert saved_context["recovery_signal_source"] == "alertmanager"
+    redis_client.delete.assert_not_called()
 
 
-def test_verification_skips_incident_already_resolved_by_alertmanager() -> None:
+def test_verification_checks_incident_after_alertmanager_recovery_signal() -> None:
     redis_client = Mock()
     redis_client.get.return_value = json.dumps(
         {
             "alert_name": "WebEndpointDown",
             "instance": "bank-web-01",
-            "status": "resolved",
+            "status": "verification_pending",
         }
     )
 
     with (
         patch.object(tasks, "redis_client", redis_client),
-        patch.object(tasks, "check_alert_resolved") as check_alert_resolved,
+        patch.object(tasks, "check_alert_resolved", return_value=True) as check_alert_resolved,
         patch.object(tasks, "send_telegram_message") as send_telegram_message,
-        patch.object(tasks, "get_rag_instance") as get_rag_instance,
+        patch.object(tasks, "get_rag_instance", return_value=None) as get_rag_instance,
     ):
         asyncio.run(tasks.verify_resolution("incident-1", "WebEndpointDown", "bank-web-01"))
 
-    check_alert_resolved.assert_not_called()
-    send_telegram_message.assert_not_called()
-    get_rag_instance.assert_not_called()
+    check_alert_resolved.assert_called_once()
+    send_telegram_message.assert_called_once()
+    get_rag_instance.assert_called_once()
     redis_client.delete.assert_called_once_with("incident:incident-1")
 
 

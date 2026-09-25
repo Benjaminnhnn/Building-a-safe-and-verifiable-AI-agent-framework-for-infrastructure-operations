@@ -1,0 +1,72 @@
+global:
+  resolve_timeout: 5m
+
+# The root route with all parameters, which are inherited by the child routes if they are not overwritten.
+route:
+  receiver: 'default'
+  # When a new group of alerts is created by an incoming alert, wait at least
+  # 'group_wait' to send the initial notification.
+  group_wait: 10s
+  
+  # When the first notification was sent, wait 'group_interval' before sending a batch
+  # of new alerts that started firing for that group.
+  group_interval: 10s
+  
+  # If an alert has successfully been sent, wait 'repeat_interval' before resending them.
+  # IMPORTANT FOR DEDUPLICATION: Set to high value to prevent spam
+  repeat_interval: 4h
+  
+  routes:
+    # Critical alerts - more frequent notifications
+    - match:
+        severity: critical
+      receiver: 'default'
+      group_wait: 5s
+      group_interval: 5s
+      repeat_interval: 1h
+    
+    # Warning alerts - standard notifications
+    - match:
+        severity: warning
+      receiver: 'default'
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 4h
+    
+    # System alerts
+    - match:
+        service: system
+      receiver: 'default'
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 6h
+    
+    # Service availability alerts
+    - match:
+        service: availability
+      receiver: 'default'
+      group_wait: 5s
+      group_interval: 5s
+      repeat_interval: 2h
+
+# Inhibition rules allow to mute a set of alerts given that another alert is firing.
+# We use this to mute any warning-severity notifications if the same alert is critical.
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['instance', 'service']
+  
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'info'
+    equal: ['instance', 'service']
+
+receivers:
+  - name: 'default'
+    webhook_configs:
+      - url: 'http://127.0.0.1:{{ ai_agent_webhook_port | default("18000") }}/webhook'
+        send_resolved: true
+

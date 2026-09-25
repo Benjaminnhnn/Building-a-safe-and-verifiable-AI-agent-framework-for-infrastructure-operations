@@ -40,7 +40,8 @@ jobs:
         run: |
           python -m py_compile \
             automation/moodle-synthetic-transaction.py \
-            automation/moodle-pipeline-replay.py
+            automation/moodle-pipeline-replay.py \
+            automation/aiops-unified-replay.py
           bash -n \
             automation/lib/moodle-fault-common.sh \
             automation/moodle-environment-baseline.sh \
@@ -48,7 +49,14 @@ jobs:
             automation/moodle-fault-reset.sh \
             automation/moodle-fault-trial.sh \
             automation/moodle-synthetic-soak.sh \
-            automation/moodle-sprint2-live-drill.sh
+            automation/moodle-sprint2-live-drill.sh \
+            automation/run-aiops-e2e.sh \
+            automation/github-deploy-moodle.sh
+
+      - name: Replay merged unified AI control plane
+        run: |
+          python automation/aiops-unified-replay.py all \
+            --output-dir "${RUNNER_TEMP}/aiops-unified-replay"
 
       - name: Build AI Agent image
         run: docker build -t local/ai-agent:ci-${{ github.sha }} agent_src
