@@ -35,7 +35,8 @@ route tùy chỉnh. VPC local route do AWS tạo vẫn tồn tại.
 Management subnet dùng cho monitoring trong phương án tạo mới. Default chuyển
 tiếp giữ monitoring ở Public A và giữ EC2 demo. Các tùy chọn tạo mới/chuyển tiếp
 và moved blocks hiện nằm trong
-[deployment guide](MOODLE_DEPLOYMENT_GUIDE.md). Đổi subnet EC2 sẽ buộc thay máy.
+[Moodle Operations Runbook](MOODLE_OPERATIONS_RUNBOOK.md). Đổi subnet EC2 sẽ
+buộc thay máy.
 
 Tên tài nguyên mới dùng prefix `moodle-staging`, tag `Project=moodle-aiops`.
 Các tài nguyên cũ giữ tên và project/environment hiện có. Tất cả nhận thêm

@@ -42,10 +42,10 @@ The Engineer's public SSH key is installed for user `ec2-user` on
 `monitor-ai-01`. Its verified SHA-256 fingerprint is:
 
 ```text
-SHA256:Zic/J1u2wxBAW3rVqmx9VhjsP6RnlzrQNvKQ2tpOpaY
+SHA256:bWFke6hf+2cVUCK2gtzDgwzpw9lQH2Y2ckCpi7qrY5g
 ```
 
-SSH ingress to the monitor is restricted to `104.28.205.71/32`. If the
+SSH ingress to the monitor is restricted to `115.73.218.220/32`. If the
 Engineer changes Internet connection and SSH times out, they must provide the
 new public IPv4 address to the infrastructure owner. Do not broaden the rule
 to `0.0.0.0/0`.
@@ -303,4 +303,4 @@ occur:
   allowlisted harness.
 
 For the complete infrastructure and Sprint 1–2 operational procedures, see
-[Moodle Sprint Runbook](MOODLE_SPRINT_RUNBOOK.md).
+[Moodle Operations Runbook](MOODLE_OPERATIONS_RUNBOOK.md).
