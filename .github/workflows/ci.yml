@@ -83,6 +83,25 @@ jobs:
             local/moodle:ci-${{ github.sha }} \
             sh -ec 'grep -F "\$CFG->dbpass = '\''moodle-test-password'\'';" /var/www/html/config.php'
 
+      - name: Replay Moodle Sprint 2 pipeline
+        env:
+          PYTHONPATH: agent_src
+        run: |
+          replay_dir="$(mktemp -d)"
+          python automation/moodle-pipeline-replay.py --output-dir "$replay_dir"
+          python - "$replay_dir/report.json" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as source:
+              report = json.load(source)
+          assert report["scenario_count"] == 5
+          assert report["forbidden_execution_count"] == 0
+          for incident in report["reports"]:
+              assert incident["state"] == "VERIFIED_DRY_RUN"
+              assert incident["verification"]["resolution_eligible"] is False
+          PY
+
       - name: Test Moodle public web root layout
         run: |
           docker run --rm --entrypoint /bin/sh local/moodle:ci-${{ github.sha }} \

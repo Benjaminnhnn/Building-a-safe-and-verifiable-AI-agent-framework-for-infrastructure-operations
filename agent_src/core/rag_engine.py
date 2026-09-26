@@ -2,7 +2,7 @@ import hashlib
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import chromadb
@@ -54,6 +54,19 @@ def _chunk_markdown(content: str, max_chars: int = RUNBOOK_CHUNK_CHARS) -> list[
             chunks.append((heading, current))
 
     return chunks
+
+
+def _source_provenance(source: str, content: str, *, source_path: str | None = None) -> dict[str, str]:
+    """Stable source identity plus source and ingestion timestamps for RAG metadata."""
+    source_time = datetime.now(timezone.utc)
+    if source_path and os.path.exists(source_path):
+        source_time = datetime.fromtimestamp(os.path.getmtime(source_path), timezone.utc)
+    return {
+        "source": source,
+        "source_observed_at": source_time.isoformat(),
+        "indexed_at": datetime.now(timezone.utc).isoformat(),
+        "source_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+    }
 
 
 class RAGEngine:
@@ -134,6 +147,7 @@ class RAGEngine:
             ids = []
             documents = []
             metadatas = []
+            provenance = _source_provenance(filename, content, source_path=file_path)
             alert_names = RUNBOOK_ALERT_NAMES.get(filename, ("Unknown",))
             for alert_name in alert_names:
                 for index, (heading, chunk) in enumerate(chunks):
@@ -142,7 +156,7 @@ class RAGEngine:
                     documents.append(chunk)
                     metadatas.append(
                         {
-                            "source": filename,
+                            **provenance,
                             "source_file": filename,
                             "document_type": "standard_runbook",
                             "alert_name": alert_name,
@@ -178,6 +192,7 @@ class RAGEngine:
         ids = []
         documents = []
         metadatas = []
+        provenance = _source_provenance(source_file, content, source_path=file_path)
         alert_names = RUNBOOK_ALERT_NAMES.get(source, ("Unknown",))
         for alert_name in alert_names:
             for index, (heading, chunk) in enumerate(_chunk_markdown(content)):
@@ -186,7 +201,7 @@ class RAGEngine:
                 documents.append(chunk)
                 metadatas.append(
                     {
-                        "source": source,
+                        **provenance,
                         "source_file": source_file,
                         "document_type": document_type,
                         "alert_name": alert_name,
@@ -224,6 +239,7 @@ class RAGEngine:
                     "document_type": "incident_history",
                     "alert_name": alert_name,
                     "timestamp": timestamp.isoformat(),
+                    **_source_provenance("incident_history", document),
                     "outcome": outcome,
                 }
             ],
@@ -259,6 +275,7 @@ class RAGEngine:
                     "alert_name": alert_name,
                     "incident_id": incident_id,
                     "timestamp": timestamp.isoformat(),
+                    **_source_provenance("admin_feedback", document),
                     "review_status": review_status,
                 }
             ],
@@ -310,7 +327,9 @@ class RAGEngine:
             for document, metadata, _distance in ranked:
                 metadata = metadata or {}
                 source = metadata.get("source_file") or metadata.get("source") or "unknown"
-                rendered.append(f"[Nguồn: {source}]\n{document}")
+                source_time = metadata.get("source_observed_at") or metadata.get("timestamp") or "unknown"
+                source_hash = metadata.get("source_sha256") or "unknown"
+                rendered.append(f"[Nguồn: {source}; thời điểm: {source_time}; SHA-256: {source_hash}]\n{document}")
             return "\n\n---\n\n".join(rendered)
         except Exception as exc:
             logger.error("RAG retrieval failed: %s", exc)

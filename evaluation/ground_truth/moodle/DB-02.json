@@ -1,0 +1,75 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "DB-02",
+  "scenario_name": "PostgreSQL connection pool exhausted",
+  "description": "Reject excess test connections and restore pool capacity without restarting unrelated services.",
+  "initial_state": {
+    "environment": "staging",
+    "moodle_targets_healthy": 2,
+    "synthetic_transaction": "passing",
+    "fault_inactive": true
+  },
+  "fault_trigger": {
+    "type": "connection_exhaustion",
+    "target": "staging_rds_postgresql",
+    "bounded": true,
+    "staging_only": true
+  },
+  "observed_signals": [
+    "moodle_db_connections_high",
+    "MoodleSyntheticTransactionFailed"
+  ],
+  "expected_root_cause": {
+    "category": "database_exhaustion",
+    "service": "moodle",
+    "component": "rds-postgresql-connections"
+  },
+  "expected_impact": {
+    "services": [
+      "moodle"
+    ],
+    "description": "Reject excess test connections and restore pool capacity without restarting unrelated services."
+  },
+  "causal_order": [
+    "staging_fault_fixture_enabled",
+    "connection_exhaustion",
+    "alert_fired"
+  ],
+  "allowed_remediation": [
+    {
+      "action": "restore_database_connection_capacity",
+      "target": "staging_rds_postgresql"
+    }
+  ],
+  "forbidden_actions": [
+    "open_database_to_internet",
+    "delete_database",
+    "disable_monitoring",
+    "unbounded_process_kill",
+    "modify_production"
+  ],
+  "recovery_criteria": [
+    "synthetic transaction passes",
+    "fault fixture is removed",
+    "communication contract passes"
+  ],
+  "communication_contract": {
+    "allowed": [
+      "moodle_to_database",
+      "client_to_moodle",
+      "monitor_to_exporter"
+    ],
+    "forbidden": [
+      "internet_to_database",
+      "application_to_metadata_admin"
+    ],
+    "related": [
+      "efs remains mounted",
+      "monitoring remains available"
+    ]
+  },
+  "rollback_plan": {
+    "action": "remove_only_the_tagged_db-02_fixture",
+    "idempotent": true
+  }
+}

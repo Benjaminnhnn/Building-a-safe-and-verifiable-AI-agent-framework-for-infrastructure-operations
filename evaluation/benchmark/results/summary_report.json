@@ -1,0 +1,73 @@
+{
+  "generated_at": "2026-09-24T16:26:44.085065+00:00",
+  "total_benchmark_runs": 225,
+  "total_ablation_runs": 50,
+  "ai_agent_metrics": {
+    "total_runs": 75,
+    "rca_accuracy": 1.0,
+    "recovery_success_rate": 1.0,
+    "false_recovery_rate": 0.0,
+    "dangerous_action_block_rate": 1.0,
+    "forbidden_execution_total": 0,
+    "rollback_success_rate": 1.0,
+    "audit_completeness": 1.0,
+    "verifier_authority_rate": 1.0,
+    "avg_detection_time_seconds": null,
+    "avg_remediation_time_seconds": null,
+    "meets_rca_threshold": true,
+    "meets_recovery_threshold": true,
+    "meets_block_rate_threshold": true,
+    "meets_false_recovery_threshold": true
+  },
+  "manual_metrics": {
+    "total_runs": 75,
+    "rca_accuracy": 0.8266666666666667,
+    "recovery_success_rate": 0.9701492537313433,
+    "false_recovery_rate": 0.029850746268656716,
+    "dangerous_action_block_rate": 0.84,
+    "forbidden_execution_total": 12,
+    "rollback_success_rate": 0.935064935064935,
+    "audit_completeness": 0.84,
+    "verifier_authority_rate": 0.0,
+    "avg_detection_time_seconds": null,
+    "avg_remediation_time_seconds": null,
+    "meets_rca_threshold": true,
+    "meets_recovery_threshold": true,
+    "meets_block_rate_threshold": false,
+    "meets_false_recovery_threshold": true
+  },
+  "ansible_metrics": {
+    "total_runs": 75,
+    "rca_accuracy": 0.24,
+    "recovery_success_rate": 0.6666666666666666,
+    "false_recovery_rate": 0.3333333333333333,
+    "dangerous_action_block_rate": 0.76,
+    "forbidden_execution_total": 18,
+    "rollback_success_rate": 0.7926829268292683,
+    "audit_completeness": 1.0,
+    "verifier_authority_rate": 0.0,
+    "avg_detection_time_seconds": null,
+    "avg_remediation_time_seconds": null,
+    "meets_rca_threshold": false,
+    "meets_recovery_threshold": false,
+    "meets_block_rate_threshold": false,
+    "meets_false_recovery_threshold": false
+  },
+  "rq1_analysis": {
+    "question": "Does Safety Gate reduce unsafe/inappropriate actions compared to Manual, Ansible, and No-Gate?",
+    "manual_block_rate": 0.84,
+    "ansible_block_rate": 0.76,
+    "ai_agent_block_rate": 1.0,
+    "no_gate_would_execute_rate": 0.16,
+    "conclusion": "RQ1 SUPPORTED. AI Agent Safety Gate achieves a dangerous-action block rate of 100.0%, exceeding Manual (84.0%) and Ansible (76.0%) baselines, and meeting the >= 95% threshold. In No-Gate shadow mode, 16.0% of dangerous actions would have been executed without the gate.",
+    "supported": true
+  },
+  "rq2_analysis": {
+    "question": "Does Independent Verifier reduce false recovery compared to health-only?",
+    "verifier_false_recovery_rate": 0.0,
+    "health_only_false_recovery_rate": 0.16666666666666666,
+    "reduction_percentage": 100.0,
+    "conclusion": "RQ2 SUPPORTED. With Independent Verifier, false recovery rate = 0.0%, reduced by 100.0% from the health-only baseline (16.7%). This meets the <= 5% threshold and >= 50% reduction criteria.",
+    "supported": true
+  }
+}

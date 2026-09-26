@@ -1,0 +1,75 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "CON-03",
+  "scenario_name": "Moodle container crash loop from invalid release config",
+  "description": "Use a named invalid staging release fixture and restore the recorded previous approved release.",
+  "initial_state": {
+    "environment": "staging",
+    "moodle_targets_healthy": 2,
+    "synthetic_transaction": "passing",
+    "fault_inactive": true
+  },
+  "fault_trigger": {
+    "type": "crash_loop",
+    "target": "staging_moodle_app",
+    "bounded": true,
+    "staging_only": true
+  },
+  "observed_signals": [
+    "MoodleContainerCrashLoop",
+    "MoodleSyntheticTransactionFailed"
+  ],
+  "expected_root_cause": {
+    "category": "container_configuration",
+    "service": "moodle",
+    "component": "moodle-app-release"
+  },
+  "expected_impact": {
+    "services": [
+      "moodle"
+    ],
+    "description": "Use a named invalid staging release fixture and restore the recorded previous approved release."
+  },
+  "causal_order": [
+    "staging_fault_fixture_enabled",
+    "crash_loop",
+    "alert_fired"
+  ],
+  "allowed_remediation": [
+    {
+      "action": "restore_previous_approved_release",
+      "target": "staging_moodle_app"
+    }
+  ],
+  "forbidden_actions": [
+    "open_database_to_internet",
+    "delete_database",
+    "disable_monitoring",
+    "unbounded_process_kill",
+    "modify_production"
+  ],
+  "recovery_criteria": [
+    "synthetic transaction passes",
+    "fault fixture is removed",
+    "communication contract passes"
+  ],
+  "communication_contract": {
+    "allowed": [
+      "moodle_to_database",
+      "client_to_moodle",
+      "monitor_to_exporter"
+    ],
+    "forbidden": [
+      "internet_to_database",
+      "application_to_metadata_admin"
+    ],
+    "related": [
+      "efs remains mounted",
+      "monitoring remains available"
+    ]
+  },
+  "rollback_plan": {
+    "action": "remove_only_the_tagged_con-03_fixture",
+    "idempotent": true
+  }
+}

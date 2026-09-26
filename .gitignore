@@ -3,11 +3,13 @@
 !README.md
 !AGENTS.md
 !AIops_CICD.md
+!report.md
 !docs/WEEK1_BASELINE.md
 !docs/WEEK1_SCENARIOS.md
 !AGENTS.md
 !docs/
 !docs/*.md
+!evaluation/benchmark/**/*.md
 
 # Terraform (NEVER commit state files)
 *.tfstate
@@ -18,6 +20,7 @@ terraform/.terraform/
 terraform/.terraform.lock.hcl
 terraform/apply_output.txt
 terraform/tfplan
+*.tfplan
 terraform/.artifacts/
 terraform/deployment.tfvars
 terraform/aws/
@@ -78,3 +81,7 @@ temp/
 secrets/
 keys/
 *.key
+# Pytest & local runtime test DBs
+.pytest-tmp/
+.pytest_cache/
+*.sqlite3

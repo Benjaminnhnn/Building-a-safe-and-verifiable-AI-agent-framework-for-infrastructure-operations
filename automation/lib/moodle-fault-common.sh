@@ -49,9 +49,9 @@ load_moodle_environment() {
 
 validate_scenario() {
   case "${1:-}" in
-    DB-01|RES-01|NET-01|CON-01|SEC-02) ;;
+    DB-01|DB-02|DB-03|RES-01|RES-02|RES-03|NET-01|NET-02|NET-03|CON-01|CON-02|CON-03|SEC-01|SEC-02|SEC-03) ;;
     *)
-      echo "Scenario must be one of: DB-01 RES-01 NET-01 CON-01 SEC-02" >&2
+      echo "Scenario must be one of the 15 Moodle scenarios (DB-01..03, RES-01..03, NET-01..03, CON-01..03, SEC-01..03)" >&2
       exit 64
       ;;
   esac

@@ -41,7 +41,28 @@ EOF
   exit 64
 }
 
-for required_command in aws curl docker jq openssl ss ssh terraform; do
+docker_command="${MOODLE_DOCKER_COMMAND:-docker}"
+docker_connect_host="127.0.0.1"
+tunnel_bind_host="127.0.0.1"
+docker_run_args=(run --rm --network host --env MOODLE_DB_PASSWORD)
+if [[ "$docker_command" == "docker.exe" ]] || ! docker info >/dev/null 2>&1; then
+  command -v docker.exe >/dev/null 2>&1 || {
+    echo "Docker CLI is unavailable. Enable Docker Desktop WSL integration or install Docker in WSL." >&2
+    exit 127
+  }
+  docker_command="docker.exe"
+  docker_connect_host="$(hostname -I | awk '{print $1}')"
+  [[ -n "$docker_connect_host" ]] || {
+    echo "Unable to determine the WSL address for Docker Desktop DB access." >&2
+    exit 69
+  }
+  # Bind only to the WSL interface Docker Desktop uses. A wildcard listener
+  # would expose the temporary RDS tunnel to every interface on the laptop.
+  tunnel_bind_host="$docker_connect_host"
+  docker_run_args=(run --rm --add-host="moodle-wsl-host:${docker_connect_host}" --env MOODLE_DB_PASSWORD)
+fi
+
+for required_command in aws curl jq openssl ss ssh terraform; do
   command -v "$required_command" >/dev/null 2>&1 || {
     echo "Required command not found: $required_command" >&2
     exit 127
@@ -69,6 +90,14 @@ secret_file_is_private "$admin_password_file"
 [[ -s "$db_password_file" && -s "$admin_password_file" ]] || {
   echo "Secret files must not be empty." >&2
   exit 64
+}
+
+pgpass_escape() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//:/\\:}"
+  value="${value//$'\n'/\\n}"
+  printf '%s' "$value"
 }
 
 application_json="$(terraform -chdir="$terraform_dir" output -json moodle_application)"
@@ -121,11 +150,15 @@ work_dir="$(mktemp -d "${TMPDIR:-/tmp}/moodle-stage.XXXXXX")"
 ssh_pid=""
 cleanup() {
   [[ -n "$ssh_pid" ]] && kill "$ssh_pid" 2>/dev/null || true
-  unset master_password
+  unset master_password MOODLE_DB_PASSWORD
   rm -rf "$work_dir"
 }
 trap cleanup EXIT
 chmod 0700 "$work_dir"
+docker_work_dir="$work_dir"
+if [[ "$docker_command" == "docker.exe" ]]; then
+  docker_work_dir="$(wslpath -w "$work_dir")"
+fi
 
 ca_bundle_path="$work_dir/rds-ca.pem"
 curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
@@ -137,8 +170,9 @@ grep -q -- '-----BEGIN CERTIFICATE-----' "$ca_bundle_path" || {
 chmod 0600 "$ca_bundle_path"
 
 master_pgpass="$work_dir/master.pgpass"
-printf '%s:%s:%s:%s:%s\n' "$db_endpoint" "$tunnel_port" "$db_name" "$master_user" "$master_password" > "$master_pgpass"
-printf '%s:%s:%s:%s:%s\n' "127.0.0.1" "$tunnel_port" "$db_name" "$master_user" "$master_password" >> "$master_pgpass"
+escaped_master_password="$(pgpass_escape "$master_password")"
+printf '%s:%s:%s:%s:%s\n' "$db_endpoint" "$tunnel_port" "$db_name" "$master_user" "$escaped_master_password" > "$master_pgpass"
+printf '%s:%s:%s:%s:%s\n' "127.0.0.1" "$tunnel_port" "$db_name" "$master_user" "$escaped_master_password" >> "$master_pgpass"
 chmod 0600 "$master_pgpass"
 unset master_password
 
@@ -147,7 +181,7 @@ cp "$admin_password_file" "$work_dir/moodle-admin-password"
 chmod 0600 "$work_dir/moodle-db-password" "$work_dir/moodle-admin-password"
 
 cat > "$work_dir/provision-role.sql" <<'SQL'
-\set app_password `cat /run/moodle-stage/moodle-db-password`
+\getenv app_password MOODLE_DB_PASSWORD
 SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'app_user', :'app_password')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user');
 \gexec
@@ -159,10 +193,16 @@ SELECT format('GRANT USAGE, CREATE ON SCHEMA public TO %I', :'app_user');
 \gexec
 SQL
 chmod 0600 "$work_dir/provision-role.sql"
+MOODLE_DB_PASSWORD="$(tr -d '\r\n' < "$work_dir/moodle-db-password")"
+export MOODLE_DB_PASSWORD
+[[ -n "$MOODLE_DB_PASSWORD" ]] || {
+  echo "The Moodle database password is empty." >&2
+  exit 65
+}
 
 echo "Opening a temporary SSH tunnel to provision the Moodle RDS role..."
 ssh -F "$ssh_config_path" -N \
-  -L "127.0.0.1:${tunnel_port}:${db_endpoint}:${db_port}" moodle-app-a &
+  -L "${tunnel_bind_host}:${tunnel_port}:${db_endpoint}:${db_port}" moodle-app-a &
 ssh_pid=$!
 for _ in {1..25}; do
   if ss -ltn "sport = :$tunnel_port" | grep -q LISTEN; then
@@ -176,29 +216,52 @@ ss -ltn "sport = :$tunnel_port" | grep -q LISTEN || {
 }
 
 echo "Creating or rotating the least-privilege Moodle database role..."
-docker run --rm --network host \
-  -v "$work_dir:/run/moodle-stage:ro" \
-  -e PGPASSFILE=/run/moodle-stage/master.pgpass \
-  postgres:16.10-alpine \
-  psql "host=${db_endpoint} hostaddr=127.0.0.1 port=${tunnel_port} dbname=${db_name} user=${master_user} sslmode=verify-full sslrootcert=/run/moodle-stage/rds-ca.pem" \
-  -v ON_ERROR_STOP=1 \
-  -v app_user="$app_user" \
-  -v db_name="$db_name" \
-  -f /run/moodle-stage/provision-role.sql >/dev/null
+if [[ "$docker_command" == "docker.exe" ]]; then
+  $docker_command "${docker_run_args[@]}" --entrypoint sh \
+    -v "$docker_work_dir:/run/moodle-stage:ro" \
+    postgres:16.10-alpine \
+    -c 'cp /run/moodle-stage/master.pgpass /tmp/master.pgpass && chmod 600 /tmp/master.pgpass && PGPASSFILE=/tmp/master.pgpass exec psql "$@"' \
+    sh "host=${db_endpoint} hostaddr=${docker_connect_host} port=${tunnel_port} dbname=${db_name} user=${master_user} sslmode=verify-full sslrootcert=/run/moodle-stage/rds-ca.pem" \
+    -v ON_ERROR_STOP=1 \
+    -v app_user="$app_user" \
+    -v db_name="$db_name" \
+    -f /run/moodle-stage/provision-role.sql
+else
+  $docker_command "${docker_run_args[@]}" \
+    -v "$docker_work_dir:/run/moodle-stage:ro" \
+    -e PGPASSFILE=/run/moodle-stage/master.pgpass \
+    postgres:16.10-alpine \
+    psql "host=${db_endpoint} hostaddr=${docker_connect_host} port=${tunnel_port} dbname=${db_name} user=${master_user} sslmode=verify-full sslrootcert=/run/moodle-stage/rds-ca.pem" \
+    -v ON_ERROR_STOP=1 \
+    -v app_user="$app_user" \
+    -v db_name="$db_name" \
+    -f /run/moodle-stage/provision-role.sql
+fi
+unset MOODLE_DB_PASSWORD
 
 echo "Verifying the Moodle application role can connect with TLS..."
 app_pgpass="$work_dir/app.pgpass"
 app_password="$(tr -d '\r\n' < "$work_dir/moodle-db-password")"
-printf '%s:%s:%s:%s:%s\n' "$db_endpoint" "$tunnel_port" "$db_name" "$app_user" "$app_password" > "$app_pgpass"
-printf '%s:%s:%s:%s:%s\n' "127.0.0.1" "$tunnel_port" "$db_name" "$app_user" "$app_password" >> "$app_pgpass"
+escaped_app_password="$(pgpass_escape "$app_password")"
+printf '%s:%s:%s:%s:%s\n' "$db_endpoint" "$tunnel_port" "$db_name" "$app_user" "$escaped_app_password" > "$app_pgpass"
+printf '%s:%s:%s:%s:%s\n' "127.0.0.1" "$tunnel_port" "$db_name" "$app_user" "$escaped_app_password" >> "$app_pgpass"
 unset app_password
 chmod 0600 "$app_pgpass"
-docker run --rm --network host \
-  -v "$work_dir:/run/moodle-stage:ro" \
-  -e PGPASSFILE=/run/moodle-stage/app.pgpass \
-  postgres:16.10-alpine \
-  psql "host=${db_endpoint} hostaddr=127.0.0.1 port=${tunnel_port} dbname=${db_name} user=${app_user} sslmode=verify-full sslrootcert=/run/moodle-stage/rds-ca.pem" \
-  -v ON_ERROR_STOP=1 -Atqc 'SELECT current_user' | grep -qx "$app_user"
+if [[ "$docker_command" == "docker.exe" ]]; then
+  $docker_command "${docker_run_args[@]}" --entrypoint sh \
+    -v "$docker_work_dir:/run/moodle-stage:ro" \
+    postgres:16.10-alpine \
+    -c 'cp /run/moodle-stage/app.pgpass /tmp/app.pgpass && chmod 600 /tmp/app.pgpass && PGPASSFILE=/tmp/app.pgpass exec psql "$@"' \
+    sh "host=${db_endpoint} hostaddr=${docker_connect_host} port=${tunnel_port} dbname=${db_name} user=${app_user} sslmode=verify-full sslrootcert=/run/moodle-stage/rds-ca.pem" \
+    -v ON_ERROR_STOP=1 -Atqc 'SELECT current_user' | grep -qx "$app_user"
+else
+  $docker_command "${docker_run_args[@]}" \
+    -v "$docker_work_dir:/run/moodle-stage:ro" \
+    -e PGPASSFILE=/run/moodle-stage/app.pgpass \
+    postgres:16.10-alpine \
+    psql "host=${db_endpoint} hostaddr=${docker_connect_host} port=${tunnel_port} dbname=${db_name} user=${app_user} sslmode=verify-full sslrootcert=/run/moodle-stage/rds-ca.pem" \
+    -v ON_ERROR_STOP=1 -Atqc 'SELECT current_user' | grep -qx "$app_user"
+fi
 
 runtime_env="$work_dir/moodle-runtime.env"
 cat > "$runtime_env" <<EOF

@@ -24,7 +24,7 @@ from core.runbook_registry import create_runbook_draft
 from core.shadow_pipeline import run_shadow_if_enabled
 from dotenv import load_dotenv
 from google import genai
-from google.genai import types
+from core.moodle_alert_integration import process_moodle_alert
 from tools.diag_tools import AGENT_TOOLS
 from tools.prometheus_check import get_prometheus_checker
 from utils.telegram_bot import send_telegram_message
@@ -563,6 +563,10 @@ def _mark_matching_incident_recovery_signal(alert: dict) -> str | None:
         return None
 
 
+# Backward-compatible alias for incident resolution/recovery
+_mark_matching_incident_resolved = _mark_matching_incident_recovery_signal
+
+
 def _parse_review_json(full_text: str) -> dict | None:
     match = re.search(r"REVIEW_JSON:\s*(\{.*\})", full_text, flags=re.DOTALL)
     if not match:
@@ -916,7 +920,9 @@ async def process_single_alert(alert: dict) -> None:
         instance    = alert["labels"].get("instance", "Unknown")
         if alert.get("status") == "resolved":
             _clear_alert_cooldown(alert)
-            resolved_incident_id = _mark_matching_incident_recovery_signal(alert)
+            labels = alert.get("labels") or {}
+            moodle_shadow_event = labels.get("service") == "moodle" and labels.get("environment") == "staging"
+            resolved_incident_id = None if moodle_shadow_event else _mark_matching_incident_resolved(alert)
             if not _reserve_alert_notification(alert, "resolved"):
                 logger.info(
                     "Skipping duplicate resolved notification: alert=%s instance=%s",
@@ -926,11 +932,19 @@ async def process_single_alert(alert: dict) -> None:
                 ALERTS_PROCESSED_TOTAL.labels(status='deduped').inc()
                 return
             incident_suffix = f" (ID: `{resolved_incident_id}`)" if resolved_incident_id else ""
-            send_telegram_message(
-                f"🔎 *ALERT ĐÃ HẾT, ĐANG XÁC MINH:* {alert_name} "
-                f"trên `{instance}`{incident_suffix}"
-            )
-            ALERTS_PROCESSED_TOTAL.labels(status='verification_pending').inc()
+            if moodle_shadow_event:
+                send_telegram_message(
+                    f"Alertmanager báo hết cảnh báo Moodle: {alert_name} trên `{instance}`. "
+                    "Incident chưa được đánh dấu RESOLVED; cần kết quả Independent Verifier.",
+                    parse_mode=None,
+                )
+                ALERTS_PROCESSED_TOTAL.labels(status='verification_pending').inc()
+            else:
+                send_telegram_message(
+                    f"🔎 *ALERT ĐÃ HẾT, ĐANG XÁC MINH:* {alert_name} "
+                    f"trên `{instance}`{incident_suffix}"
+                )
+                ALERTS_PROCESSED_TOTAL.labels(status='verification_pending').inc()
             return
 
         if not _reserve_alert_processing(alert):
@@ -950,6 +964,22 @@ async def process_single_alert(alert: dict) -> None:
                 instance,
             )
             ALERTS_PROCESSED_TOTAL.labels(status='deduped').inc()
+            return
+
+        moodle_report = process_moodle_alert(alert)
+        if moodle_report is not None:
+            duration = time.time() - start_time
+            AI_WORKFLOW_LATENCY_SECONDS.observe(duration)
+            ALERTS_PROCESSED_TOTAL.labels(status='success').inc()
+            send_telegram_message(
+                "Moodle AI pipeline: "
+                f"{moodle_report['status']} | scenario={moodle_report.get('scenario_id', 'unknown')} | "
+                f"incident={moodle_report.get('incident_id', 'unassigned')} | "
+                f"execution_permitted={moodle_report.get('execution_permitted', False)} | "
+                f"resolution_eligible={moodle_report.get('resolution_eligible', False)}",
+                parse_mode=None,
+            )
+            logger.info("Moodle shadow pipeline result: %s", json.dumps(moodle_report, sort_keys=True))
             return
 
         try:

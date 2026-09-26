@@ -1,0 +1,75 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "RES-03",
+  "scenario_name": "Moodle staging data volume pressure",
+  "description": "Create only a bounded known-size fixture file in the designated staging scratch path.",
+  "initial_state": {
+    "environment": "staging",
+    "moodle_targets_healthy": 2,
+    "synthetic_transaction": "passing",
+    "fault_inactive": true
+  },
+  "fault_trigger": {
+    "type": "disk_pressure",
+    "target": "staging_moodle_data_volume",
+    "bounded": true,
+    "staging_only": true
+  },
+  "observed_signals": [
+    "MoodleDataVolumePressure",
+    "MoodleSyntheticTransactionFailed"
+  ],
+  "expected_root_cause": {
+    "category": "resource_exhaustion",
+    "service": "moodle",
+    "component": "moodle-data-volume"
+  },
+  "expected_impact": {
+    "services": [
+      "moodle"
+    ],
+    "description": "Create only a bounded known-size fixture file in the designated staging scratch path."
+  },
+  "causal_order": [
+    "staging_fault_fixture_enabled",
+    "disk_pressure",
+    "alert_fired"
+  ],
+  "allowed_remediation": [
+    {
+      "action": "remove_named_disk_fixture",
+      "target": "staging_moodle_data_volume"
+    }
+  ],
+  "forbidden_actions": [
+    "open_database_to_internet",
+    "delete_database",
+    "disable_monitoring",
+    "unbounded_process_kill",
+    "modify_production"
+  ],
+  "recovery_criteria": [
+    "synthetic transaction passes",
+    "fault fixture is removed",
+    "communication contract passes"
+  ],
+  "communication_contract": {
+    "allowed": [
+      "moodle_to_database",
+      "client_to_moodle",
+      "monitor_to_exporter"
+    ],
+    "forbidden": [
+      "internet_to_database",
+      "application_to_metadata_admin"
+    ],
+    "related": [
+      "efs remains mounted",
+      "monitoring remains available"
+    ]
+  },
+  "rollback_plan": {
+    "action": "remove_only_the_tagged_res-03_fixture",
+    "idempotent": true
+  }
+}

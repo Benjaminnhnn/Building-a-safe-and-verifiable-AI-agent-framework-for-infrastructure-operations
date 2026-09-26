@@ -647,6 +647,7 @@
                 PROMETHEUS_URL: http://prometheus:9090
                 VECTOR_DB_PATH: /app/vector_db
                 AIOPS_UNIFIED_CORE_MODE: shadow
+                AIOPS_EVIDENCE_DB: /app/data/evidence.sqlite3
                 AIOPS_EVIDENCE_DB_PATH: /app/data/evidence.db
                 GEMINI_MAX_ATTEMPTS: "1"
                 GEMINI_MAX_REMOTE_CALLS: "1"
@@ -675,6 +676,7 @@
                 PROMETHEUS_URL: http://prometheus:9090
                 VECTOR_DB_PATH: /app/vector_db
                 AIOPS_UNIFIED_CORE_MODE: shadow
+                AIOPS_EVIDENCE_DB: /app/data/evidence.sqlite3
                 AIOPS_EVIDENCE_DB_PATH: /app/data/evidence.db
                 GEMINI_MAX_ATTEMPTS: "1"
                 GEMINI_MAX_REMOTE_CALLS: "1"

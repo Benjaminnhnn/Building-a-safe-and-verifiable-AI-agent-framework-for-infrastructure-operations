@@ -30,6 +30,9 @@ def test_save_admin_solution_writes_to_incident_memory() -> None:
     kwargs = engine.incident_memory.upsert.call_args.kwargs
     assert kwargs["metadatas"][0]["source"] == "admin_feedback"
     assert kwargs["metadatas"][0]["document_type"] == "admin_feedback"
+    assert kwargs["metadatas"][0]["source_observed_at"]
+    assert kwargs["metadatas"][0]["indexed_at"]
+    assert len(kwargs["metadatas"][0]["source_sha256"]) == 64
     assert "check logs, then restart" in kwargs["documents"][0]
 
 
@@ -51,9 +54,27 @@ def test_query_knowledge_keeps_standard_and_dynamic_sources_separate() -> None:
     result = engine.query_knowledge("frontend web endpoint down")
 
     assert "Quy trình chuẩn từ runbook" in result
-    assert "[Nguồn: web_endpoint_down.md]" in result
+    assert "[Nguồn: web_endpoint_down.md;" in result
     assert "Kinh nghiệm từ incident và feedback trước đây" in result
-    assert "[Nguồn: admin_feedback]" in result
+    assert "[Nguồn: admin_feedback;" in result
+
+
+def test_retrieval_renders_source_time_and_hash_provenance() -> None:
+    engine = RAGEngine.__new__(RAGEngine)
+    engine.standard_runbooks = Mock()
+    engine.standard_runbooks.count.return_value = 1
+    engine.standard_runbooks.query.return_value = {
+        "documents": [["verified runbook steps"]],
+        "metadatas": [[{"source_file": "safe.md", "source_observed_at": "2026-09-24T00:00:00+00:00", "source_sha256": "a" * 64}]],
+        "distances": [[0.0]],
+    }
+    engine.incident_memory = Mock()
+    engine.incident_memory.count.return_value = 0
+
+    result = engine.query_knowledge("verified runbook")
+
+    assert "thời điểm: 2026-09-24T00:00:00+00:00" in result
+    assert f"SHA-256: {'a' * 64}" in result
 
 
 def test_query_knowledge_filters_by_alert_name() -> None:

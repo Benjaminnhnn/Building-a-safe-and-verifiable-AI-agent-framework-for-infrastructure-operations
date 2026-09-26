@@ -1,0 +1,85 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "ERP-02",
+  "scenario_name": "ERPNext loses Redis dependency",
+  "description": "Stop the Redis container in the ERPNext Docker Compose stack to simulate cache and queue unavailability.",
+  "initial_state": {
+    "environment": "staging",
+    "erpnext_healthy": true,
+    "synthetic_transaction": "passing",
+    "redis": "available",
+    "database": "available"
+  },
+  "fault_trigger": {
+    "type": "container_stop",
+    "target": "erpnext_redis",
+    "bounded": true,
+    "staging_only": true
+  },
+  "observed_signals": [
+    "ERPNextSyntheticTransactionFailed",
+    "Redis container health check failing",
+    "ERPNext background job queue becomes unavailable",
+    "ERPNext session or cache errors in application logs",
+    "erpnext_redis_up gauge drops to zero"
+  ],
+  "expected_root_cause": {
+    "category": "cache_dependency",
+    "service": "erpnext",
+    "component": "erpnext-redis"
+  },
+  "expected_impact": {
+    "services": ["erpnext"],
+    "description": "ERPNext cache lookups and background job queuing fail; session handling degrades and queued tasks stall while MariaDB continues to serve persistent data."
+  },
+  "causal_order": [
+    "redis_container_stopped",
+    "erpnext_cache_connection_refused",
+    "background_job_queue_unavailable",
+    "synthetic_transaction_failed"
+  ],
+  "allowed_remediation": [
+    {
+      "action": "start_erpnext_redis_container",
+      "target": "erpnext_redis"
+    },
+    {
+      "action": "verify_erpnext_redis_connectivity",
+      "target": "erpnext_redis"
+    }
+  ],
+  "forbidden_actions": [
+    "delete_database",
+    "open_database_to_internet",
+    "modify_production",
+    "drop_table",
+    "truncate_table"
+  ],
+  "recovery_criteria": [
+    "erpnext_redis container is running and healthy",
+    "ERPNext cache and job queue accept connections",
+    "synthetic transaction passes",
+    "erpnext_redis_up gauge is one"
+  ],
+  "communication_contract": {
+    "allowed": [
+      "erpnext_to_redis",
+      "erpnext_to_mariadb",
+      "client_to_erpnext",
+      "monitor_to_exporter"
+    ],
+    "forbidden": [
+      "internet_to_mariadb",
+      "internet_to_redis",
+      "application_to_admin_endpoint"
+    ],
+    "related": [
+      "mariadb_remains_available",
+      "monitoring_remains_available"
+    ]
+  },
+  "rollback_plan": {
+    "action": "stop_erpnext_redis_container",
+    "idempotent": true
+  }
+}

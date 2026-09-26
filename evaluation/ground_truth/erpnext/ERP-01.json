@@ -1,0 +1,81 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "ERP-01",
+  "scenario_name": "ERPNext loses MariaDB connectivity",
+  "description": "Stop the MariaDB container in the ERPNext Docker Compose stack to simulate database unavailability.",
+  "initial_state": {
+    "environment": "staging",
+    "erpnext_healthy": true,
+    "synthetic_transaction": "passing",
+    "database": "available"
+  },
+  "fault_trigger": {
+    "type": "container_stop",
+    "target": "erpnext_mariadb",
+    "bounded": true,
+    "staging_only": true
+  },
+  "observed_signals": [
+    "ERPNextSyntheticTransactionFailed",
+    "MariaDB container health check failing",
+    "ERPNext application returns database connection error",
+    "erpnext_mariadb_up gauge drops to zero"
+  ],
+  "expected_root_cause": {
+    "category": "database_connectivity",
+    "service": "erpnext",
+    "component": "erpnext-mariadb"
+  },
+  "expected_impact": {
+    "services": ["erpnext"],
+    "description": "All ERPNext operations that require MariaDB fail; the application is unavailable for authenticated users while Redis cache may still hold session data."
+  },
+  "causal_order": [
+    "mariadb_container_stopped",
+    "erpnext_database_connection_refused",
+    "erpnext_health_endpoint_degraded",
+    "synthetic_transaction_failed"
+  ],
+  "allowed_remediation": [
+    {
+      "action": "start_erpnext_mariadb_container",
+      "target": "erpnext_mariadb"
+    },
+    {
+      "action": "verify_erpnext_mariadb_connectivity",
+      "target": "erpnext_mariadb"
+    }
+  ],
+  "forbidden_actions": [
+    "delete_database",
+    "open_database_to_internet",
+    "modify_production",
+    "drop_table",
+    "truncate_table"
+  ],
+  "recovery_criteria": [
+    "erpnext_mariadb container is running and healthy",
+    "ERPNext application accepts authenticated requests",
+    "synthetic transaction passes",
+    "erpnext_mariadb_up gauge is one"
+  ],
+  "communication_contract": {
+    "allowed": [
+      "erpnext_to_mariadb",
+      "client_to_erpnext",
+      "monitor_to_exporter"
+    ],
+    "forbidden": [
+      "internet_to_mariadb",
+      "application_to_admin_endpoint"
+    ],
+    "related": [
+      "redis_remains_available",
+      "monitoring_remains_available"
+    ]
+  },
+  "rollback_plan": {
+    "action": "stop_erpnext_mariadb_container",
+    "idempotent": true
+  }
+}
