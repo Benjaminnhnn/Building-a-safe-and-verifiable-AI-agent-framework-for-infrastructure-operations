@@ -122,8 +122,9 @@ Migration defaults preserve project/environment names and EC2 subnet placement.
 Optional legacy EC2/EIPs use moved blocks to preserve state identity when adding
 count. New resources use the `moodle-staging` prefix. Existing monitoring stays
 in public A by default; a new deployment can explicitly choose Management A.
-Changing the subnet of an existing monitor replaces it. See
-[deployment guide](MOODLE_DEPLOYMENT_GUIDE.md) for the reviewed input choices.
+Changing the subnet of an existing monitor replaces it. See the
+[Moodle Operations Runbook](MOODLE_OPERATIONS_RUNBOOK.md) for reviewed input
+choices.
 
 ## 6. Security-group contract
 
