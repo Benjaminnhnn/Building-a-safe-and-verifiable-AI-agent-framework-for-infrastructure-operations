@@ -181,6 +181,10 @@ cp "$admin_password_file" "$work_dir/moodle-admin-password"
 chmod 0600 "$work_dir/moodle-db-password" "$work_dir/moodle-admin-password"
 
 cat > "$work_dir/provision-role.sql" <<'SQL'
+-- CREATE/ALTER statements include an application password.  Keep psql query
+-- output off the terminal and CI logs; only the shell's high-level status
+-- messages may be emitted.
+\o /dev/null
 \getenv app_password MOODLE_DB_PASSWORD
 SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'app_user', :'app_password')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user');
@@ -191,6 +195,7 @@ SELECT format('GRANT CONNECT ON DATABASE %I TO %I', :'db_name', :'app_user');
 \gexec
 SELECT format('GRANT USAGE, CREATE ON SCHEMA public TO %I', :'app_user');
 \gexec
+\o
 SQL
 chmod 0600 "$work_dir/provision-role.sql"
 MOODLE_DB_PASSWORD="$(tr -d '\r\n' < "$work_dir/moodle-db-password")"

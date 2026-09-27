@@ -1,0 +1,110 @@
+{
+  "schema_version": "1.0",
+  "environment": "staging",
+  "purpose": "Offline S3.1 contract. It authorizes neither arbitrary shell commands nor live AWS mutation.",
+  "evidence_contract": {
+    "required_fields": [
+      "evidence_id",
+      "incident_id",
+      "resource_id",
+      "source",
+      "collected_at",
+      "summary",
+      "content_hash",
+      "redacted"
+    ],
+    "allowed_sources": [
+      "alertmanager",
+      "prometheus",
+      "blackbox",
+      "docker",
+      "node_exporter",
+      "cadvisor",
+      "aws_alb",
+      "aws_rds",
+      "aws_efs",
+      "synthetic_transaction"
+    ],
+    "prohibited_metadata_keys": [
+      "password",
+      "secret",
+      "token",
+      "private_key",
+      "authorization"
+    ]
+  },
+  "capabilities": [
+    {
+      "capability_id": "collect_alert_evidence",
+      "access": "read",
+      "roles": ["observer", "verifier"],
+      "resource_ids": ["alertmanager", "prometheus-monitor"],
+      "sources": ["alertmanager", "prometheus"]
+    },
+    {
+      "capability_id": "collect_runtime_evidence",
+      "access": "read",
+      "roles": ["observer", "verifier"],
+      "resource_ids": ["moodle-app", "moodle-web-endpoint", "postgres-db", "moodledata-volume"],
+      "sources": ["blackbox", "docker", "node_exporter", "cadvisor", "synthetic_transaction"]
+    },
+    {
+      "capability_id": "collect_aws_evidence",
+      "access": "read",
+      "roles": ["observer", "verifier"],
+      "resource_ids": ["moodle-web-endpoint", "postgres-db", "moodledata-volume", "moodle-rds-security-group"],
+      "sources": ["aws_alb", "aws_rds", "aws_efs"]
+    },
+    {
+      "capability_id": "verify_recovery",
+      "access": "read",
+      "roles": ["verifier"],
+      "resource_ids": ["moodle-app", "moodle-web-endpoint", "postgres-db", "moodledata-volume"],
+      "sources": ["blackbox", "prometheus", "synthetic_transaction"]
+    },
+    {
+      "capability_id": "reset_staging_fault",
+      "access": "scoped_write",
+      "roles": ["executor"],
+      "resource_ids": ["moodle-app", "postgres-db", "moodledata-volume", "moodle-rds-security-group"],
+      "sources": []
+    },
+    {
+      "capability_id": "restore_reviewed_configuration",
+      "access": "scoped_write",
+      "roles": ["executor"],
+      "resource_ids": ["moodle-app", "moodle-web-endpoint", "postgres-db", "moodledata-volume"],
+      "sources": []
+    }
+  ],
+  "target_scopes": {
+    "moodle-app-b": {"resource_ids": ["moodle-app"], "hosts": ["moodle-app-b"]},
+    "staging_moodle_proxy": {"resource_ids": ["moodle-proxy", "moodle-web-endpoint"], "hosts": []},
+    "staging_moodle_app": {"resource_ids": ["moodle-app"], "hosts": ["moodle-app-a", "moodle-app-b"]},
+    "staging_moodle_nodes": {"resource_ids": ["moodle-app", "postgres-db"], "hosts": ["moodle-app-a", "moodle-app-b"]},
+    "staging_rds_postgresql": {"resource_ids": ["postgres-db"], "hosts": []},
+    "staging_moodle_configuration": {"resource_ids": ["moodle-app", "moodle-web-endpoint"], "hosts": ["moodle-app-a", "moodle-app-b"]},
+    "staging_moodle_node": {"resource_ids": ["moodle-app"], "hosts": ["moodle-app-a", "moodle-app-b"]},
+    "staging_moodle_data_volume": {"resource_ids": ["moodledata-volume"], "hosts": ["moodle-app-a", "moodle-app-b"]},
+    "staging_database_security_group": {"resource_ids": ["moodle-rds-security-group"], "hosts": []},
+    "moodledata_synthetic_fixture_directory": {"resource_ids": ["moodledata-volume"], "hosts": ["moodle-app-a"]},
+    "moodle-synthetic-transaction": {"resource_ids": ["moodle-app", "moodle-web-endpoint", "postgres-db", "moodledata-volume"], "hosts": ["moodle-app-a"]}
+  },
+  "scenario_capabilities": {
+    "DB-01": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "reset_staging_fault"],
+    "DB-02": ["collect_alert_evidence", "collect_aws_evidence", "verify_recovery", "restore_reviewed_configuration"],
+    "DB-03": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "restore_reviewed_configuration"],
+    "RES-01": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "reset_staging_fault"],
+    "RES-02": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "reset_staging_fault"],
+    "RES-03": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "reset_staging_fault"],
+    "NET-01": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "restore_reviewed_configuration"],
+    "NET-02": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "reset_staging_fault"],
+    "NET-03": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "reset_staging_fault"],
+    "CON-01": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "restore_reviewed_configuration"],
+    "CON-02": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "restore_reviewed_configuration"],
+    "CON-03": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "restore_reviewed_configuration"],
+    "SEC-01": ["collect_alert_evidence", "collect_aws_evidence", "verify_recovery", "reset_staging_fault"],
+    "SEC-02": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "restore_reviewed_configuration"],
+    "SEC-03": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "restore_reviewed_configuration"]
+  }
+}

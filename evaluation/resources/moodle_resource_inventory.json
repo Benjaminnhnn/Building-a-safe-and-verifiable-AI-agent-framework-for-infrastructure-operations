@@ -34,6 +34,21 @@
       }
     },
     {
+      "resource_id": "moodle-rds-security-group",
+      "name": "Moodle RDS security group",
+      "type": "network",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "aws-rds",
+      "service_name": null,
+      "endpoint": null,
+      "depends_on": [],
+      "tags": {
+        "system": "moodle",
+        "component": "database-network-boundary"
+      }
+    },
+    {
       "resource_id": "moodledata-volume",
       "name": "Moodle data volume",
       "type": "volume",
@@ -80,8 +95,8 @@
     },
     {
       "resource_id": "moodle-proxy",
-      "name": "Moodle reverse proxy",
-      "type": "application",
+      "name": "Moodle application load balancer",
+      "type": "endpoint",
       "environment": "staging",
       "owner_role": "infrastructure_engineer",
       "host": "aws-alb",
