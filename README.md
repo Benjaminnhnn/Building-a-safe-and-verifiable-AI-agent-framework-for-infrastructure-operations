@@ -320,9 +320,7 @@ Never commit `.env*`, Terraform state, SSH keys, API tokens, or runtime ChromaDB
 ## Further Reading
 
 - [CI/CD design](docs/AIops_CICD.md)
-- [AWS infrastructure deployment guide](docs/AWS_INFRASTRUCTURE_DEPLOYMENT_GUIDE.md)
-- [GitHub webhook and tool registry demo](docs/GITHUB_WEBHOOK_TOOL_REGISTRY_RUNBOOK_DEMO.md)
-- [Staging demo runbooks](docs/STAGING_DEMO_RUNBOOKS.md)
-- [Project context](docs/CONTEXT.md)
+- [Moodle operations runbook](docs/MOODLE_OPERATIONS_RUNBOOK.md)
+- [Moodle infrastructure design](docs/MOODLE_INFRASTRUCTURE_DESIGN.md)
 - [Planning notes](docs/PLANNING.md)
 - [agent_src/README.md](agent_src/README.md)

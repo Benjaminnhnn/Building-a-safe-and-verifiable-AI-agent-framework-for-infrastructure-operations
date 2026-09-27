@@ -24,6 +24,7 @@ from core.runbook_registry import create_runbook_draft
 from core.shadow_pipeline import run_shadow_if_enabled
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 from core.moodle_alert_integration import process_moodle_alert
 from tools.diag_tools import AGENT_TOOLS
 from tools.prometheus_check import get_prometheus_checker

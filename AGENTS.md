@@ -115,6 +115,6 @@ CI verifies the Moodle image's secret-file handling, PHP syntax, public web-root
 
 - `README.md` — architecture overview, deploy flow, secrets list, endpoints.
 - `docs/` — Moodle deployment, infrastructure, operational baseline, runbooks, and CI/CD documentation.
-- `docs/AWS_INFRASTRUCTURE_DEPLOYMENT_GUIDE.md` — Terraform + Ansible provisioning steps.
+- `docs/MOODLE_OPERATIONS_RUNBOOK.md` — Terraform + Ansible provisioning, deployment, monitoring and teardown steps.
 - `agent_src/README.md` — AI agent internals, alert dedup, RAG storage, Gemini quota defaults.
 - `agent_src/RAG_SYSTEM_GUIDE.md` — RAG engine details.

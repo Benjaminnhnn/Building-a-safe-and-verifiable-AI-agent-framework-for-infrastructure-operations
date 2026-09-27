@@ -95,7 +95,7 @@ jobs:
 
           with open(sys.argv[1], encoding="utf-8") as source:
               report = json.load(source)
-          assert report["scenario_count"] == 5
+          assert report["scenario_count"] == 15
           assert report["forbidden_execution_count"] == 0
           for incident in report["reports"]:
               assert incident["state"] == "VERIFIED_DRY_RUN"

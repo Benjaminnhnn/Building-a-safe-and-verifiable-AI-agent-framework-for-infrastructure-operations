@@ -23,5 +23,6 @@ done
 ```
 
 Do not rerun an individual injector after a failure. Verify or reset the
-baseline according to `docs/MOODLE_SPRINT_RUNBOOK.md` first. Store only
+baseline according to [Moodle Operations Runbook](MOODLE_OPERATIONS_RUNBOOK.md)
+first. Store only
 secret-free result artifacts under `terraform/.artifacts/`.
