@@ -102,7 +102,10 @@ wait_for_prometheus_alert_since() {
 }
 
 shadow_observed_count() {
-  remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=sum(aiops_unified_shadow_events_total{status=\"observed\"})' http://127.0.0.1:9090/api/v1/query | jq -r '.data.result[0].value[1] // \"0\"'"
+  # Celery is the process that records a shadow observation. Prometheus scrapes
+  # the separate FastAPI process, so its in-process Counter cannot attest to a
+  # worker event. Query the append-only shared evidence ledger instead.
+  remote monitor-ai-01 "sudo docker exec moodle-agent-worker python -c 'import sqlite3, sys; print(sqlite3.connect(sys.argv[1]).execute(sys.argv[2], (sys.argv[3],)).fetchone()[0])' /app/data/evidence.db \"SELECT COUNT(*) FROM evidence WHERE source = ?\" alertmanager"
 }
 
 wait_for_ai_shadow_observation() {
@@ -115,7 +118,7 @@ wait_for_ai_shadow_observation() {
     sleep 5
     elapsed=$((elapsed + 5))
   done
-  echo "Unified AI shadow did not record the Alertmanager event within ${timeout_seconds}s." >&2
+  echo "Unified AI shadow did not append an Alertmanager evidence record within ${timeout_seconds}s." >&2
   echo "Redeploy the merged agent and monitoring playbook with AIOPS_UNIFIED_CORE_MODE=shadow." >&2
   return 1
 }
