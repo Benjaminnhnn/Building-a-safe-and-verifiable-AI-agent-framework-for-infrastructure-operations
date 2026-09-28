@@ -138,6 +138,18 @@ def process_moodle_alert(alert: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
     scenario_id = str(labels.get("scenario_id") or "")
+    # Alertmanager rules aggregate several reversible staging scenarios under
+    # one symptom (for example MoodleSyntheticTransactionFailed).  In shadow
+    # mode a missing scenario label must not prevent the generic, resource-
+    # mapped observer from recording the real alert.  Returning None delegates
+    # to run_shadow_if_enabled() in tasks.py; it remains observation-only and
+    # has no execution capability.
+    if not scenario_id and mode == "shadow":
+        logger.info(
+            "Moodle shadow alert has no scenario_id; delegating to generic observer: alert=%s",
+            labels.get("alertname"),
+        )
+        return None
     catalog = _load_catalog()
     truth = catalog.get(scenario_id)
     alert_name = str(labels.get("alertname") or "")

@@ -42,6 +42,17 @@ def test_shadow_integration_fails_closed_on_signal_mismatch(tmp_path, monkeypatc
     assert report["resolution_eligible"] is False
 
 
+def test_shadow_integration_without_scenario_delegates_to_generic_observer(monkeypatch) -> None:
+    monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "shadow")
+
+    alert = _alert()
+    del alert["labels"]["scenario_id"]
+
+    # tasks.process_single_alert() routes this value to run_shadow_if_enabled,
+    # which records resource-mapped evidence without selecting a remediation.
+    assert process_moodle_alert(alert) is None
+
+
 def test_live_mode_routes_to_pipeline_not_raises(tmp_path, monkeypatch) -> None:
     """Live mode must no longer raise RuntimeError; it should attempt pipeline routing.
 

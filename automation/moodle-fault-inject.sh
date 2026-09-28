@@ -18,7 +18,7 @@ case "$scenario" in
       remote "$host" "
         set -eu
         db_ip=\$(getent ahostsv4 '$database_endpoint' | awk 'NR==1 {print \$1}')
-        test -n "\$db_ip"
+        test -n \"\$db_ip\"
         sudo install -d -o root -g root -m 0700 /var/lib/moodle-faults
         printf '%s\n' "\$db_ip" | sudo tee /var/lib/moodle-faults/DB-01.ip >/dev/null
         sudo chmod 0600 /var/lib/moodle-faults/DB-01.ip
@@ -35,7 +35,7 @@ case "$scenario" in
     remote moodle-app-a "
       sudo docker rm -f moodle-fault-db-02 >/dev/null 2>&1 || true
       sudo docker run -d --name moodle-fault-db-02 --restart=no alpine:3.20 sh -c 'sleep 3600' >/dev/null
-      test "\$(sudo docker inspect --format '{{.State.Running}}' moodle-fault-db-02)" = true
+      test \"\$(sudo docker inspect --format '{{.State.Running}}' moodle-fault-db-02)\" = true
     "
     ;;
 
@@ -55,7 +55,7 @@ case "$scenario" in
     remote moodle-app-b "
       sudo docker rm -f moodle-fault-res-01 >/dev/null 2>&1 || true
       sudo docker run -d --name moodle-fault-res-01 --restart=no --cpus=1.8 --memory=128m --pids-limit=64 alpine:3.20 sh -c 'for worker in 1 2; do yes >/dev/null & done; wait' >/dev/null
-      test "\$(sudo docker inspect --format '{{.State.Running}}' moodle-fault-res-01)" = true
+      test \"\$(sudo docker inspect --format '{{.State.Running}}' moodle-fault-res-01)\" = true
     "
     ;;
 
@@ -63,7 +63,7 @@ case "$scenario" in
     remote moodle-app-b "
       sudo docker rm -f moodle-fault-res-02 >/dev/null 2>&1 || true
       sudo docker run -d --name moodle-fault-res-02 --restart=no --memory=1024m alpine:3.20 sh -c 'tail -f /dev/null' >/dev/null
-      test "\$(sudo docker inspect --format '{{.State.Running}}' moodle-fault-res-02)" = true
+      test \"\$(sudo docker inspect --format '{{.State.Running}}' moodle-fault-res-02)\" = true
     "
     ;;
 
@@ -109,13 +109,13 @@ case "$scenario" in
     ;;
 
   CON-01)
-    remote moodle-app-b "sudo docker stop release-moodle-web-1 >/dev/null && test "\$(sudo docker inspect --format '{{.State.Running}}' release-moodle-web-1)" = false"
+    remote moodle-app-b "sudo docker stop release-moodle-web-1 >/dev/null && test \"\$(sudo docker inspect --format '{{.State.Running}}' release-moodle-web-1)\" = false"
     ;;
 
   CON-02)
     remote moodle-app-a "
       sudo docker stop release-moodle-web-1 >/dev/null 2>&1 || true
-      test "\$(sudo docker inspect --format '{{.State.Running}}' release-moodle-web-1)" = false
+      test \"\$(sudo docker inspect --format '{{.State.Running}}' release-moodle-web-1)\" = false
     "
     ;;
 
@@ -142,7 +142,7 @@ case "$scenario" in
       set -eu
       sudo install -d -o 1000 -g 1000 -m 0770 '$moodledata_path/synthetic-fixtures'
       sudo chmod 0000 '$moodledata_path/synthetic-fixtures'
-      test "\$(sudo stat -c '%a' '$moodledata_path/synthetic-fixtures')" = 0
+      test \"\$(sudo stat -c '%a' '$moodledata_path/synthetic-fixtures')\" = 0
     "
     ;;
 
