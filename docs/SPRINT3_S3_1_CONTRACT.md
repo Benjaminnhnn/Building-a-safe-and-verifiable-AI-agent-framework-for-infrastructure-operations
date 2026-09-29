@@ -35,9 +35,9 @@ The Agent may only reason over the finite capabilities in the JSON contract:
 
 - `collect_*` and `verify_recovery` are read-only.
 - `reset_staging_fault` and `restore_reviewed_configuration` are scoped-write
-  intents only. Actual execution remains disabled until S3.3 and must pass the
-  typed Action Catalog, evidence gate, approval policy, timeout and
-  idempotency controls.
+  intents only. Any controlled-live use must pass the typed Action Catalog,
+  evidence gate, approval policy, timeout and idempotency controls documented
+  in `docs/SPRINT3_S3_3_SAFE_EXECUTOR.md`; the alert path itself remains shadow-only.
 - There is no unrestricted-shell capability, no generic AWS CLI capability,
   and no production scope.
 

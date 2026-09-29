@@ -1,0 +1,156 @@
+---
+- name: Collect pinned SSH host keys from Moodle staging nodes
+  hosts: moodle
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Read the node's ED25519 SSH host public key
+      ansible.builtin.slurp:
+        src: /etc/ssh/ssh_host_ed25519_key.pub
+      register: executor_node_host_key
+
+- name: Install the disabled-by-default local Executor API on monitor
+  hosts: monitor
+  become: true
+  gather_facts: false
+  vars:
+    executor_user: aiops-executor
+    executor_root: /var/lib/aiops-executor
+    executor_config_dir: /etc/aiops-safe-executor
+    executor_state_dir: /var/lib/aiops-executor/api
+    executor_secrets_dir: "{{ playbook_dir }}/../../terraform/.artifacts/safe-executor"
+    executor_api_source: "{{ playbook_dir }}/../../automation/moodle-safe-executor-api.py"
+    executor_live_enabled: false
+  tasks:
+    - name: Require existing constrained SSH executor identity
+      ansible.builtin.stat:
+        path: "{{ executor_root }}/.ssh/id_ed25519"
+      register: executor_private_key
+    - name: Require the generated operator keys and API source
+      ansible.builtin.assert:
+        that:
+          - executor_private_key.stat.exists
+          - lookup('file', executor_secrets_dir + '/agent-hmac.key') | length >= 32
+          - lookup('file', executor_secrets_dir + '/approval-ed25519.pub') is search('BEGIN PUBLIC KEY')
+          - lookup('file', executor_api_source) is search('MoodleSafeExecutor')
+        fail_msg: Run automation/configure-moodle-safe-executor-api.sh to generate credentials and validate prerequisites.
+    - name: Detect the Docker bridge gateway used by monitor containers
+      ansible.builtin.command:
+        cmd: ip -4 -o addr show docker0
+      register: executor_docker_bridge
+      changed_when: false
+    - name: Derive the private Docker bridge bind address
+      ansible.builtin.set_fact:
+        executor_bind_ip: "{{ executor_docker_bridge.stdout | regex_replace('.*inet ([0-9.]+).*', '\\1') }}"
+    - name: Create API config and state directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: "{{ executor_config_dir }}", owner: root, group: root, mode: '0755' }
+        - { path: "{{ executor_state_dir }}", owner: "{{ executor_user }}", group: "{{ executor_user }}", mode: '0700' }
+    - name: Install Executor API source
+      ansible.builtin.copy:
+        src: "{{ executor_api_source }}"
+        dest: /usr/local/libexec/moodle-safe-executor-api.py
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Install Agent transport HMAC key for the API process
+      ansible.builtin.copy:
+        content: "{{ lookup('file', executor_secrets_dir + '/agent-hmac.key') | trim }}\n"
+        dest: "{{ executor_config_dir }}/agent-hmac.key"
+        owner: root
+        group: "{{ executor_user }}"
+        mode: '0640'
+      no_log: true
+    - name: Install public-only operator approval key
+      ansible.builtin.copy:
+        src: "{{ executor_secrets_dir }}/approval-ed25519.pub"
+        dest: "{{ executor_config_dir }}/approval-ed25519.pub"
+        owner: root
+        group: root
+        mode: '0644'
+    - name: Pin both Moodle nodes' SSH host keys
+      ansible.builtin.copy:
+        dest: "{{ executor_config_dir }}/known_hosts"
+        owner: root
+        group: "{{ executor_user }}"
+        mode: '0640'
+        content: |
+          {{ hostvars['moodle-app-a'].ansible_host }} {{ hostvars['moodle-app-a'].executor_node_host_key.content | b64decode | trim }}
+          {{ hostvars['moodle-app-b'].ansible_host }} {{ hostvars['moodle-app-b'].executor_node_host_key.content | b64decode | trim }}
+    - name: Configure API environment with explicit execution switch
+      ansible.builtin.copy:
+        dest: "{{ executor_config_dir }}/api.env"
+        owner: root
+        group: "{{ executor_user }}"
+        mode: '0640'
+        content: |
+          EXECUTOR_BIND={{ executor_bind_ip }}
+          EXECUTOR_PORT=8765
+          EXECUTOR_LIVE_ENABLED={{ executor_live_enabled | bool | lower }}
+          EXECUTOR_STATE_DB={{ executor_state_dir }}/executions.sqlite3
+          EXECUTOR_SSH_KEY={{ executor_root }}/.ssh/id_ed25519
+          EXECUTOR_KNOWN_HOSTS={{ executor_config_dir }}/known_hosts
+          EXECUTOR_AGENT_KEY_FILE={{ executor_config_dir }}/agent-hmac.key
+          EXECUTOR_APPROVAL_PUBLIC_KEY_FILE={{ executor_config_dir }}/approval-ed25519.pub
+          MOODLE_NODE_A_IP={{ hostvars['moodle-app-a'].ansible_host }}
+          MOODLE_NODE_B_IP={{ hostvars['moodle-app-b'].ansible_host }}
+    - name: Install hardened systemd unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/moodle-safe-executor-api.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Private Moodle staging safe-executor API
+          After=network-online.target docker.service
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          User={{ executor_user }}
+          Group={{ executor_user }}
+          EnvironmentFile={{ executor_config_dir }}/api.env
+          ExecStart=/usr/bin/python3 /usr/local/libexec/moodle-safe-executor-api.py
+          Restart=on-failure
+          RestartSec=3
+          NoNewPrivileges=true
+          PrivateTmp=true
+          ProtectSystem=strict
+          ProtectHome=true
+          ProtectKernelTunables=true
+          ProtectKernelModules=true
+          ProtectControlGroups=true
+          PrivateDevices=true
+          RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+          CapabilityBoundingSet=
+          ReadWritePaths={{ executor_state_dir }}
+          UMask=0077
+
+          [Install]
+          WantedBy=multi-user.target
+    - name: Validate API syntax before service start
+      ansible.builtin.command:
+        cmd: /usr/bin/python3 -m py_compile /usr/local/libexec/moodle-safe-executor-api.py
+      changed_when: false
+    - name: Enable API service with the configured live kill switch
+      ansible.builtin.systemd:
+        name: moodle-safe-executor-api.service
+        daemon_reload: true
+        enabled: true
+        state: restarted
+    - name: Confirm API health matches configured execution switch
+      ansible.builtin.uri:
+        url: http://{{ executor_bind_ip }}:8765/healthz
+        return_content: true
+        status_code: 200
+      register: executor_health
+      retries: 8
+      delay: 2
+      until: executor_health.status == 200 and executor_health.content is search('"status":"healthy"') and executor_health.content is search('"execution_enabled":' ~ (executor_live_enabled | bool | ternary('true', 'false')))

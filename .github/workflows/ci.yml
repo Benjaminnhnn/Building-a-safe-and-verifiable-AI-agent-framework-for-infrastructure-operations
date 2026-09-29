@@ -41,7 +41,10 @@ jobs:
           python -m py_compile \
             automation/moodle-synthetic-transaction.py \
             automation/moodle-pipeline-replay.py \
-            automation/aiops-unified-replay.py
+            automation/aiops-unified-replay.py \
+            automation/moodle-safe-executor-api.py \
+            automation/moodle-safe-approval.py \
+            automation/moodle-safe-executor-request.py
           bash -n \
             automation/lib/moodle-fault-common.sh \
             automation/moodle-environment-baseline.sh \
@@ -51,7 +54,9 @@ jobs:
             automation/moodle-synthetic-soak.sh \
             automation/moodle-sprint2-live-drill.sh \
             automation/run-aiops-e2e.sh \
-            automation/github-deploy-moodle.sh
+            automation/github-deploy-moodle.sh \
+            automation/configure-moodle-safe-executor-api.sh \
+            automation/moodle-safe-executor-drill.sh
 
       - name: Replay merged unified AI control plane
         run: |

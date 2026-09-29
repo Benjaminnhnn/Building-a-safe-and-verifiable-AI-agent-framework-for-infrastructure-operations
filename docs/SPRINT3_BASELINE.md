@@ -52,5 +52,8 @@ The following checks were run against the quality-gate implementation:
 
 Sprint 3 can be closed only when the contract mapping, evidence collectors,
 safe infrastructure adapters, and all Moodle scenario replays are recorded in
-their corresponding runbooks and pass in CI. Live infrastructure testing is a
-separate, explicitly approved operation with its own runtime evidence.
+their corresponding runbooks and pass in CI. The S3.3 adapter/executor boundary
+and its explicit staging drill procedure are documented in
+`docs/SPRINT3_S3_3_SAFE_EXECUTOR.md`. Live infrastructure testing is a separate,
+explicitly approved operation with its own runtime evidence; do not close S3.3
+until all five first-slice reset drills and final off-switch verification pass.

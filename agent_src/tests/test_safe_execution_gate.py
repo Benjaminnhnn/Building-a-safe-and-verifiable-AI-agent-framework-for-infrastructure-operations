@@ -56,6 +56,11 @@ def test_gate_denies_kill_switch_insufficient_evidence_and_production() -> None:
     assert _gate().evaluate(production, actor_role="executor", confidence=0.9).decision == "DENY"
 
 
+def test_gate_denies_non_finite_or_out_of_range_confidence() -> None:
+    for confidence in (float("nan"), float("inf"), -0.1, 1.1):
+        assert _gate().evaluate(_request(), actor_role="executor", confidence=confidence).decision == "DENY"
+
+
 def test_gate_requires_valid_short_lived_action_bound_approval() -> None:
     request = _request(idempotency_key="idem-approval")
     gate = _gate()
@@ -74,4 +79,3 @@ def test_gate_rejects_wrong_actor_expired_or_tampered_approval() -> None:
     expired = ApprovalRecord.create(action_sha256=gate.action_hash(request), actor_id="alice", signing_key="test-key")
     expired.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
     assert gate.evaluate(request, actor_role="executor", confidence=0.7, approval=expired).decision == "REQUIRE_APPROVAL"
-

@@ -10,10 +10,11 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 from datetime import datetime, timedelta, timezone
 
 from core.action_catalog import ActionCatalog
-from core.adapters import SafeActionRequest
+from core.adapters import SafeActionRequest, SafeLiveActionRequest
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -69,7 +70,7 @@ class SafeExecutionGate:
         self._seen_idempotency_keys: set[str] = set()
 
     @staticmethod
-    def action_hash(request: SafeActionRequest) -> str:
+    def action_hash(request: SafeActionRequest | SafeLiveActionRequest) -> str:
         """Hash only the execution-relevant typed fields, never secrets."""
         payload = {
             "catalog_action_id": request.catalog_action_id,
@@ -80,12 +81,13 @@ class SafeExecutionGate:
             "evidence_refs": sorted(request.action.evidence_refs),
             "idempotency_key": request.idempotency_key,
             "timeout_seconds": request.timeout_seconds,
+            "dry_run": request.dry_run,
         }
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
     def evaluate(
         self,
-        request: SafeActionRequest,
+        request: SafeActionRequest | SafeLiveActionRequest,
         *,
         actor_role: str,
         confidence: float,
@@ -94,6 +96,8 @@ class SafeExecutionGate:
         action_hash = self.action_hash(request)
         if self._kill_switch_enabled:
             return self._deny(action_hash, "kill switch is enabled")
+        if not isinstance(confidence, (int, float)) or not math.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+            return self._deny(action_hash, "confidence must be a finite value from 0 to 1")
         if request.idempotency_key in self._seen_idempotency_keys:
             return self._deny(action_hash, "idempotency key has already passed the gate")
         if len(set(request.action.evidence_refs)) < 3:

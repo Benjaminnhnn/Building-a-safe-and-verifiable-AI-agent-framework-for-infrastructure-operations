@@ -44,6 +44,19 @@ class SafeActionRequest(BaseModel):
     timeout_seconds: int = Field(default=30, gt=0, le=120)
 
 
+class SafeLiveActionRequest(BaseModel):
+    """Typed intent for one separately approved controlled-live action."""
+
+    request_id: str
+    idempotency_key: str
+    catalog_action_id: str
+    scenario_id: str
+    target_scope: str
+    action: TypedAction
+    dry_run: Literal[False] = False
+    timeout_seconds: int = Field(default=30, gt=0, le=120)
+
+
 class ActionResult(BaseModel):
     request_id: str
     idempotency_key: str

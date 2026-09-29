@@ -681,6 +681,8 @@
                 AIOPS_UNIFIED_CORE_MODE: shadow
                 AIOPS_EVIDENCE_DB: /app/data/evidence.sqlite3
                 AIOPS_EVIDENCE_DB_PATH: /app/data/evidence.db
+                SAFE_EXECUTOR_URL: http://host.docker.internal:8765
+                SAFE_EXECUTOR_HMAC_KEY_FILE: /run/secrets/safe_executor_hmac_key
                 GEMINI_MAX_ATTEMPTS: "1"
                 GEMINI_MAX_REMOTE_CALLS: "1"
                 PYTHONUNBUFFERED: "1"
@@ -688,6 +690,9 @@
               volumes:
                 - agent-vector-db:/app/vector_db
                 - agent-evidence:/app/data
+                - /etc/aiops-safe-executor/agent-hmac.key:/run/secrets/safe_executor_hmac_key:ro
+              extra_hosts:
+                - "host.docker.internal:host-gateway"
               depends_on:
                 agent-redis:
                   condition: service_healthy
