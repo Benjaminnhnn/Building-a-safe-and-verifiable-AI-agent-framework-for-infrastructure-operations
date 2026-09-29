@@ -6,6 +6,9 @@ import pytest
 
 from core import tasks
 from core.moodle_alert_integration import process_moodle_alert
+from core.moodle_contract import load_moodle_ground_truth
+
+_MOODLE_SCENARIOS = load_moodle_ground_truth()
 
 
 def _alert(scenario_id: str = "DB-01", alert_name: str = "MoodleSyntheticTransactionFailed") -> dict:
@@ -26,9 +29,55 @@ def test_shadow_integration_replays_ordered_stages_without_execution(tmp_path, m
 
     assert report["status"] == "shadow_complete"
     assert [stage["stage"] for stage in report["stages"]] == ["observer", "diagnosis", "planner", "gate", "execution", "verification"]
-    assert len(report["evidence_refs"]) == 3
+    assert len(report["evidence_refs"]) == 4
+    assert report["scenario_binding"]["execution_lane"] == "staging_live_allowlisted"
+    assert report["scenario_binding"]["live_allowlisted_action_count"] == 2
+    assert report["scenario_binding"]["execution_permitted_by_binding"] is False
     assert report["execution_permitted"] is False
     assert report["resolution_eligible"] is False
+
+
+def test_shadow_integration_marks_unenabled_scenario_offline_only(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "shadow")
+    monkeypatch.setenv("AIOPS_EVIDENCE_DB", str(tmp_path / "evidence.sqlite3"))
+
+    report = process_moodle_alert(_alert("DB-02"))
+
+    assert report["status"] == "shadow_complete"
+    assert report["scenario_binding"]["execution_lane"] == "offline_or_shadow_only"
+    assert report["scenario_binding"]["execution_permitted_by_binding"] is False
+    assert report["execution_permitted"] is False
+    assert report["resolution_eligible"] is False
+
+
+@pytest.mark.parametrize(
+    ("scenario_id", "alert_name"),
+    [
+        (scenario_id, scenario["observed_signals"][0])
+        for scenario_id, scenario in sorted(_MOODLE_SCENARIOS.items())
+    ],
+    ids=sorted(_MOODLE_SCENARIOS),
+)
+def test_all_ground_truth_scenarios_stay_shadow_only(
+    tmp_path, monkeypatch, scenario_id: str, alert_name: str
+) -> None:
+    monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "shadow")
+    monkeypatch.setenv("AIOPS_EVIDENCE_DB", str(tmp_path / f"{scenario_id}.sqlite3"))
+    monkeypatch.setattr(
+        "core.moodle_alert_integration._route_live",
+        lambda *_args, **_kwargs: pytest.fail("shadow flow must never route to live"),
+    )
+
+    report = process_moodle_alert(_alert(scenario_id, alert_name))
+
+    assert report["status"] == "shadow_complete", scenario_id
+    assert report["scenario_id"] == scenario_id
+    assert report["scenario_binding"]["execution_permitted_by_binding"] is False
+    assert report["execution_permitted"] is False
+    assert report["resolution_eligible"] is False
+    assert report["stages"][-2]["stage"] == "execution"
+    assert report["stages"][-2]["status"] == "ok"
+    assert report["stages"][-1] == {"stage": "verification", "status": "ok"}
 
 
 def test_shadow_integration_fails_closed_on_signal_mismatch(tmp_path, monkeypatch) -> None:
@@ -40,6 +89,29 @@ def test_shadow_integration_fails_closed_on_signal_mismatch(tmp_path, monkeypatc
     assert report["status"] == "escalated"
     assert report["execution_permitted"] is False
     assert report["resolution_eligible"] is False
+
+
+def test_shadow_integration_rejects_untyped_scenario_action_before_planning(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "shadow")
+    database_path = tmp_path / "evidence.sqlite3"
+    monkeypatch.setenv("AIOPS_EVIDENCE_DB", str(database_path))
+    invalid_truth = dict(_MOODLE_SCENARIOS["DB-01"])
+    invalid_truth["allowed_remediation"] = [
+        {"action": "unrestricted_shell", "target": "staging_moodle_nodes"}
+    ]
+    monkeypatch.setattr(
+        "core.moodle_alert_integration._load_catalog",
+        lambda: {"DB-01": invalid_truth},
+    )
+
+    report = process_moodle_alert(_alert())
+
+    assert report["status"] == "escalated"
+    assert report["execution_permitted"] is False
+    assert report["resolution_eligible"] is False
+    assert not database_path.exists()
 
 
 def test_shadow_integration_without_scenario_delegates_to_generic_observer(monkeypatch) -> None:

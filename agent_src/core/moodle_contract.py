@@ -187,6 +187,74 @@ def validate_moodle_capability_contract(
     return errors
 
 
+def build_moodle_scenario_binding(
+    scenario: dict[str, Any],
+    contract: dict[str, Any] | None = None,
+    catalog: ActionCatalog | None = None,
+) -> dict[str, Any]:
+    """Bind one ground-truth scenario to typed catalog entries and live scope.
+
+    This is a read-only contract operation. It authorizes no execution; callers
+    use ``staging_live_allowlisted`` only to report that an exact S3.3 tuple
+    exists. The live workflow still needs its independent gates and approval.
+    """
+    scenario_id = scenario.get("scenario_id")
+    if not isinstance(scenario_id, str) or not scenario_id:
+        raise MoodleContractError("scenario binding requires a scenario_id")
+
+    capability_contract = contract or load_moodle_capability_contract()
+    action_catalog = catalog or ActionCatalog.load_moodle_catalog()
+    target_scopes = capability_contract.get("target_scopes", {})
+    remediation = scenario.get("allowed_remediation", [])
+    if not isinstance(remediation, list) or not remediation:
+        raise MoodleContractError(f"scenario {scenario_id} has no allowed_remediation")
+
+    bindings: list[dict[str, Any]] = []
+    for item in remediation:
+        if not isinstance(item, dict):
+            raise MoodleContractError(f"scenario {scenario_id} has malformed remediation")
+        action_id, target = item.get("action"), item.get("target")
+        if not isinstance(action_id, str) or not isinstance(target, str):
+            raise MoodleContractError(f"scenario {scenario_id} remediation lacks action/target")
+        if target not in target_scopes:
+            raise MoodleContractError(f"scenario {scenario_id} target is outside target_scopes: {target}")
+        entry = action_catalog.lookup(action_id)
+        if entry is None:
+            raise MoodleContractError(f"scenario {scenario_id} action is outside typed catalog: {action_id}")
+
+        role = "verifier" if entry.permission.read_only else entry.permission.required_role
+        staging_allowed = action_catalog.is_safe_execution_allowed(
+            action_id,
+            scenario_id=scenario_id,
+            target_scope=target,
+            environment="staging",
+            role=role,
+        )
+        bindings.append(
+            {
+                "action_id": action_id,
+                "target_scope": target,
+                "adapter": entry.adapter,
+                "role": role,
+                "read_only": entry.permission.read_only,
+                "staging_live_allowlisted": staging_allowed,
+            }
+        )
+
+    all_actions_allowlisted = all(item["staging_live_allowlisted"] for item in bindings)
+    return {
+        "scenario_id": scenario_id,
+        "execution_lane": (
+            "staging_live_allowlisted" if all_actions_allowlisted else "offline_or_shadow_only"
+        ),
+        "actions": bindings,
+        "live_allowlisted_action_count": sum(
+            item["staging_live_allowlisted"] for item in bindings
+        ),
+        "execution_permitted_by_binding": False,
+    }
+
+
 def assert_moodle_capability_contract() -> None:
     errors = validate_moodle_capability_contract(
         load_moodle_capability_contract(),

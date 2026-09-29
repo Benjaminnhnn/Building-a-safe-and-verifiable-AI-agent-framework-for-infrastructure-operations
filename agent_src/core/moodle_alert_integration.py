@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from core.ground_truth import ground_truth_dir, load_ground_truth, validate_ground_truth
+from core.moodle_contract import MoodleContractError, build_moodle_scenario_binding
 from core.unified_core import DiagnosisAgent, ObserverAgent, PlannerAgent, SQLiteEvidenceStore, SequentialOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -186,6 +187,18 @@ def process_moodle_alert(alert: dict[str, Any]) -> dict[str, Any] | None:
         return _route_live(alert, scenario_id, truth, labels)
 
     # ── Shadow mode: unified core Observer→Diagnosis→Planner, no execution ──────
+    try:
+        scenario_binding = build_moodle_scenario_binding(truth)
+    except MoodleContractError as exc:
+        logger.error("Moodle scenario/action binding rejected: scenario=%s", scenario_id)
+        return {
+            "status": "escalated",
+            "scenario_id": scenario_id,
+            "reason": str(exc),
+            "execution_permitted": False,
+            "resolution_eligible": False,
+        }
+
     incident_id = "moodle-shadow-" + hashlib.sha256(f"{scenario_id}:{fingerprint}".encode()).hexdigest()[:20]
     resource_id = str(labels.get("component") or labels.get("instance") or "moodle-staging")
     db_path = Path(os.getenv("AIOPS_EVIDENCE_DB", "./aiops-evidence/evidence.sqlite3"))
@@ -197,6 +210,7 @@ def process_moodle_alert(alert: dict[str, Any]) -> dict[str, Any] | None:
     safe_signal = {"alertname": alert_name, "severity": labels.get("severity"), "scenario_id": scenario_id}
     refs.append(store.append(incident_id=incident_id, source="alertmanager", resource_id=resource_id, kind="alert_signal", payload=safe_signal).evidence_id)
     refs.append(store.append(incident_id=incident_id, source="ground_truth_contract", resource_id=resource_id, kind="scenario_contract", payload={"scenario_id": scenario_id, "root_cause": truth["expected_root_cause"]}).evidence_id)
+    refs.append(store.append(incident_id=incident_id, source="typed_action_catalog", resource_id=resource_id, kind="scenario_action_binding", payload=scenario_binding).evidence_id)
 
     diagnosis = DiagnosisAgent()
     planner = PlannerAgent()
@@ -208,7 +222,10 @@ def process_moodle_alert(alert: dict[str, Any]) -> dict[str, Any] | None:
             incident_id=incident_id,
             environment="staging",
             resource_id=resource_id,
-            allowed_actions=truth["allowed_remediation"],
+            allowed_actions=[
+                {"action": item["action_id"], "target": item["target_scope"]}
+                for item in scenario_binding["actions"]
+            ],
             evidence_refs=refs,
         )
         return {"actions": [action.model_dump(mode="json") for action in actions]}
@@ -231,6 +248,7 @@ def process_moodle_alert(alert: dict[str, Any]) -> dict[str, Any] | None:
         "status": "shadow_complete" if success else "escalated",
         "incident_id": incident_id,
         "scenario_id": scenario_id,
+        "scenario_binding": scenario_binding,
         "stages": [{"stage": message.stage, "status": message.status} for message in messages],
         "evidence_refs": refs,
         "duplicate_alert": observed["duplicate"],

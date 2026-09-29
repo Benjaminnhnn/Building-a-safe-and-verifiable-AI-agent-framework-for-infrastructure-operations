@@ -13,6 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "agent_src"))
 
 from core.evidence_store import SQLiteEvidenceStore
+from core.moodle_contract import build_moodle_scenario_binding, load_moodle_ground_truth
 from core.orchestrator import CheckpointOrchestrator
 from core.replay import observations_from_scenario
 from core.schema.resource import Resource
@@ -64,8 +65,18 @@ def main() -> int:
     else:
         parser.error(
             f"unknown scenario {args.scenario!r}; choose one of: "
-            + ", ".join([*sorted(catalog), "all"])
+                + ", ".join([*sorted(catalog), "all"])
         )
+
+    ground_truth_bindings = load_moodle_ground_truth(
+        REPO_ROOT / "evaluation" / "ground_truth" / "moodle"
+    )
+    scenario_bindings = {
+        scenario.scenario_id: build_moodle_scenario_binding(
+            ground_truth_bindings[scenario.scenario_id]
+        )
+        for scenario in selected
+    }
 
     campaign = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     output_dir = args.output_dir or (
@@ -101,6 +112,10 @@ def main() -> int:
                         else None
                     ),
                     "simulated": result.simulated,
+                    "pipeline_mode": "offline_simulation",
+                    "scenario_binding": scenario_bindings[scenario.scenario_id],
+                    "live_verification_executed": False,
+                    "recovery_claim_scope": "simulated_fixture_only",
                     "error": result.error,
                 }
             )
@@ -120,6 +135,15 @@ def main() -> int:
         "passed_count": len(reports) - len(failed),
         "failed_count": len(failed),
         "forbidden_live_execution_count": 0,
+        "live_verification_executed": False,
+        "staging_live_allowlisted_scenario_count": sum(
+            binding["execution_lane"] == "staging_live_allowlisted"
+            for binding in scenario_bindings.values()
+        ),
+        "offline_or_shadow_only_scenario_count": sum(
+            binding["execution_lane"] == "offline_or_shadow_only"
+            for binding in scenario_bindings.values()
+        ),
         "evidence_database": str(database_path),
         "reports": reports,
     }

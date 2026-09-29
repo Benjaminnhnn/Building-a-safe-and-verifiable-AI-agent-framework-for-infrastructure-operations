@@ -60,8 +60,27 @@ jobs:
 
       - name: Replay merged unified AI control plane
         run: |
-          python automation/aiops-unified-replay.py all \
-            --output-dir "${RUNNER_TEMP}/aiops-unified-replay"
+          report_dir="${RUNNER_TEMP}/aiops-unified-replay"
+          python automation/aiops-unified-replay.py all --output-dir "$report_dir"
+          python - "$report_dir/report.json" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as source:
+              report = json.load(source)
+          assert report["scenario_count"] == 15
+          assert report["passed_count"] == 15
+          assert report["failed_count"] == 0
+          assert report["forbidden_live_execution_count"] == 0
+          assert report["live_verification_executed"] is False
+          assert report["staging_live_allowlisted_scenario_count"] == 5
+          assert report["offline_or_shadow_only_scenario_count"] == 10
+          for scenario in report["reports"]:
+              assert scenario["pipeline_mode"] == "offline_simulation"
+              assert scenario["live_verification_executed"] is False
+              assert scenario["recovery_claim_scope"] == "simulated_fixture_only"
+              assert scenario["scenario_binding"]["execution_permitted_by_binding"] is False
+          PY
 
       - name: Build AI Agent image
         run: docker build -t local/ai-agent:ci-${{ github.sha }} agent_src
