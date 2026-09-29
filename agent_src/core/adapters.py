@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
-from typing import Protocol
+from typing import Literal, Protocol
 
+from core.action_catalog import ActionCatalog
 from core.schema.action import TypedAction
 from core.schema.common import ActionType, Environment
 from pydantic import BaseModel, Field
@@ -23,6 +24,24 @@ class ActionRequest(BaseModel):
     action: TypedAction
     dry_run: bool = True
     timeout_seconds: int = Field(default=30, gt=0, le=300)
+
+
+class SafeActionRequest(BaseModel):
+    """A typed, staging-only request for the S3.3 dry-run adapter boundary.
+
+    There is intentionally no command, host, shell fragment, or AWS argument
+    field.  Later live execution must reuse this shape and add gate-approved
+    authority rather than widening the input surface.
+    """
+
+    request_id: str
+    idempotency_key: str
+    catalog_action_id: str
+    scenario_id: str
+    target_scope: str
+    action: TypedAction
+    dry_run: Literal[True] = True
+    timeout_seconds: int = Field(default=30, gt=0, le=120)
 
 
 class ActionResult(BaseModel):
@@ -146,3 +165,79 @@ class FakeAnsibleAdapter(_FakeAdapter):
             ],
             **kwargs,
         )
+
+
+class SafeDryRunAdapter:
+    """Catalog-bound adapter that proves routing without any side effect.
+
+    It deliberately has no subprocess, SSH, Docker SDK, Ansible, or AWS client
+    dependency.  A request is accepted only when the exact scenario/action/
+    target tuple exists in the S3.3 execution catalog and its adapter kind
+    matches this adapter.
+    """
+
+    adapter_kind: str
+
+    def __init__(self, adapter_kind: str, *, catalog: ActionCatalog | None = None) -> None:
+        self.adapter_kind = adapter_kind
+        self.adapter_name = f"safe_dry_run_{adapter_kind}"
+        self._catalog = catalog or ActionCatalog.load_moodle_s3_3_execution_catalog()
+        self._results: dict[str, ActionResult] = {}
+
+    def execute(self, request: SafeActionRequest) -> ActionResult:
+        cached = self._results.get(request.idempotency_key)
+        if cached is not None:
+            return cached.model_copy(update={"duplicate": True})
+
+        entry = self._catalog.lookup(request.catalog_action_id)
+        allowed = self._catalog.is_safe_execution_allowed(
+            request.catalog_action_id,
+            scenario_id=request.scenario_id,
+            target_scope=request.target_scope,
+            environment=request.action.environment.value,
+            role="verifier" if entry and entry.permission.read_only else "executor",
+        )
+        if entry is None or entry.adapter != self.adapter_kind or not allowed:
+            result = ActionResult(
+                request_id=request.request_id,
+                idempotency_key=request.idempotency_key,
+                adapter_name=self.adapter_name,
+                success=False,
+                executed=False,
+                sanitized_output="request rejected by safe dry-run adapter",
+                error_code="outside_execution_boundary",
+            )
+        else:
+            result = ActionResult(
+                request_id=request.request_id,
+                idempotency_key=request.idempotency_key,
+                adapter_name=self.adapter_name,
+                success=True,
+                executed=False,
+                sanitized_output=(
+                    "dry-run plan accepted: "
+                    f"catalog_action={entry.action_id} target_scope={request.target_scope}"
+                ),
+            )
+        self._results[request.idempotency_key] = result
+        return result
+
+
+class SafeDockerDryRunAdapter(SafeDryRunAdapter):
+    def __init__(self, *, catalog: ActionCatalog | None = None) -> None:
+        super().__init__("docker", catalog=catalog)
+
+
+class SafeNetworkDryRunAdapter(SafeDryRunAdapter):
+    def __init__(self, *, catalog: ActionCatalog | None = None) -> None:
+        super().__init__("network", catalog=catalog)
+
+
+class SafeAnsibleDryRunAdapter(SafeDryRunAdapter):
+    def __init__(self, *, catalog: ActionCatalog | None = None) -> None:
+        super().__init__("ansible", catalog=catalog)
+
+
+class SafeProbeDryRunAdapter(SafeDryRunAdapter):
+    def __init__(self, *, catalog: ActionCatalog | None = None) -> None:
+        super().__init__("probe", catalog=catalog)
