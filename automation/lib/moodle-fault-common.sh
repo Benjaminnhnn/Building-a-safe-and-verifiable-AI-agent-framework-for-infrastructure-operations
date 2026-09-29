@@ -57,6 +57,60 @@ validate_scenario() {
   esac
 }
 
+scenario_hosts() {
+  case "${1:-}" in
+    DB-01|NET-01) printf '%s\n' moodle-app-a moodle-app-b ;;
+    RES-01|CON-01) printf '%s\n' moodle-app-b ;;
+    SEC-02) printf '%s\n' moodle-app-a ;;
+    *) echo "Scenario has no live-drill marker scope: ${1:-}" >&2; return 64 ;;
+  esac
+}
+
+publish_scenario_marker() {
+  local scenario="$1" host
+  validate_scenario "$scenario"
+  while IFS= read -r host; do
+    [[ -n "$host" ]] || continue
+    remote "$host" "
+      set -eu
+      directory=/var/lib/node_exporter/textfile_collector
+      marker=\$directory/moodle_fault_scenario.prom
+      sudo test -d \"\$directory\"
+      if sudo test -e \"\$marker\"; then
+        echo 'Refusing to replace an existing Moodle scenario marker.' >&2
+        exit 77
+      fi
+      temporary=\$(sudo mktemp \"\$directory/.moodle_fault_scenario.XXXXXX\")
+      printf '%s\\n' \\
+        '# HELP moodle_fault_scenario_active Active controlled Moodle staging fault scenario.' \\
+        '# TYPE moodle_fault_scenario_active gauge' \\
+        'moodle_fault_scenario_active{scenario_id=\"$scenario\"} 1' | sudo tee \"\$temporary\" >/dev/null
+      sudo chmod 0644 \"\$temporary\"
+      sudo mv \"\$temporary\" \"\$marker\"
+    "
+  done < <(scenario_hosts "$scenario")
+}
+
+remove_scenario_marker() {
+  local scenario="$1" host
+  validate_scenario "$scenario"
+  while IFS= read -r host; do
+    [[ -n "$host" ]] || continue
+    remote "$host" "
+      set -eu
+      marker=/var/lib/node_exporter/textfile_collector/moodle_fault_scenario.prom
+      if sudo test -e \"\$marker\"; then
+        actual=\$(sudo sed -n 's/.*scenario_id=\\\"\\([^\\\"]*\\)\\\".*/\\1/p' \"\$marker\")
+        test \"\$actual\" = '$scenario' || {
+          echo 'Refusing to remove a marker owned by another scenario.' >&2
+          exit 77
+        }
+        sudo rm -f \"\$marker\"
+      fi
+    "
+  done < <(scenario_hosts "$scenario")
+}
+
 remote() {
   local host="$1"
   shift

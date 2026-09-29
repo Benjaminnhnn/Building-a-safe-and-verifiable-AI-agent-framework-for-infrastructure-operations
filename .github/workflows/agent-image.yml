@@ -8,6 +8,7 @@ on:
       - main
     paths:
       - "agent_src/**"
+      - "evaluation/ground_truth/**"
       - ".github/workflows/agent-image.yml"
   workflow_dispatch:
 
@@ -39,7 +40,8 @@ jobs:
       - name: Build and push immutable AI Agent image
         uses: docker/build-push-action@v6
         with:
-          context: ./agent_src
+          context: .
+          file: agent_src/Dockerfile
           push: true
           tags: ${{ steps.image.outputs.name }}:${{ github.sha }}
           labels: |

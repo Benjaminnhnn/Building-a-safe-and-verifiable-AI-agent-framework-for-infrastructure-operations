@@ -75,8 +75,9 @@ done
 curl --fail --silent http://127.0.0.1:18765/healthz | jq -e '.execution_enabled == true' >/dev/null
 
 stage=fault-injection
-MOODLE_FAULT_CONFIRM=staging "$script_dir/moodle-fault-inject.sh" "$scenario"
 fault_injected=true
+MOODLE_FAULT_CONFIRM=staging "$script_dir/moodle-fault-inject.sh" "$scenario"
+publish_scenario_marker "$scenario"
 stage=observe-fault
 case "$scenario" in
   DB-01|NET-01|SEC-02)
@@ -99,6 +100,31 @@ case "$scenario" in
     ;;
 esac
 wait_for_prometheus_alert "$alert_name" 150
+scenario_alert=false
+for _ in {1..30}; do
+  if remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=ALERTS{alertname=\"$alert_name\",alertstate=\"firing\",scenario_id=\"$scenario\"}' http://127.0.0.1:9090/api/v1/query | jq -e '.data.result | length > 0' >/dev/null"; then
+    scenario_alert=true
+    break
+  fi
+  sleep 5
+done
+[[ "$scenario_alert" == true ]] || {
+  echo "Prometheus alert did not preserve the expected scenario_id label: $scenario" >&2
+  exit 1
+}
+
+scenario_binding=false
+for _ in {1..24}; do
+  if remote monitor-ai-01 "sudo docker exec moodle-ai-agent python -c 'import sqlite3,sys; db=sqlite3.connect(\"/app/data/evidence.sqlite3\"); row=db.execute(\"select 1 from evidence where kind=? and json_extract(payload_json, ?) = ? limit 1\", (\"scenario_action_binding\", \"$.scenario_id\", sys.argv[1])).fetchone(); sys.exit(0 if row else 1)' '$scenario'"; then
+    scenario_binding=true
+    break
+  fi
+  sleep 5
+done
+[[ "$scenario_binding" == true ]] || {
+  echo "Agent did not record the typed scenario/action binding: $scenario" >&2
+  exit 1
+}
 
 stage=executor-reset
 executor_result="$(PYTHONPATH="$repo_root/agent_src" python3 "$script_dir/moodle-safe-executor-request.py" \
@@ -123,9 +149,11 @@ jq -n \
   --arg run_id "$run_id" \
   --arg scenario "$scenario" \
   --arg alert "$alert_name" \
+  --arg scenario_label "$scenario_alert" \
+  --arg scenario_binding "$scenario_binding" \
   --arg completed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --argjson executor "$executor_result" \
-  '{run_id:$run_id,scenario_id:$scenario,status:"passed",observed_alert:$alert,executor:$executor,alert_resolved:"passed",reset:"passed",baseline_after_reset:"passed",live_switch:"disabled_after_drill",completed_at:$completed_at}' \
+  '{run_id:$run_id,scenario_id:$scenario,status:"passed",observed_alert:$alert,scenario_label:$scenario_label,scenario_binding:$scenario_binding,executor:$executor,alert_resolved:"passed",reset:"passed",baseline_after_reset:"passed",live_switch:"disabled_after_drill",completed_at:$completed_at}' \
   > "$evidence_file"
 chmod 0600 "$evidence_file"
 stage=complete

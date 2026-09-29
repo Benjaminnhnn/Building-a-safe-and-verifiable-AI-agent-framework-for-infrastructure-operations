@@ -1,0 +1,9 @@
+**
+!agent_src/
+!agent_src/**
+!evaluation/
+!evaluation/ground_truth/
+!evaluation/ground_truth/**
+agent_src/vector_db/
+agent_src/**/__pycache__/
+agent_src/.env*

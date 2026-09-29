@@ -83,7 +83,12 @@ jobs:
           PY
 
       - name: Build AI Agent image
-        run: docker build -t local/ai-agent:ci-${{ github.sha }} agent_src
+        run: docker build -f agent_src/Dockerfile -t local/ai-agent:ci-${{ github.sha }} .
+
+      - name: Verify packaged Moodle ground-truth catalog
+        run: |
+          docker run --rm local/ai-agent:ci-${{ github.sha }} python -c \
+            'from core.moodle_alert_integration import _load_catalog; c=_load_catalog(); assert len(c) == 15; print("validated Moodle scenarios:", len(c))'
 
       - name: Build Moodle image
         run: docker build -t local/moodle:ci-${{ github.sha }} moodle

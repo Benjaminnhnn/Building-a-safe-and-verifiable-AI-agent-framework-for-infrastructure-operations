@@ -53,6 +53,10 @@ verify() {
     done
     [[ "$(jq -r '.web_health' <<<"$current")" == healthy ]] || { echo "$host web container is not healthy" >&2; exit 1; }
     [[ "$(jq -r '.efs_type' <<<"$current")" =~ ^(nfs4|efs)$ ]] || { echo "$host EFS is not mounted" >&2; exit 1; }
+    remote "$host" 'test ! -e /var/lib/node_exporter/textfile_collector/moodle_fault_scenario.prom' || {
+      echo "$host has a stale controlled-fault scenario marker" >&2
+      exit 1
+    }
   done
   wait_for_alb_healthy 2
   run_synthetic_once >/dev/null

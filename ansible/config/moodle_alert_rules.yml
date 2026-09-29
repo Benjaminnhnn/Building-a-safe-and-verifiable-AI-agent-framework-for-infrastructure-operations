@@ -1,0 +1,85 @@
+groups:
+  - name: moodle-availability
+    interval: 15s
+    rules:
+      - alert: MoodleNodeExporterDown
+        expr: up{job="moodle_node"} == 0
+        for: 1m
+        labels: {severity: critical, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-node-exporter}
+        annotations: {summary: Moodle node metrics unavailable}
+      - alert: MoodleCAdvisorDown
+        expr: up{job="moodle_cadvisor"} == 0
+        for: 1m
+        labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-cadvisor}
+        annotations: {summary: Moodle container metrics unavailable}
+      - alert: MoodlePublicProbeFailed
+        expr: probe_success{job="blackbox_moodle_public"} == 0
+        for: 30s
+        labels: {severity: critical, service: moodle, environment: staging, resource_id: moodle-web-endpoint, runbook: moodle-public-probe}
+        annotations: {summary: "Moodle public {{ $labels.probe }} probe failed"}
+      - alert: MoodleRdsTcpProbeFailed
+        expr: probe_success{job="blackbox_moodle_rds"} == 0
+        for: 1m
+        labels: {severity: critical, service: moodle-rds, environment: staging, resource_id: postgres-db, runbook: moodle-rds-probe}
+        annotations: {summary: Moodle RDS TCP probe failed}
+      - alert: MoodleEfsMountMissing
+        expr: moodle_efs_mount_available{job="moodle_node"} == 0 or absent(moodle_efs_mount_available{job="moodle_node"})
+        for: 1m
+        labels: {severity: critical, service: moodle, environment: staging, resource_id: moodledata-volume, runbook: moodle-efs}
+        annotations: {summary: Moodle EFS mount is not observed}
+
+      # During a controlled fault, the injector publishes a short-lived
+      # scenario marker to Node Exporter's textfile collector. Joining that
+      # marker into the alert preserves scenario_id as a Prometheus label.
+      - alert: MoodleSyntheticTransactionFailed
+        expr: |
+          (
+            (moodle_synthetic_success{job="moodle_synthetic",instance="monitor-ai-01"} == 0)
+            * on() group_left(scenario_id)
+            sum by (scenario_id) (moodle_fault_scenario_active{job="moodle_node"} == 1)
+          )
+          or
+          (
+            (moodle_synthetic_success{job="moodle_synthetic",instance="monitor-ai-01"} == 0)
+            unless on() (sum(moodle_fault_scenario_active{job="moodle_node"}) > 0)
+          )
+        for: 5s
+        labels: {severity: critical, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-synthetic}
+        annotations: {summary: "Moodle synthetic transaction failed for controlled scenario {{ $labels.scenario_id }}"}
+      - alert: MoodleSyntheticTransactionStale
+        expr: time() - moodle_synthetic_last_run_timestamp_seconds{job="moodle_synthetic",instance="monitor-ai-01"} > 180
+        for: 1m
+        labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-synthetic}
+        annotations: {summary: Moodle synthetic transaction has not run recently}
+      - alert: MoodleNodeCpuHigh
+        expr: |
+          (
+            (100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job="moodle_node",mode="idle"}[30s]))) > 70)
+            * on() group_left(scenario_id)
+            sum by (scenario_id) (moodle_fault_scenario_active{job="moodle_node",scenario_id="RES-01"} == 1)
+          )
+          or
+          (
+            100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job="moodle_node",mode="idle"}[30s]))) > 70
+            unless on() (sum(moodle_fault_scenario_active{job="moodle_node",scenario_id="RES-01"}) > 0)
+          )
+        for: 15s
+        labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-cpu}
+        annotations: {summary: "Moodle node CPU usage high for controlled scenario {{ $labels.scenario_id }}"}
+      - alert: MoodleWebContainerMissing
+        expr: |
+          (
+            ((time() - max by (instance) (container_last_seen{job="moodle_cadvisor",name="release-moodle-web-1"}) > 15)
+              and on(instance) (up{job="moodle_cadvisor"} == 1))
+            * on() group_left(scenario_id)
+            sum by (scenario_id) (moodle_fault_scenario_active{job="moodle_node",scenario_id="CON-01"} == 1)
+          )
+          or
+          (
+            ((time() - max by (instance) (container_last_seen{job="moodle_cadvisor",name="release-moodle-web-1"}) > 15)
+              and on(instance) (up{job="moodle_cadvisor"} == 1))
+            unless on() (sum(moodle_fault_scenario_active{job="moodle_node",scenario_id="CON-01"}) > 0)
+          )
+        for: 15s
+        labels: {severity: critical, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-container}
+        annotations: {summary: "Moodle web container missing for controlled scenario {{ $labels.scenario_id }}"}

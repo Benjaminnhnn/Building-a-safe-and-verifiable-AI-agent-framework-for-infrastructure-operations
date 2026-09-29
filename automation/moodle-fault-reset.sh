@@ -132,6 +132,7 @@ case "$scenario" in
     ;;
 esac
 
+remove_scenario_marker "$scenario"
 wait_for_alb_healthy 2
 record_fault_event "$scenario" reset passed "scoped staging fault removed"
 echo "$scenario reset completed; both ALB targets are healthy."

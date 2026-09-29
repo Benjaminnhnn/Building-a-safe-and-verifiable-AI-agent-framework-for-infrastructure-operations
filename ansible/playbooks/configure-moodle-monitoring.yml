@@ -480,70 +480,11 @@
 
     - name: Install Moodle alert rules
       ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../config/moodle_alert_rules.yml"
         dest: "{{ moodle_observability_root }}/prometheus/rules/moodle.yml"
         owner: root
         group: root
         mode: '0644'
-        content: |
-          groups:
-            - name: moodle-availability
-              rules:
-                - alert: MoodleNodeExporterDown
-                  expr: up{job="moodle_node"} == 0
-                  for: 1m
-                  labels: {severity: critical, service: moodle, resource_id: moodle-app, runbook: moodle-node-exporter}
-                  annotations: {summary: Moodle node metrics unavailable}
-                - alert: MoodleCAdvisorDown
-                  expr: up{job="moodle_cadvisor"} == 0
-                  for: 1m
-                  labels: {severity: warning, service: moodle, resource_id: moodle-app, runbook: moodle-cadvisor}
-                  annotations: {summary: Moodle container metrics unavailable}
-                - alert: MoodlePublicProbeFailed
-                  expr: probe_success{job="blackbox_moodle_public"} == 0
-                  for: 30s
-                  labels: {severity: critical, service: moodle, resource_id: moodle-web-endpoint, runbook: moodle-public-probe}
-                  annotations: {summary: "Moodle public {{ "{{" }} $labels.probe {{ "}}" }} probe failed"}
-                - alert: MoodleRdsTcpProbeFailed
-                  expr: probe_success{job="blackbox_moodle_rds"} == 0
-                  for: 1m
-                  labels: {severity: critical, service: moodle-rds, resource_id: postgres-db, runbook: moodle-rds-probe}
-                  annotations: {summary: Moodle RDS TCP probe failed}
-                - alert: MoodleEfsMountMissing
-                  expr: moodle_efs_mount_available{job="moodle_node"} == 0 or absent(moodle_efs_mount_available{job="moodle_node"})
-                  for: 1m
-                  labels: {severity: critical, service: moodle, resource_id: moodledata-volume, runbook: moodle-efs}
-                  annotations: {summary: Moodle EFS mount is not observed}
-                - alert: MoodleSyntheticTransactionFailed
-                  expr: moodle_synthetic_success{job="moodle_synthetic",instance="monitor-ai-01"} == 0
-                  # The synthetic runner publishes a completed transaction
-                  # result and is scraped every 15s. One pending evaluation is
-                  # sufficient for the bounded staging drill and leaves
-                  # headroom for scrape alignment within the 60-second SLO.
-                  for: 5s
-                  labels: {severity: critical, service: moodle, resource_id: moodle-app, runbook: moodle-synthetic}
-                  annotations: {summary: Authenticated Moodle read/write transaction failed}
-                - alert: MoodleSyntheticTransactionStale
-                  expr: time() - moodle_synthetic_last_run_timestamp_seconds{job="moodle_synthetic",instance="monitor-ai-01"} > 180
-                  for: 1m
-                  labels: {severity: warning, service: moodle, resource_id: moodle-app, runbook: moodle-synthetic}
-                  annotations: {summary: Moodle synthetic transaction has not run recently}
-                - alert: MoodleNodeCpuHigh
-                  # The bounded RES-01 CPU injector is a Sprint 2 detection
-                  # benchmark. A 30s observation window plus one 15s pending
-                  # evaluation gives a <=60s MTTD while still requiring two
-                  # fresh node-exporter samples before the alert fires.
-                  expr: 100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job="moodle_node",mode="idle"}[30s]))) > 70
-                  for: 15s
-                  labels: {severity: warning, service: moodle, resource_id: moodle-app, runbook: moodle-cpu}
-                  annotations: {summary: Moodle node CPU usage exceeds 70 percent}
-                - alert: MoodleWebContainerMissing
-                  # CON-01 is intentionally scoped to one non-primary Moodle
-                  # node. Two 15s observations (stale threshold + pending
-                  # period) keep the live benchmark MTTD within 60 seconds.
-                  expr: (time() - max by (instance) (container_last_seen{job="moodle_cadvisor",name="release-moodle-web-1"}) > 15) and on(instance) (up{job="moodle_cadvisor"} == 1)
-                  for: 15s
-                  labels: {severity: critical, service: moodle, resource_id: moodle-app, runbook: moodle-container}
-                  annotations: {summary: Moodle web container is missing from a monitored node}
 
     - name: Install Blackbox Exporter configuration
       ansible.builtin.copy:
