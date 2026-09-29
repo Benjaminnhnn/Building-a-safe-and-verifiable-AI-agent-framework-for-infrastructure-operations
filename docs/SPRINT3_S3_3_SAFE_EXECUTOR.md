@@ -1,9 +1,11 @@
 # Sprint 3.3 — Safe action adapters and staging executor
 
-Status: implementation and controlled staging validation in progress. The
-executor is disabled except during one explicitly approved drill. Do not treat
-an executor API response as incident resolution; an independent verifier must
-check recovery.
+Status: complete as of 2026-09-29. All five controlled staging drills passed,
+the immutable Agent image for commit `27e7b93` is deployed, GitHub CI and the
+Agent image workflow succeeded, and the Executor kill switch is off. The
+executor remains disabled except during one explicitly approved drill. Do not
+treat an executor API response as incident resolution; an independent verifier
+must check recovery.
 
 ## Boundary
 
