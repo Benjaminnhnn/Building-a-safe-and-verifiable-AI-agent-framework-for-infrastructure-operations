@@ -1,0 +1,104 @@
+---
+# Bootstrap a staging-only executor identity.  It is not an Agent API and it
+# never accepts arbitrary commands: its SSH key is forced into a fixed wrapper.
+- name: Create the private executor identity on the monitor node
+  hosts: monitor
+  become: true
+  gather_facts: false
+  vars:
+    safe_executor_user: aiops-executor
+    safe_executor_root: /var/lib/aiops-executor
+  tasks:
+    - ansible.builtin.user:
+        name: "{{ safe_executor_user }}"
+        system: true
+        shell: /sbin/nologin
+        create_home: true
+        home: "{{ safe_executor_root }}"
+    - ansible.builtin.file:
+        path: "{{ safe_executor_root }}/.ssh"
+        state: directory
+        owner: "{{ safe_executor_user }}"
+        group: "{{ safe_executor_user }}"
+        mode: '0700'
+    - ansible.builtin.command:
+        cmd: "ssh-keygen -q -t ed25519 -N '' -f {{ safe_executor_root }}/.ssh/id_ed25519"
+        creates: "{{ safe_executor_root }}/.ssh/id_ed25519"
+    - ansible.builtin.file:
+        path: "{{ safe_executor_root }}/.ssh/id_ed25519"
+        owner: "{{ safe_executor_user }}"
+        group: "{{ safe_executor_user }}"
+        mode: '0600'
+    - ansible.builtin.slurp:
+        src: "{{ safe_executor_root }}/.ssh/id_ed25519.pub"
+      register: safe_executor_public_key_raw
+    - ansible.builtin.set_fact:
+        safe_executor_public_key: "{{ safe_executor_public_key_raw.content | b64decode | trim }}"
+
+- name: Install forced-command wrappers on Moodle staging nodes
+  hosts: moodle
+  become: true
+  gather_facts: false
+  vars:
+    safe_executor_user: aiops-executor
+    moodledata_path: /mnt/efs/moodledata
+  pre_tasks:
+    - ansible.builtin.assert:
+        that:
+          - hostvars['monitor-ai-01'].safe_executor_public_key is defined
+          - hostvars['monitor-ai-01'].safe_executor_public_key is match('^ssh-ed25519 ')
+        fail_msg: The monitor executor public key was not generated.
+  tasks:
+    - ansible.builtin.user:
+        name: "{{ safe_executor_user }}"
+        system: true
+        shell: /bin/bash
+        password_lock: true
+        create_home: true
+    - ansible.builtin.copy:
+        dest: /usr/local/sbin/moodle-safe-executor
+        owner: root
+        group: root
+        mode: '0750'
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          action="${1:-}"
+          case "$action" in
+            DB-01)
+              test -r /var/lib/moodle-faults/DB-01.ip
+              db_ip=$(cat /var/lib/moodle-faults/DB-01.ip)
+              while iptables -C DOCKER-USER -p tcp -d "$db_ip" --dport 5432 -m comment --comment moodle-fault-DB-01 -j REJECT 2>/dev/null; do
+                iptables -D DOCKER-USER -p tcp -d "$db_ip" --dport 5432 -m comment --comment moodle-fault-DB-01 -j REJECT
+              done
+              rm -f /var/lib/moodle-faults/DB-01.ip ;;
+            RES-01) docker rm -f moodle-fault-res-01 >/dev/null 2>&1 || true ;;
+            NET-01) docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml up -d --wait --force-recreate moodle-web ;;
+            CON-01) docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml up -d --wait moodle-web ;;
+            SEC-02) install -d -o 1000 -g 1000 -m 0770 '{{ moodledata_path }}/synthetic-fixtures'; chown 1000:1000 '{{ moodledata_path }}/synthetic-fixtures'; chmod 0770 '{{ moodledata_path }}/synthetic-fixtures' ;;
+            *) echo 'action is not allowlisted' >&2; exit 64 ;;
+          esac
+    - ansible.builtin.copy:
+        dest: /usr/local/sbin/moodle-safe-executor-force
+        owner: root
+        group: root
+        mode: '0755'
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          case "${SSH_ORIGINAL_COMMAND:-}" in
+            DB-01|RES-01|NET-01|CON-01|SEC-02) exec sudo /usr/local/sbin/moodle-safe-executor "$SSH_ORIGINAL_COMMAND" ;;
+            *) echo 'forced command rejected' >&2; exit 64 ;;
+          esac
+    - ansible.posix.authorized_key:
+        user: "{{ safe_executor_user }}"
+        key: "{{ hostvars['monitor-ai-01'].safe_executor_public_key }}"
+        key_options: 'command="/usr/local/sbin/moodle-safe-executor-force",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc'
+        state: present
+    - ansible.builtin.copy:
+        dest: /etc/sudoers.d/aiops-executor
+        owner: root
+        group: root
+        mode: '0440'
+        validate: /usr/sbin/visudo -cf %s
+        content: "{{ safe_executor_user }} ALL=(root) NOPASSWD: /usr/local/sbin/moodle-safe-executor *\n"
