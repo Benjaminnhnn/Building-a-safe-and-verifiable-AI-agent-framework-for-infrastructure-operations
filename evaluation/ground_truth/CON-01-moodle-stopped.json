@@ -17,6 +17,7 @@
     "adapter": "docker"
   },
   "observed_signals": [
+    "MoodleWebContainerMissing",
     "moodle_endpoint_down",
     "container_state_exited",
     "postgres_exporter_still_up"
