@@ -147,3 +147,52 @@ def test_full_catalog_includes_moodle_and_erpnext() -> None:
     assert full.lookup("start_erpnext_mariadb_container") is not None
     assert len(full._entries) >= 20
 
+
+def test_s3_3_execution_catalog_contains_only_reviewed_s3_2_pairs() -> None:
+    catalog = ActionCatalog.load_moodle_s3_3_execution_catalog()
+    assert set(catalog._entries) == {
+        "remove_scoped_db_reject",
+        "verify_tls_database_connection",
+        "remove_named_cpu_load_container",
+        "verify_node_cpu_recovers",
+        "recreate_moodle_web_from_reviewed_compose",
+        "verify_database_hostname",
+        "start_reviewed_compose_service",
+        "wait_for_alb_target_health",
+        "restore_fixture_directory_mode",
+        "verify_efs_write",
+    }
+
+
+def test_s3_3_execution_allows_only_exact_reviewed_tuple() -> None:
+    catalog = ActionCatalog.load_moodle_s3_3_execution_catalog()
+    assert catalog.is_safe_execution_allowed(
+        "remove_scoped_db_reject",
+        scenario_id="DB-01",
+        target_scope="staging_moodle_nodes",
+        environment="staging",
+        role="executor",
+    ) is True
+
+
+@pytest.mark.parametrize(
+    ("action_id", "scenario_id", "target_scope", "environment", "role"),
+    [
+        ("remove_scoped_db_reject", "DB-01", "staging_moodle_nodes", "production", "executor"),
+        ("remove_scoped_db_reject", "DB-01", "moodle-app-b", "staging", "executor"),
+        ("remove_scoped_db_reject", "SEC-02", "staging_moodle_nodes", "staging", "executor"),
+        ("unrestricted_shell", "DB-01", "staging_moodle_nodes", "staging", "executor"),
+        ("remove_scoped_db_reject", "DB-01", "staging_moodle_nodes", "staging", "observer"),
+    ],
+)
+def test_s3_3_execution_rejects_outside_reviewed_boundary(
+    action_id: str, scenario_id: str, target_scope: str, environment: str, role: str
+) -> None:
+    catalog = ActionCatalog.load_moodle_s3_3_execution_catalog()
+    assert catalog.is_safe_execution_allowed(
+        action_id,
+        scenario_id=scenario_id,
+        target_scope=target_scope,
+        environment=environment,
+        role=role,
+    ) is False

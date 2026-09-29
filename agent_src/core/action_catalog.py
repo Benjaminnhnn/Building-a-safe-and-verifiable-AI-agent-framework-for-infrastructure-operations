@@ -32,6 +32,33 @@ class CatalogEntry(BaseModel):
     timeout_seconds: int = 120
 
 
+# The only scenario/action/target tuples permitted for the first live
+# execution slice.  Values are logical target scopes from the Moodle capability
+# contract, never host names or shell commands.
+_S3_3_STAGING_EXECUTION_SCOPES: dict[str, dict[str, str]] = {
+    "DB-01": {
+        "remove_scoped_db_reject": "staging_moodle_nodes",
+        "verify_tls_database_connection": "staging_moodle_nodes",
+    },
+    "RES-01": {
+        "remove_named_cpu_load_container": "moodle-app-b",
+        "verify_node_cpu_recovers": "moodle-app-b",
+    },
+    "NET-01": {
+        "recreate_moodle_web_from_reviewed_compose": "staging_moodle_nodes",
+        "verify_database_hostname": "staging_moodle_nodes",
+    },
+    "CON-01": {
+        "start_reviewed_compose_service": "moodle-app-b",
+        "wait_for_alb_target_health": "moodle-app-b",
+    },
+    "SEC-02": {
+        "restore_fixture_directory_mode": "moodledata_synthetic_fixture_directory",
+        "verify_efs_write": "moodle-synthetic-transaction",
+    },
+}
+
+
 # ---------------------------------------------------------------------------
 # Catalog
 # ---------------------------------------------------------------------------
@@ -57,6 +84,15 @@ class ActionCatalog:
         if perm.read_only and role == "verifier":
             return True
         return role == perm.required_role
+
+    def is_safe_execution_allowed(
+        self, action_id: str, *, scenario_id: str, target_scope: str, environment: str, role: str
+    ) -> bool:
+        """Fail closed unless a request matches the reviewed S3.3 live boundary."""
+        scope = _S3_3_STAGING_EXECUTION_SCOPES.get(scenario_id)
+        if scope is None or environment != "staging" or scope.get(action_id) != target_scope:
+            return False
+        return self.is_allowed(action_id, environment=environment, role=role)
 
     # ------------------------------------------------------------------
 
@@ -439,6 +475,17 @@ class ActionCatalog:
         ]
 
         return cls(entries=entries)
+
+    @classmethod
+    def load_moodle_s3_3_execution_catalog(cls) -> ActionCatalog:
+        """Load only the reviewed remediation/probe pairs from the S3.2 campaign."""
+        full_catalog = cls.load_moodle_catalog()
+        action_ids = {
+            action_id
+            for actions in _S3_3_STAGING_EXECUTION_SCOPES.values()
+            for action_id in actions
+        }
+        return cls(entries=[full_catalog._entries[action_id] for action_id in sorted(action_ids)])
 
     @classmethod
     def load_erpnext_catalog(cls) -> ActionCatalog:
