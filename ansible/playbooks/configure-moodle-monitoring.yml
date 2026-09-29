@@ -517,9 +517,9 @@
                   expr: moodle_synthetic_success{job="moodle_synthetic",instance="monitor-ai-01"} == 0
                   # The synthetic runner publishes a completed transaction
                   # result and is scraped every 15s. One pending evaluation is
-                  # sufficient for the bounded staging drill and avoids a
-                  # 60-second boundary race in DB/NET/SEC detection.
-                  for: 15s
+                  # sufficient for the bounded staging drill and leaves
+                  # headroom for scrape alignment within the 60-second SLO.
+                  for: 5s
                   labels: {severity: critical, service: moodle, resource_id: moodle-app, runbook: moodle-synthetic}
                   annotations: {summary: Authenticated Moodle read/write transaction failed}
                 - alert: MoodleSyntheticTransactionStale
@@ -576,8 +576,11 @@
           route:
             receiver: {{ 'ai-agent' if (moodle_agent_enabled | bool) else 'baseline' }}
             group_by: [alertname, instance, service]
-            group_wait: 30s
-            group_interval: 5m
+            # Staging drills intentionally create, resolve, then recreate the
+            # same alert.  Keep notification grouping below the S3.2 MTTD
+            # objective so each independent trial reaches the shadow agent.
+            group_wait: 5s
+            group_interval: 10s
             repeat_interval: 4h
           receivers:
           {% if moodle_agent_enabled | bool %}
