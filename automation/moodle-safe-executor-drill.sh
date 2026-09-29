@@ -23,6 +23,7 @@ load_moodle_environment
 secrets_dir="$artifacts_dir/safe-executor"
 evidence_dir="$artifacts_dir/moodle-safe-executor"
 run_id="$scenario-$(date -u +%Y%m%dT%H%M%SZ)"
+drill_started_at="$(date -u +%Y-%m-%dT%H:%M:%S)"
 idempotency_key="$run_id-executor-reset"
 approval_file="$evidence_dir/$run_id-approval.json"
 evidence_file="$evidence_dir/$run_id.json"
@@ -77,7 +78,7 @@ curl --fail --silent http://127.0.0.1:18765/healthz | jq -e '.execution_enabled 
 stage=fault-injection
 fault_injected=true
 MOODLE_FAULT_CONFIRM=staging "$script_dir/moodle-fault-inject.sh" "$scenario"
-publish_scenario_marker "$scenario"
+publish_scenario_marker "$scenario" "$run_id"
 stage=observe-fault
 case "$scenario" in
   DB-01|NET-01|SEC-02)
@@ -102,7 +103,7 @@ esac
 wait_for_prometheus_alert "$alert_name" 150
 scenario_alert=false
 for _ in {1..30}; do
-  if remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=ALERTS{alertname=\"$alert_name\",alertstate=\"firing\",scenario_id=\"$scenario\"}' http://127.0.0.1:9090/api/v1/query | jq -e '.data.result | length > 0' >/dev/null"; then
+  if remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=ALERTS{alertname=\"$alert_name\",alertstate=\"firing\",scenario_id=\"$scenario\",drill_id=\"$run_id\"}' http://127.0.0.1:9090/api/v1/query | jq -e '.data.result | length > 0' >/dev/null"; then
     scenario_alert=true
     break
   fi
@@ -115,7 +116,7 @@ done
 
 scenario_binding=false
 for _ in {1..24}; do
-  if remote monitor-ai-01 "sudo docker exec moodle-ai-agent python -c 'import sqlite3,sys; db=sqlite3.connect(\"/app/data/evidence.sqlite3\"); row=db.execute(\"select 1 from evidence where kind=? and json_extract(payload_json, ?) = ? limit 1\", (\"scenario_action_binding\", \"$.scenario_id\", sys.argv[1])).fetchone(); sys.exit(0 if row else 1)' '$scenario'"; then
+  if remote monitor-ai-01 "sudo docker exec moodle-ai-agent python -c 'import sqlite3,sys; db=sqlite3.connect(\"/app/data/evidence.sqlite3\"); row=db.execute(\"select 1 from evidence where kind=? and json_extract(payload_json, ?) = ? and observed_at >= ? limit 1\", (\"scenario_action_binding\", \"$.scenario_id\", sys.argv[1], sys.argv[2])).fetchone(); sys.exit(0 if row else 1)' '$scenario' '$drill_started_at'"; then
     scenario_binding=true
     break
   fi
@@ -132,6 +133,7 @@ executor_result="$(PYTHONPATH="$repo_root/agent_src" python3 "$script_dir/moodle
   --hmac-key-file "$secrets_dir/agent-hmac.key" --idempotency-key "$idempotency_key")"
 echo "$executor_result" | jq -e --arg scenario "$scenario" --argjson nodes "$expected_nodes" \
   '.status == "executed" and .scenario_id == $scenario and .completed_nodes == $nodes and .mutated == true' >/dev/null
+remove_scenario_marker "$scenario"
 fault_injected=false
 
 stage=verify-recovery

@@ -67,8 +67,12 @@ scenario_hosts() {
 }
 
 publish_scenario_marker() {
-  local scenario="$1" host
+  local scenario="$1" drill_id="${2:-}" host
   validate_scenario "$scenario"
+  [[ "$drill_id" =~ ^[A-Z0-9-]+$ ]] || {
+    echo "Invalid controlled-drill identifier: $drill_id" >&2
+    return 64
+  }
   while IFS= read -r host; do
     [[ -n "$host" ]] || continue
     remote "$host" "
@@ -84,7 +88,7 @@ publish_scenario_marker() {
       printf '%s\\n' \\
         '# HELP moodle_fault_scenario_active Active controlled Moodle staging fault scenario.' \\
         '# TYPE moodle_fault_scenario_active gauge' \\
-        'moodle_fault_scenario_active{scenario_id=\"$scenario\"} 1' | sudo tee \"\$temporary\" >/dev/null
+        'moodle_fault_scenario_active{scenario_id=\"$scenario\",drill_id=\"$drill_id\"} 1' | sudo tee \"\$temporary\" >/dev/null
       sudo chmod 0644 \"\$temporary\"
       sudo mv \"\$temporary\" \"\$marker\"
     "
