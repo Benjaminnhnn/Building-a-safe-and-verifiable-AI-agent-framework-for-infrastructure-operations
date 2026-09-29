@@ -40,7 +40,10 @@ def execute_approved_staging_action(
     target_scope: str,
     idempotency_key: str,
     approval: dict[str, str],
-    timeout_seconds: float = 10.0,
+    # The API runs fixed SSH actions sequentially on at most two nodes, with a
+    # 45-second subprocess limit per node. Leave a response margin so clients
+    # do not abandon an action the API may still be executing.
+    timeout_seconds: float = 105.0,
 ) -> dict[str, Any]:
     """Request one explicitly approved catalog action; never invent approval.
 

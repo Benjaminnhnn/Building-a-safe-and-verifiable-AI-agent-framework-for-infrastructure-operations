@@ -70,7 +70,7 @@ def test_client_signs_exact_payload_and_sends_approval(monkeypatch) -> None:
 def test_client_reads_transport_key_from_mounted_secret_file(monkeypatch, tmp_path: Path) -> None:
     secret_file = tmp_path / "executor-hmac"
     secret_file.write_text("b" * 64, encoding="ascii")
-    captured: dict[str, Request] = {}
+    captured: dict[str, object] = {}
 
     class Response:
         def __enter__(self):
@@ -84,6 +84,7 @@ def test_client_reads_transport_key_from_mounted_secret_file(monkeypatch, tmp_pa
 
     def fake_urlopen(request: Request, timeout: float):
         captured["request"] = request
+        captured["timeout"] = timeout
         return Response()
 
     monkeypatch.setenv("SAFE_EXECUTOR_URL", "http://host.docker.internal:8765")
@@ -97,6 +98,7 @@ def test_client_reads_transport_key_from_mounted_secret_file(monkeypatch, tmp_pa
         idempotency_key="mounted-secret-test-0001",
         approval={"actor_id": "operator", "expires_at": "later", "action_sha256": "x", "signature": "y"},
     )
+    assert captured["timeout"] == 105.0
     request = captured["request"]
     payload = json.loads(request.data)
     signed = (

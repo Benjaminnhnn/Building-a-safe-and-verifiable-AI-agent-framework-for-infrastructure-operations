@@ -72,6 +72,14 @@ Supported first-slice scenarios: `DB-01`, `RES-01`, `NET-01`, `CON-01`, and
 and post-reset baseline. Evidence is written with mode 0600 under
 `terraform/.artifacts/moodle-safe-executor/` and must not be committed.
 
+The Agent client timeout is 105 seconds to cover the API's maximum two
+sequential 45-second SSH actions plus response overhead. `NET-01` starts the
+reviewed Compose service without waiting inside the executor; the drill's
+independent ALB, synthetic, baseline, and alert-resolution checks remain the
+recovery gate. A client timeout is not proof that a server-side action stopped;
+inspect the executor ledger and staging state before retrying with a new
+idempotency key.
+
 The kill switch may be enabled manually only for a reviewed staging drill:
 
 ```bash

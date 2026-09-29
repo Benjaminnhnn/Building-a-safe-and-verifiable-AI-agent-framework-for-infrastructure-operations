@@ -73,7 +73,7 @@
               done
               rm -f /var/lib/moodle-faults/DB-01.ip ;;
             RES-01) docker rm -f moodle-fault-res-01 >/dev/null 2>&1 || true ;;
-            NET-01) docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml up -d --wait --force-recreate moodle-web ;;
+            NET-01) docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml up -d --force-recreate moodle-web ;;
             CON-01) docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml up -d --wait moodle-web ;;
             SEC-02) install -d -o 1000 -g 1000 -m 0770 '{{ moodledata_path }}/synthetic-fixtures'; chown 1000:1000 '{{ moodledata_path }}/synthetic-fixtures'; chmod 0770 '{{ moodledata_path }}/synthetic-fixtures' ;;
             *) echo 'action is not allowlisted' >&2; exit 64 ;;
