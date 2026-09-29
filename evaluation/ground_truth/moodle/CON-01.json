@@ -13,7 +13,14 @@
     "target": "moodle-app-b",
     "container": "release-moodle-web-1"
   },
-  "observed_signals": ["one ALB target becomes unhealthy", "MoodleWebContainerMissing", "public service remains available through node A"],
+  "observed_signals": [
+    "moodle_endpoint_down",
+    "container_state_exited",
+    "postgres_exporter_still_up",
+    "MoodleWebContainerMissing",
+    "one ALB target becomes unhealthy",
+    "public service remains available through node A"
+  ],
   "expected_root_cause": {
     "category": "container_stopped",
     "service": "moodle",
