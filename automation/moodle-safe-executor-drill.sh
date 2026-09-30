@@ -147,6 +147,12 @@ for _ in {1..20}; do
 done
 [[ "${active_alert:-active}" == clear ]] || { echo "Alert did not resolve after reset: $alert_name" >&2; exit 1; }
 
+scenario_verification="$(AWS_PROFILE="${AWS_PROFILE:-target-account}" \
+  "$script_dir/moodle-scenario-verify.sh" "$scenario" "$run_id")"
+echo "$scenario_verification" | jq -e \
+  --arg scenario "$scenario" --arg drill_id "$run_id" \
+  '.scenario_id == $scenario and .drill_id == $drill_id and .status == "passed" and all(.checks[]; .status == "passed")' >/dev/null
+
 jq -n \
   --arg run_id "$run_id" \
   --arg scenario "$scenario" \
@@ -155,7 +161,8 @@ jq -n \
   --arg scenario_binding "$scenario_binding" \
   --arg completed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --argjson executor "$executor_result" \
-  '{run_id:$run_id,scenario_id:$scenario,status:"passed",observed_alert:$alert,scenario_label:$scenario_label,scenario_binding:$scenario_binding,executor:$executor,alert_resolved:"passed",reset:"passed",baseline_after_reset:"passed",live_switch:"disabled_after_drill",completed_at:$completed_at}' \
+  --argjson scenario_verification "$scenario_verification" \
+  '{run_id:$run_id,scenario_id:$scenario,status:"passed",observed_alert:$alert,scenario_label:$scenario_label,scenario_binding:$scenario_binding,executor:$executor,scenario_verification:$scenario_verification,alert_resolved:"passed",reset:"passed",baseline_after_reset:"passed",live_switch:"disabled_after_drill",completed_at:$completed_at}' \
   > "$evidence_file"
 chmod 0600 "$evidence_file"
 stage=complete

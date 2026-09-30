@@ -56,7 +56,15 @@ jobs:
             automation/run-aiops-e2e.sh \
             automation/github-deploy-moodle.sh \
             automation/configure-moodle-safe-executor-api.sh \
-            automation/moodle-safe-executor-drill.sh
+            automation/moodle-safe-executor-drill.sh \
+            automation/moodle-scenario-verify.sh
+          if bash automation/moodle-scenario-verify.sh DB-02 >/dev/null 2>&1; then
+            echo "offline-only scenario was unexpectedly accepted" >&2
+            exit 1
+          else
+            status=$?
+            test "$status" -eq 64
+          fi
 
       - name: Replay merged unified AI control plane
         run: |

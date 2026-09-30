@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from core.evidence_collectors import collect_shadow_evidence, sanitize_log_excerpt
 from core.evidence_store import SQLiteEvidenceStore, evidence_content_hash
 from core.schema.evidence import Evidence
 from core.schema.resource import Resource
@@ -32,6 +33,7 @@ MOODLE_ALERT_RESOURCE_MAP = {
     "MoodleSyntheticTransactionStale": "moodle-app",
     "MoodleNodeCpuHigh": "moodle-app",
     "MoodleWebContainerMissing": "moodle-app",
+    "LogFileErrorDetected": "ai-agent",
 }
 
 RESOURCE_ALIASES = {
@@ -93,12 +95,21 @@ def run_shadow_if_enabled(alert: dict[str, Any]) -> dict[str, Any] | None:
         logger.info("Unified-core shadow skipped: alert has no known resource mapping")
         return {"status": "skipped", "reason": "unknown_resource"}
 
-    fingerprint = str(alert.get("fingerprint") or _stable_id("fp", str(labels)))
+    fingerprint = sanitize_log_excerpt(
+        alert.get("fingerprint") or _stable_id("fp", str(labels)), max_chars=256
+    )
     incident_id = _stable_id("inc", fingerprint)
-    signal = str(labels.get("signal") or labels.get("alertname") or "unknown")
-    summary = str((alert.get("annotations") or {}).get("summary") or signal)
+    signal = sanitize_log_excerpt(
+        labels.get("signal") or labels.get("alertname") or "unknown",
+        max_chars=120,
+    )
+    summary = sanitize_log_excerpt(
+        (alert.get("annotations") or {}).get("summary") or signal
+    )
     evidence = Evidence(
-        evidence_id=_stable_id("ev", fingerprint, signal, str(alert.get("startsAt") or "")),
+        evidence_id=_stable_id(
+            "ev", fingerprint, signal, str(alert.get("startsAt") or ""), summary
+        ),
         incident_id=incident_id,
         resource_id=resource_id,
         source="alertmanager",
@@ -113,19 +124,38 @@ def run_shadow_if_enabled(alert: dict[str, Any]) -> dict[str, Any] | None:
         },
     )
     evidence.content_hash = evidence_content_hash(evidence)
-    database_path = os.getenv("AIOPS_EVIDENCE_DB_PATH", DEFAULT_EVIDENCE_DB_PATH)
+    database_path = os.getenv(
+        "AIOPS_EVIDENCE_DB_PATH",
+        os.getenv("AIOPS_EVIDENCE_DB", DEFAULT_EVIDENCE_DB_PATH),
+    )
     Path(database_path).parent.mkdir(parents=True, exist_ok=True)
     with SQLiteEvidenceStore(database_path) as store:
         store.append(evidence)
+        collection = collect_shadow_evidence(
+            alert,
+            incident_id=incident_id,
+            resource_id=resource_id,
+            evidence_store=store,
+            prometheus_url=os.getenv("PROMETHEUS_URL"),
+        )
+    evidence_refs = [evidence.evidence_id, *collection["evidence_refs"]]
     logger.info(
-        "Unified-core shadow observed alert: incident_id=%s resource_id=%s simulated=false",
+        "Unified-core shadow observed alert and collected context: incident_id=%s resource_id=%s sources=%s status=%s",
         incident_id,
         resource_id,
+        collection["sources"],
+        collection["status"],
     )
     return {
         "status": "observed",
         "incident_id": incident_id,
         "stage": "observe",
         "simulated": False,
-        "reason": "awaiting_independent_collectors",
+        "reason": "awaiting_evidence-backed_diagnosis",
+        "evidence_status": collection["status"],
+        "evidence_refs": evidence_refs,
+        "evidence_sources": collection["sources"],
+        "collector_errors": collection["errors"],
+        "execution_permitted": False,
+        "resolution_eligible": False,
     }

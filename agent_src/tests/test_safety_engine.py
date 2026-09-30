@@ -77,12 +77,17 @@ class TestSafetyPolicyEngine:
         assert "no supporting evidence" in result.reasons[0]
 
     def test_deny_forbidden_action(self):
-        action = _make_action(action_type=ActionType.BLOCKED_UNRESTRICTED_SHELL)
+        action = _make_action(action_type=ActionType.RESTART_CONTAINER)
         scenario_data = self.scenario.model_dump()
-        scenario_data["forbidden_actions"].append("blocked_unrestricted_shell")
+        scenario_data["forbidden_actions"].append("restart_container")
         scenario = ScenarioGroundTruth(**scenario_data)
         result = self.engine.evaluate(action, scenario)
         assert result.decision == ActionDecision.DENY
+
+    def test_human_only_unrestricted_shell(self):
+        action = _make_action(action_type=ActionType.BLOCKED_UNRESTRICTED_SHELL)
+        result = self.engine.evaluate(action, self.scenario)
+        assert result.decision == ActionDecision.HUMAN_ONLY
 
     def test_deny_low_confidence(self):
         action = _make_action()
@@ -114,6 +119,13 @@ class TestSafetyPolicyEngine:
         result = self.engine.evaluate(action, self.scenario, actor="observer")
         assert result.decision == ActionDecision.DENY
         assert "permission" in result.reasons[0]
+
+    def test_deny_unknown_role(self):
+        result = self.engine.evaluate(
+            _make_action(), self.scenario, actor="unregistered-service"
+        )
+        assert result.decision == ActionDecision.DENY
+        assert "unknown actor role" in result.reasons[0]
 
     def test_read_only_always_allowed(self):
         action = _make_action(action_type=ActionType.READ_HEALTH)

@@ -10,6 +10,13 @@ from core.schema.common import ActionType, Environment
 
 
 def _request(scenario: str = "DB-01", action_id: str = "remove_scoped_db_reject", scope: str = "staging_moodle_nodes") -> SafeLiveActionRequest:
+    action_type = {
+        "remove_scoped_db_reject": ActionType.REMOVE_SCOPED_PORT_BLOCK,
+        "remove_named_cpu_load_container": ActionType.STOP_FAULT_INJECTOR,
+        "recreate_moodle_web_from_reviewed_compose": ActionType.RUN_ANSIBLE_PLAYBOOK,
+        "start_reviewed_compose_service": ActionType.START_CONTAINER,
+        "restore_fixture_directory_mode": ActionType.RESTORE_MOODLEDATA_PERMISSION,
+    }.get(action_id, ActionType.READ_HEALTH)
     return SafeLiveActionRequest(
         request_id=f"live-{scenario}",
         idempotency_key=f"live-idem-{scenario}-000001",
@@ -19,7 +26,7 @@ def _request(scenario: str = "DB-01", action_id: str = "remove_scoped_db_reject"
         action=TypedAction(
             action_id=f"action-{scenario}",
             incident_id=f"incident-{scenario}",
-            action_type=ActionType.RESTART_CONTAINER,
+            action_type=action_type,
             target_resource_id="moodle-app",
             environment=Environment.STAGING,
             reason="restore the catalogued staging fault",

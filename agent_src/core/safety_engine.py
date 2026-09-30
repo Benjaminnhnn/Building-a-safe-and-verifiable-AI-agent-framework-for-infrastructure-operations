@@ -36,7 +36,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
 HUMAN_ONLY_ACTIONS: set[str] = {
     "drop_database", "delete_volume", "truncate_table",
     "modify_security_group", "modify_iam",
-    "unrestricted_shell", "production_mutation",
+    "unrestricted_shell", "blocked_unrestricted_shell", "production_mutation",
 }
 
 # Actions that are read-only (always ALLOW)
@@ -87,7 +87,11 @@ class SafetyPolicyEngine:
 
         # Rule 4: RBAC permission check
         evaluated_rules.append("rbac_check")
-        if actor != "admin" and actor in ROLE_PERMISSIONS:
+        if actor not in ROLE_PERMISSIONS:
+            decision = ActionDecision.DENY
+            reasons.append(f"unknown actor role '{actor}'")
+            return self._build_decision(action, decision, reasons, evaluated_rules)
+        if actor != "admin":
             allowed_actions = ROLE_PERMISSIONS[actor]
             if action.action_type.value not in allowed_actions:
                 decision = ActionDecision.DENY

@@ -23,34 +23,45 @@ def test_shadow_mode_records_live_alert_without_ground_truth_oracle(monkeypatch,
     database_path = tmp_path / "shadow.db"
     monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "shadow")
     monkeypatch.setenv("AIOPS_EVIDENCE_DB_PATH", str(database_path))
+    monkeypatch.delenv("PROMETHEUS_URL", raising=False)
     result = run_shadow_if_enabled(
         {
             "fingerprint": "fixture-fingerprint",
             "status": "firing",
             "labels": {
                 "alertname": "PostgreSQLDown",
+                "signal": "password=shadow-secret",
                 "service": "postgres-db",
                 "scenario_id": "WRONG-ORACLE-VALUE",
             },
-            "annotations": {"summary": "PostgreSQL exporter is down"},
+            "annotations": {
+                "summary": "PostgreSQL exporter is down; token=annotation-secret"
+            },
         }
     )
     assert result is not None
     assert result["status"] == "observed"
     assert result["stage"] == "observe"
     assert result["simulated"] is False
-    assert result["reason"] == "awaiting_independent_collectors"
+    assert result["reason"] == "awaiting_evidence-backed_diagnosis"
+    assert result["evidence_status"] == "partial"
+    assert result["execution_permitted"] is False
+    assert result["resolution_eligible"] is False
     assert database_path.exists()
     with SQLiteEvidenceStore(database_path) as store:
         evidence = store.list_for_incident(result["incident_id"])
-    assert len(evidence) == 1
-    assert evidence[0].source == "alertmanager"
-    assert "scenario_id" not in evidence[0].metadata
+    assert len(evidence) == 4
+    assert {item.source for item in evidence} == {"alertmanager", "resource_inventory"}
+    assert not any("scenario_id" in str(item.metadata) for item in evidence)
+    serialized = " ".join(item.summary + str(item.metadata) for item in evidence)
+    assert "shadow-secret" not in serialized
+    assert "annotation-secret" not in serialized
 
 
 def test_shadow_mode_skips_unmapped_live_alert(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "shadow")
     monkeypatch.setenv("AIOPS_EVIDENCE_DB_PATH", str(tmp_path / "shadow.db"))
+    monkeypatch.delenv("PROMETHEUS_URL", raising=False)
     assert run_shadow_if_enabled({"labels": {"alertname": "Unknown"}}) == {
         "status": "skipped",
         "reason": "unknown_resource",
@@ -61,6 +72,7 @@ def test_shadow_mode_maps_live_moodle_alert_contract(monkeypatch, tmp_path) -> N
     database_path = tmp_path / "shadow.db"
     monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "shadow")
     monkeypatch.setenv("AIOPS_EVIDENCE_DB_PATH", str(database_path))
+    monkeypatch.delenv("PROMETHEUS_URL", raising=False)
 
     result = run_shadow_if_enabled(
         {

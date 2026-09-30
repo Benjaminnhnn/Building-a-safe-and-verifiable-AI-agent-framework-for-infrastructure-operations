@@ -10,12 +10,12 @@ from core.schema.action import RollbackPlan, TypedAction
 from core.schema.common import ActionType, Environment
 
 
-def _request() -> SafeActionRequest:
+def _request(suffix: str = "1") -> SafeActionRequest:
     return SafeActionRequest(
-        request_id="req-1", idempotency_key="idem-1", catalog_action_id="remove_scoped_db_reject",
+        request_id=f"req-{suffix}", idempotency_key=f"idem-{suffix}", catalog_action_id="remove_scoped_db_reject",
         scenario_id="DB-01", target_scope="staging_moodle_nodes",
         action=TypedAction(
-            action_id="act-1", incident_id="inc-1", action_type=ActionType.REMOVE_SCOPED_PORT_BLOCK,
+            action_id=f"act-{suffix}", incident_id=f"inc-{suffix}", action_type=ActionType.REMOVE_SCOPED_PORT_BLOCK,
             target_resource_id="postgres-db", environment=Environment.STAGING, reason="evidence",
             evidence_refs=["ev-1", "ev-2", "ev-3"], expected_outcome="recovered", reversible=True,
             rollback_plan=RollbackPlan(available=True),
@@ -58,10 +58,18 @@ class _TimeoutAdapter:
 
 def test_timeout_or_partial_failure_only_plans_dry_run_rollback(tmp_path) -> None:
     with SafeActionAuditStore(tmp_path / "audit.db") as audit:
-        result = SafeDryRunOrchestrator(audit=audit, adapter=_TimeoutAdapter()).run(
-            _request(), _allow(), pre_snapshot={"state": "before"}
-        )
-        assert result is not None and result.error_code == "timeout"
-        rollback = audit.list_for_incident("inc-1")[-1]
-        assert rollback["event_type"] == "rollback_planned"
-        assert rollback["payload"]["dry_run"] is True
+        orchestrator = SafeDryRunOrchestrator(audit=audit, adapter=_TimeoutAdapter())
+        rollback_plans = 0
+        for index in range(10):
+            suffix = str(index)
+            result = orchestrator.run(
+                _request(suffix), _allow(), pre_snapshot={"state": "before"}
+            )
+            assert result is not None and result.error_code == "timeout"
+            incident_events = audit.list_for_incident(f"inc-{suffix}")
+            rollback = incident_events[-1]
+            assert rollback["event_type"] == "rollback_planned"
+            assert rollback["payload"]["dry_run"] is True
+            assert audit.verify_chain(f"inc-{suffix}") is True
+            rollback_plans += 1
+        assert rollback_plans == 10

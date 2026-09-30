@@ -14,7 +14,7 @@ ground truth (`evaluation/ground_truth/moodle/*.json`)
   -> capability/resource contract (`agent_src/config/`)
   -> typed action catalog (`agent_src/core/action_catalog.py`)
   -> exact staging scenario/action/target allowlist (S3.3)
-  -> reviewed adapter + scenario-specific verifier (S3.4 follow-up)
+  -> reviewed adapter + scenario-specific verifier (`automation/moodle-scenario-verify.sh`)
 ```
 
 The ground truth's `allowed_remediation` entries are not, by themselves,
@@ -65,16 +65,19 @@ The live slice also has one read-only verifier action per scenario:
   live Moodle resource recovered. `ContractProbeRunner.run_offline()` correctly
   leaves `resolution_eligible` false.
 
-## Integration gap to resolve before expanding live drills
+## Verifier boundary
 
-The current live `MoodleReadOnlyVerificationAdapter` provides generic Moodle
-HTTP and monitoring probes. Ground-truth criteria also require scenario-bound
-checks such as EFS mount metrics, both ALB target states, a named fixture being
-absent, CPU alert resolution, and communication-boundary invariants. Before
-using it to close additional scenario drills, the pipeline must bind each
-scenario's recovery criteria to explicit read-only probes and require all
-required evidence before it reports recovery. Until then, this mapping is not
-a claim that all 15 live verifiers are implemented.
+The generic `MoodleReadOnlyVerificationAdapter` is not the authority for the
+staging live slice: its runtime is shadow-only and the Agent has no SSH key or
+AWS mutation credentials. The operator-side
+`automation/moodle-scenario-verify.sh` is read-only and explicitly limited to
+the five S3.3 live scenarios. It checks fresh synthetic success and resolution
+of the scenario alert, then runs the criterion-specific probes (database TLS,
+CPU fixture absence, RDS DNS, Moodle container/ALB health, or EFS mode/metric).
+`moodle-safe-executor-drill.sh` requires every probe to pass before writing a
+passing evidence record. The script rejects all other scenario IDs; the
+remaining ten stay offline/shadow-only. This does not claim that all 15 have
+live verifiers or that shadow mode authorizes execution.
 
 ## Reproduce the contract checks
 
@@ -124,38 +127,10 @@ simulation-only claim and the unchanged 5/10 live-scope split.
 
 ## S3.4.4 — Live staging scenario integration
 
-The five exact S3.3-allowlisted Moodle scenarios were exercised on staging
-through the controlled safe-executor path. Each successful run required a
-scenario- and drill-labeled Prometheus alert, a timestamp-bounded typed action
-binding recorded by the Agent, the reviewed executor action on its declared
-target, alert resolution, reset, and a passing baseline verification. The
-executor's live switch was disabled after every drill.
-
-| Scenario | Latest passing evidence (local, ignored artifact) | Alert | Result |
-|---|---|---|---|
-| DB-01 | `terraform/.artifacts/moodle-safe-executor/DB-01-20260929T102751Z.json` | `MoodleSyntheticTransactionFailed` | Passed |
-| RES-01 | `terraform/.artifacts/moodle-safe-executor/RES-01-20260929T103144Z.json` | `MoodleNodeCpuHigh` | Passed |
-| NET-01 | `terraform/.artifacts/moodle-safe-executor/NET-01-20260929T103419Z.json` | `MoodleSyntheticTransactionFailed` | Passed |
-| CON-01 | `terraform/.artifacts/moodle-safe-executor/CON-01-20260929T142136Z.json` | `MoodleWebContainerMissing` | Passed |
-| SEC-02 | `terraform/.artifacts/moodle-safe-executor/SEC-02-20260929T142616Z.json` | `MoodleSyntheticTransactionFailed` | Passed |
-
-For all five, the evidence records `scenario_label: true`,
-`scenario_binding: true`, `alert_resolved: passed`, `reset: passed`,
-`baseline_after_reset: passed`, and `live_switch: disabled_after_drill`.
-The final experiment baseline was recaptured and verified at
-`terraform/.artifacts/moodle-experiment-baseline/manifest.json`. The final
-Terraform plan returned `No changes`.
-
-One live-monitoring correction was needed before the final two drills:
-`container_last_seen` is scraped every 15 seconds, so a 15-second missing
-threshold could fire on normal scrape jitter. The CON-01 alert now tolerates
-30 seconds of metric age and retains a 15-second `for` interval. This preserves
-a nominal detection bound of at most 60 seconds with the current scrape
-interval while avoiding the healthy-container false positive observed during
-preflight. The full applied rule remains under `ansible/config/` and must be
-kept in sync with the deployed monitoring configuration.
-
-This closes the live integration slice for the five allowlisted scenarios; it
-does not expand the live allowlist. Ten scenarios remain offline/shadow-only,
-and the generic `MoodleReadOnlyVerificationAdapter` is not claimed to provide
-all scenario-specific verifier probes for all 15 scenarios.
+The live integration is limited to the five S3.3-allowlisted scenarios. The
+latest drill IDs, individual verifier status, aggregate probe count, baseline
+and executor-switch results are maintained in the single
+[`Sprint 3–4 completion report`](SPRINT3_SPRINT4_COMPLETION_REPORT.md). Keep
+the evidence artifacts local under `terraform/.artifacts/`; do not commit
+runtime infrastructure details. The 10 other scenarios remain
+offline/shadow-only; these results do not widen the allowlist.

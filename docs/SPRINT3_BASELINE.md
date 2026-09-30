@@ -1,6 +1,8 @@
 # Sprint 3 Baseline
 
-Status: frozen pending the Sprint 3 integration work.
+Baseline status: frozen as of 2026-09-27. Sprint 3 status: local acceptance
+passed on 2026-09-29; PR CI and reviewed merge are still required for formal
+closure. See the combined [Sprint 3–4 completion report](SPRINT3_SPRINT4_COMPLETION_REPORT.md).
 
 This manifest identifies the reviewed repository state from which Sprint 3
 starts. It is deliberately separate from AWS runtime evidence: no Terraform
@@ -50,10 +52,10 @@ The following checks were run against the quality-gate implementation:
 
 ## Sprint 3 exit evidence
 
-Sprint 3 can be closed only when the contract mapping, evidence collectors,
-safe infrastructure adapters, and all Moodle scenario replays are recorded in
-their corresponding runbooks and pass in CI. The S3.3 adapter/executor boundary
-and its explicit staging drill procedure are documented in
-`docs/SPRINT3_S3_3_SAFE_EXECUTOR.md`. Live infrastructure testing is a separate,
-explicitly approved operation with its own runtime evidence; do not close S3.3
-until all five first-slice reset drills and final off-switch verification pass.
+The consolidated Sprint 3 stage results, 15/15 offline scenario replay, five
+allowlisted staging drills and current read-only verification, executor
+off-switch, Terraform `No changes` record, and formal closeout gate are in
+[`SPRINT3_SPRINT4_COMPLETION_REPORT.md`](SPRINT3_SPRINT4_COMPLETION_REPORT.md).
+The feature-branch changes still require GitHub CI and reviewed PR merge before
+Sprint 3 is formally closed. Live testing remains explicitly approved and
+separate from replay/CI.

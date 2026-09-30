@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from core.adapters import SafeActionRequest
 from core.safe_execution_gate import ApprovalRecord, SafeExecutionGate
 from core.schema.action import RollbackPlan, TypedAction
@@ -61,6 +63,18 @@ def test_gate_denies_non_finite_or_out_of_range_confidence() -> None:
         assert _gate().evaluate(_request(), actor_role="executor", confidence=confidence).decision == "DENY"
 
 
+def test_gate_denies_unknown_role_and_typed_action_catalog_mismatch() -> None:
+    request = _request()
+    assert _gate().evaluate(request, actor_role="unknown-role", confidence=0.9).decision == "DENY"
+    mismatched_action = request.action.model_copy(
+        update={"action_type": ActionType.START_CONTAINER}
+    )
+    mismatched = _request(action=mismatched_action)
+    verdict = _gate().evaluate(mismatched, actor_role="executor", confidence=0.9)
+    assert verdict.decision == "DENY"
+    assert "does not match" in verdict.reason
+
+
 def test_gate_requires_valid_short_lived_action_bound_approval() -> None:
     request = _request(idempotency_key="idem-approval")
     gate = _gate()
@@ -79,3 +93,30 @@ def test_gate_rejects_wrong_actor_expired_or_tampered_approval() -> None:
     expired = ApprovalRecord.create(action_sha256=gate.action_hash(request), actor_id="alice", signing_key="test-key")
     expired.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
     assert gate.evaluate(request, actor_role="executor", confidence=0.7, approval=expired).decision == "REQUIRE_APPROVAL"
+    tampered = ApprovalRecord.create(
+        action_sha256=gate.action_hash(request), actor_id="alice", signing_key="test-key"
+    )
+    tampered.signature = "0" * 64
+    assert gate.evaluate(request, actor_role="executor", confidence=0.7, approval=tampered).decision == "REQUIRE_APPROVAL"
+
+
+def test_gate_rejects_naive_expiry_timestamp_without_exception() -> None:
+    request = _request(idempotency_key="idem-naive-expiry")
+    gate = _gate()
+    approval = ApprovalRecord.create(
+        action_sha256=gate.action_hash(request), actor_id="alice", signing_key="test-key"
+    )
+    approval.expires_at = approval.expires_at.replace(tzinfo=None)
+    verdict = gate.evaluate(request, actor_role="executor", confidence=0.7, approval=approval)
+    assert verdict.decision == "REQUIRE_APPROVAL"
+
+
+@pytest.mark.parametrize("ttl_seconds", [0, -1, 901, 1.5, True])
+def test_approval_factory_rejects_invalid_ttl(ttl_seconds: int) -> None:
+    with pytest.raises(ValueError, match="TTL"):
+        ApprovalRecord.create(
+            action_sha256="a" * 64,
+            actor_id="alice",
+            signing_key="test-key",
+            ttl_seconds=ttl_seconds,
+        )

@@ -1,8 +1,8 @@
 """Moodle staging alert integration — shadow and live pipeline routing.
 
 Shadow mode (AIOPS_UNIFIED_CORE_MODE=shadow):
-    Runs the full Observer→Diagnosis→Planner sequence in dry-run, then returns
-    a non-executable report.  Safe for any staging alert.
+    Records the alert and collects bounded read-only evidence. It does not use
+    ground-truth answers to diagnose a live event or request an action.
 
 Live mode (AIOPS_UNIFIED_CORE_MODE=live):
     Delegates to MoodleIncidentPipeline which enforces the Safety Gate, requires
@@ -15,16 +15,12 @@ Disabled mode (default):
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import os
 from pathlib import Path
 from typing import Any
 
 from core.ground_truth import ground_truth_dir, load_ground_truth, validate_ground_truth
-from core.moodle_contract import MoodleContractError, build_moodle_scenario_binding
-from core.unified_core import DiagnosisAgent, ObserverAgent, PlannerAgent, SQLiteEvidenceStore, SequentialOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -138,19 +134,38 @@ def process_moodle_alert(alert: dict[str, Any]) -> dict[str, Any] | None:
     if labels.get("service") != "moodle" or labels.get("environment") != "staging":
         return None
 
+    if mode == "shadow":
+        # Scenario IDs are useful for evidence attribution but are never used as
+        # an oracle for a live diagnosis. Ground truth is reserved for offline
+        # replay/scoring; the shadow path uses independent runtime collectors.
+        from core.shadow_pipeline import run_shadow_if_enabled
+
+        observation = run_shadow_if_enabled(alert)
+        if observation is None:
+            return None
+        if observation.get("status") != "observed":
+            return {
+                "status": "escalated",
+                "scenario_id": labels.get("scenario_id"),
+                "reason": observation.get("reason", "observer could not map resource"),
+                "execution_permitted": False,
+                "resolution_eligible": False,
+            }
+        evidence_status = observation.get("evidence_status", "partial")
+        return {
+            "status": "shadow_observed" if evidence_status == "complete" else "awaiting_evidence",
+            "incident_id": observation["incident_id"],
+            "scenario_id": labels.get("scenario_id"),
+            "stage": observation.get("stage"),
+            "evidence_status": evidence_status,
+            "evidence_refs": observation.get("evidence_refs", []),
+            "evidence_sources": observation.get("evidence_sources", []),
+            "collector_errors": observation.get("collector_errors", []),
+            "execution_permitted": False,
+            "resolution_eligible": False,
+        }
+
     scenario_id = str(labels.get("scenario_id") or "")
-    # Alertmanager rules aggregate several reversible staging scenarios under
-    # one symptom (for example MoodleSyntheticTransactionFailed).  In shadow
-    # mode a missing scenario label must not prevent the generic, resource-
-    # mapped observer from recording the real alert.  Returning None delegates
-    # to run_shadow_if_enabled() in tasks.py; it remains observation-only and
-    # has no execution capability.
-    if not scenario_id and mode == "shadow":
-        logger.info(
-            "Moodle shadow alert has no scenario_id; delegating to generic observer: alert=%s",
-            labels.get("alertname"),
-        )
-        return None
     catalog = _load_catalog()
     truth = catalog.get(scenario_id)
     alert_name = str(labels.get("alertname") or "")
@@ -186,72 +201,5 @@ def process_moodle_alert(alert: dict[str, Any]) -> dict[str, Any] | None:
         logger.info("Routing Moodle alert to live pipeline: scenario=%s alert=%s", scenario_id, alert_name)
         return _route_live(alert, scenario_id, truth, labels)
 
-    # ── Shadow mode: unified core Observer→Diagnosis→Planner, no execution ──────
-    try:
-        scenario_binding = build_moodle_scenario_binding(truth)
-    except MoodleContractError as exc:
-        logger.error("Moodle scenario/action binding rejected: scenario=%s", scenario_id)
-        return {
-            "status": "escalated",
-            "scenario_id": scenario_id,
-            "reason": str(exc),
-            "execution_permitted": False,
-            "resolution_eligible": False,
-        }
-
-    incident_id = "moodle-shadow-" + hashlib.sha256(f"{scenario_id}:{fingerprint}".encode()).hexdigest()[:20]
-    resource_id = str(labels.get("component") or labels.get("instance") or "moodle-staging")
-    db_path = Path(os.getenv("AIOPS_EVIDENCE_DB", "./aiops-evidence/evidence.sqlite3"))
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    store = SQLiteEvidenceStore(db_path)
-    observer = ObserverAgent(store)
-    observed = observer.observe({**alert, "incident_id": incident_id}, resource_id=resource_id)
-    refs = list(observed["evidence_refs"])
-    safe_signal = {"alertname": alert_name, "severity": labels.get("severity"), "scenario_id": scenario_id}
-    refs.append(store.append(incident_id=incident_id, source="alertmanager", resource_id=resource_id, kind="alert_signal", payload=safe_signal).evidence_id)
-    refs.append(store.append(incident_id=incident_id, source="ground_truth_contract", resource_id=resource_id, kind="scenario_contract", payload={"scenario_id": scenario_id, "root_cause": truth["expected_root_cause"]}).evidence_id)
-    refs.append(store.append(incident_id=incident_id, source="typed_action_catalog", resource_id=resource_id, kind="scenario_action_binding", payload=scenario_binding).evidence_id)
-
-    diagnosis = DiagnosisAgent()
-    planner = PlannerAgent()
-
-    def plan(context: dict[str, Any]) -> dict[str, Any]:
-        if context["diagnosis"].get("status") != "ok" or not context["diagnosis"].get("top1"):
-            raise ValueError("diagnosis lacks matching signal evidence")
-        actions = planner.plan(
-            incident_id=incident_id,
-            environment="staging",
-            resource_id=resource_id,
-            allowed_actions=[
-                {"action": item["action_id"], "target": item["target_scope"]}
-                for item in scenario_binding["actions"]
-            ],
-            evidence_refs=refs,
-        )
-        return {"actions": [action.model_dump(mode="json") for action in actions]}
-
-    handlers = {
-        "observer": lambda _context: observed,
-        "diagnosis": lambda _context: diagnosis.diagnose(
-            signals=[alert_name],
-            hypotheses=[{"root_cause": truth["expected_root_cause"], "signals": [alert_name]}],
-            evidence_refs=refs,
-        ),
-        "planner": plan,
-        "gate": lambda _context: {"decision": "shadow_only", "execution_permitted": False},
-        "execution": lambda _context: {"status": "not_executed", "mutated": False},
-        "verification": lambda _context: {"status": "not_run", "resolution_eligible": False},
-    }
-    messages = SequentialOrchestrator(store).run(incident_id=incident_id, handlers=handlers, context={"evidence_refs": refs})
-    success = len(messages) == 6 and all(message.status == "ok" for message in messages)
-    return {
-        "status": "shadow_complete" if success else "escalated",
-        "incident_id": incident_id,
-        "scenario_id": scenario_id,
-        "scenario_binding": scenario_binding,
-        "stages": [{"stage": message.stage, "status": message.status} for message in messages],
-        "evidence_refs": refs,
-        "duplicate_alert": observed["duplicate"],
-        "execution_permitted": False,
-        "resolution_eligible": False,
-    }
+    # The code below is only reachable for explicitly enabled live mode.
+    raise AssertionError("shadow routing must return before live catalog loading")

@@ -21,18 +21,19 @@ def _alert(scenario_id: str = "DB-01", alert_name: str = "MoodleSyntheticTransac
     }
 
 
-def test_shadow_integration_replays_ordered_stages_without_execution(tmp_path, monkeypatch) -> None:
+def test_shadow_integration_collects_evidence_without_ground_truth_diagnosis(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "shadow")
     monkeypatch.setenv("AIOPS_EVIDENCE_DB", str(tmp_path / "evidence.sqlite3"))
+    monkeypatch.delenv("AIOPS_EVIDENCE_DB_PATH", raising=False)
+    monkeypatch.delenv("PROMETHEUS_URL", raising=False)
 
     report = process_moodle_alert(_alert())
 
-    assert report["status"] == "shadow_complete"
-    assert [stage["stage"] for stage in report["stages"]] == ["observer", "diagnosis", "planner", "gate", "execution", "verification"]
+    assert report["status"] == "awaiting_evidence"
+    assert report["stage"] == "observe"
+    assert report["evidence_status"] == "partial"
     assert len(report["evidence_refs"]) == 4
-    assert report["scenario_binding"]["execution_lane"] == "staging_live_allowlisted"
-    assert report["scenario_binding"]["live_allowlisted_action_count"] == 2
-    assert report["scenario_binding"]["execution_permitted_by_binding"] is False
+    assert "scenario_binding" not in report
     assert report["execution_permitted"] is False
     assert report["resolution_eligible"] is False
 
@@ -40,12 +41,14 @@ def test_shadow_integration_replays_ordered_stages_without_execution(tmp_path, m
 def test_shadow_integration_marks_unenabled_scenario_offline_only(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "shadow")
     monkeypatch.setenv("AIOPS_EVIDENCE_DB", str(tmp_path / "evidence.sqlite3"))
+    monkeypatch.delenv("AIOPS_EVIDENCE_DB_PATH", raising=False)
+    monkeypatch.delenv("PROMETHEUS_URL", raising=False)
 
     report = process_moodle_alert(_alert("DB-02"))
 
-    assert report["status"] == "shadow_complete"
-    assert report["scenario_binding"]["execution_lane"] == "offline_or_shadow_only"
-    assert report["scenario_binding"]["execution_permitted_by_binding"] is False
+    assert report["status"] == "awaiting_evidence"
+    assert report["scenario_id"] == "DB-02"
+    assert "scenario_binding" not in report
     assert report["execution_permitted"] is False
     assert report["resolution_eligible"] is False
 
@@ -63,66 +66,75 @@ def test_all_ground_truth_scenarios_stay_shadow_only(
 ) -> None:
     monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "shadow")
     monkeypatch.setenv("AIOPS_EVIDENCE_DB", str(tmp_path / f"{scenario_id}.sqlite3"))
+    monkeypatch.delenv("AIOPS_EVIDENCE_DB_PATH", raising=False)
+    monkeypatch.delenv("PROMETHEUS_URL", raising=False)
     monkeypatch.setattr(
         "core.moodle_alert_integration._route_live",
         lambda *_args, **_kwargs: pytest.fail("shadow flow must never route to live"),
     )
+    monkeypatch.setattr(
+        "core.moodle_alert_integration._load_catalog",
+        lambda: pytest.fail("shadow diagnosis must not read ground truth"),
+    )
 
     report = process_moodle_alert(_alert(scenario_id, alert_name))
 
-    assert report["status"] == "shadow_complete", scenario_id
+    assert report["status"] == "awaiting_evidence", scenario_id
     assert report["scenario_id"] == scenario_id
-    assert report["scenario_binding"]["execution_permitted_by_binding"] is False
+    assert "scenario_binding" not in report
     assert report["execution_permitted"] is False
     assert report["resolution_eligible"] is False
-    assert report["stages"][-2]["stage"] == "execution"
-    assert report["stages"][-2]["status"] == "ok"
-    assert report["stages"][-1] == {"stage": "verification", "status": "ok"}
+    assert len(report["evidence_refs"]) == 4
 
 
-def test_shadow_integration_fails_closed_on_signal_mismatch(tmp_path, monkeypatch) -> None:
+def test_shadow_integration_does_not_turn_unknown_signal_into_a_plan(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "shadow")
     monkeypatch.setenv("AIOPS_EVIDENCE_DB", str(tmp_path / "evidence.sqlite3"))
+    monkeypatch.delenv("AIOPS_EVIDENCE_DB_PATH", raising=False)
+    monkeypatch.delenv("PROMETHEUS_URL", raising=False)
 
     report = process_moodle_alert(_alert(alert_name="UnrelatedAlert"))
 
-    assert report["status"] == "escalated"
+    assert report["status"] == "awaiting_evidence"
     assert report["execution_permitted"] is False
     assert report["resolution_eligible"] is False
 
 
-def test_shadow_integration_rejects_untyped_scenario_action_before_planning(
+def test_shadow_integration_never_reads_ground_truth_answers_or_actions(
     tmp_path, monkeypatch
 ) -> None:
     monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "shadow")
     database_path = tmp_path / "evidence.sqlite3"
     monkeypatch.setenv("AIOPS_EVIDENCE_DB", str(database_path))
-    invalid_truth = dict(_MOODLE_SCENARIOS["DB-01"])
-    invalid_truth["allowed_remediation"] = [
-        {"action": "unrestricted_shell", "target": "staging_moodle_nodes"}
-    ]
+    monkeypatch.delenv("AIOPS_EVIDENCE_DB_PATH", raising=False)
+    monkeypatch.delenv("PROMETHEUS_URL", raising=False)
     monkeypatch.setattr(
         "core.moodle_alert_integration._load_catalog",
-        lambda: {"DB-01": invalid_truth},
+        lambda: pytest.fail("shadow alert processing must not load ground truth"),
     )
 
     report = process_moodle_alert(_alert())
 
-    assert report["status"] == "escalated"
+    assert report["status"] == "awaiting_evidence"
     assert report["execution_permitted"] is False
     assert report["resolution_eligible"] is False
-    assert not database_path.exists()
+    assert database_path.exists()
 
 
-def test_shadow_integration_without_scenario_delegates_to_generic_observer(monkeypatch) -> None:
+def test_shadow_integration_without_scenario_uses_generic_observer(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "shadow")
+    monkeypatch.setenv("AIOPS_EVIDENCE_DB", str(tmp_path / "evidence.sqlite3"))
+    monkeypatch.delenv("AIOPS_EVIDENCE_DB_PATH", raising=False)
+    monkeypatch.delenv("PROMETHEUS_URL", raising=False)
 
     alert = _alert()
     del alert["labels"]["scenario_id"]
 
-    # tasks.process_single_alert() routes this value to run_shadow_if_enabled,
-    # which records resource-mapped evidence without selecting a remediation.
-    assert process_moodle_alert(alert) is None
+    report = process_moodle_alert(alert)
+
+    assert report["status"] == "awaiting_evidence"
+    assert report["execution_permitted"] is False
+    assert report["resolution_eligible"] is False
 
 
 def test_live_mode_routes_to_pipeline_not_raises(tmp_path, monkeypatch) -> None:

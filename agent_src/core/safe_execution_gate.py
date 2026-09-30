@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 
 from core.action_catalog import ActionCatalog
 from core.adapters import SafeActionRequest, SafeLiveActionRequest
+from core.schema.common import ActionType
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -41,6 +42,10 @@ class ApprovalRecord(BaseModel):
     def create(
         cls, *, action_sha256: str, actor_id: str, signing_key: str, ttl_seconds: int = 600
     ) -> ApprovalRecord:
+        if type(ttl_seconds) is not int or not 1 <= ttl_seconds <= 900:
+            raise ValueError("approval TTL must be an integer between 1 and 900 seconds")
+        if not action_sha256 or not actor_id or not signing_key:
+            raise ValueError("approval digest, actor, and signing key are required")
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
         payload = f"{action_sha256}:{actor_id}:{expires_at.isoformat()}"
         signature = hmac.new(signing_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
@@ -54,6 +59,19 @@ class ApprovalRecord(BaseModel):
 
 class SafeExecutionGate:
     """Validate catalog, evidence, RBAC, timeout, approval and kill switch."""
+
+    _CATALOG_ACTION_TYPES = {
+        "remove_scoped_db_reject": ActionType.REMOVE_SCOPED_PORT_BLOCK,
+        "verify_tls_database_connection": ActionType.READ_HEALTH,
+        "remove_named_cpu_load_container": ActionType.STOP_FAULT_INJECTOR,
+        "verify_node_cpu_recovers": ActionType.READ_HEALTH,
+        "recreate_moodle_web_from_reviewed_compose": ActionType.RUN_ANSIBLE_PLAYBOOK,
+        "verify_database_hostname": ActionType.READ_HEALTH,
+        "start_reviewed_compose_service": ActionType.START_CONTAINER,
+        "wait_for_alb_target_health": ActionType.READ_HEALTH,
+        "restore_fixture_directory_mode": ActionType.RESTORE_MOODLEDATA_PERMISSION,
+        "verify_efs_write": ActionType.READ_HEALTH,
+    }
 
     def __init__(
         self,
@@ -74,6 +92,8 @@ class SafeExecutionGate:
         """Hash only the execution-relevant typed fields, never secrets."""
         payload = {
             "catalog_action_id": request.catalog_action_id,
+            "typed_action": request.action.action_type.value,
+            "target_resource_id": request.action.target_resource_id,
             "scenario_id": request.scenario_id,
             "target_scope": request.target_scope,
             "incident_id": request.action.incident_id,
@@ -106,6 +126,9 @@ class SafeExecutionGate:
         entry = self._catalog.lookup(request.catalog_action_id)
         if entry is None or request.timeout_seconds > entry.timeout_seconds:
             return self._deny(action_hash, "catalog action is unknown or requested timeout exceeds its limit")
+        expected_type = self._CATALOG_ACTION_TYPES.get(request.catalog_action_id)
+        if expected_type is None or request.action.action_type != expected_type:
+            return self._deny(action_hash, "typed action does not match the reviewed catalog action")
         if not self._catalog.is_safe_execution_allowed(
             request.catalog_action_id,
             scenario_id=request.scenario_id,
@@ -137,6 +160,8 @@ class SafeExecutionGate:
 
     def _valid_approval(self, approval: ApprovalRecord | None, action_hash: str) -> bool:
         if approval is None or approval.actor_id not in self._approved_actors:
+            return False
+        if approval.expires_at.tzinfo is None or approval.expires_at.utcoffset() is None:
             return False
         now = datetime.now(timezone.utc)
         if approval.expires_at <= now or approval.expires_at > now + timedelta(minutes=15):

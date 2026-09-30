@@ -32,11 +32,18 @@ def _workflow(tmp_path):
 
 
 def _request(scenario: str, action_id: str, target: str) -> SafeActionRequest:
+    action_type = {
+        "remove_scoped_db_reject": ActionType.REMOVE_SCOPED_PORT_BLOCK,
+        "remove_named_cpu_load_container": ActionType.STOP_FAULT_INJECTOR,
+        "recreate_moodle_web_from_reviewed_compose": ActionType.RUN_ANSIBLE_PLAYBOOK,
+        "start_reviewed_compose_service": ActionType.START_CONTAINER,
+        "restore_fixture_directory_mode": ActionType.RESTORE_MOODLEDATA_PERMISSION,
+    }.get(action_id, ActionType.READ_HEALTH)
     return SafeActionRequest(
         request_id=f"req-{scenario}", idempotency_key=f"idem-{scenario}", catalog_action_id=action_id,
         scenario_id=scenario, target_scope=target,
         action=TypedAction(
-            action_id=f"act-{scenario}", incident_id=f"inc-{scenario}", action_type=ActionType.START_CONTAINER,
+            action_id=f"act-{scenario}", incident_id=f"inc-{scenario}", action_type=action_type,
             target_resource_id="moodle-app", environment=Environment.STAGING, reason="three evidence records",
             evidence_refs=["ev-1", "ev-2", "ev-3"], expected_outcome="recovered", reversible=True,
             rollback_plan=RollbackPlan(available=True),
