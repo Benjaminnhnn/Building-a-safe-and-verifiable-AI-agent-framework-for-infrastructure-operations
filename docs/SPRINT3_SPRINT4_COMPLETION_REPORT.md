@@ -1,6 +1,6 @@
 # Sprint 3–5 Completion Report
 
-Status: **Sprint 4 local acceptance passed; Sprint 5 local acceptance, live read-only staging verification, and one approved CON-01 rollback drill passed. Branch CI and reviewed merge remain pending.**
+Status: **Sprint 4 and Sprint 5 acceptance passed locally and on the pushed feature branch. Sprint 5's approved CON-01 live rollback passed; PR review/merge remains pending.**
 Last updated: 2026-09-30.
 
 This is the combined record for Sprint 3, Sprint 4, and Sprint 5 stage outcomes. Runtime
@@ -101,7 +101,7 @@ Shadow responses never authorize execution or mark an incident resolved.
 | S5.3 — Typed action/catalog boundary | Match TypedAction kind to exact reviewed catalog action; retain exact staging scope, timeout, RBAC and kill switch | Passed local tests; mismatched/unknown action, role, scope or production request is rejected before an adapter call | `SafeExecutionGate`; dry-run/live-workflow and adapter tests |
 | S5.4 — Audit and snapshots | Append-only hash-chain, redaction, pre/post snapshots | Passed local tests for chain integrity, append-only behavior and secret redaction; runtime audit completeness was not measured against live executions | `agent_src/core/safe_action_audit.py`; `test_safe_action_audit.py` |
 | S5.5 — Rollback and kill switch | Failure path, rollback intent, idempotency and stop control | Passed **10/10 simulated timeout cases** and **1/1 explicitly approved live CON-01 rollback drill**; live API kill switch was confirmed off afterward. This is one live smoke drill, not 10 live repetitions | `test_safe_action_audit.py`, `test_safe_execution_gate.py`; `terraform/.artifacts/moodle-safe-executor/CON-01-20260930T080134Z.json` (ignored local evidence) |
-| S5.6 — Acceptance and handoff | Agent suite, replay, image, Terraform drift, staging health and handoff | Local acceptance passed: 354 tests, Ruff, syntax/compile, Agent image, 15/15 unified replay, Terraform `No changes`; live read-only verification passed 5/5 scenarios (20/20 probes), plus one live rollback drill | Details and limits below; GitHub Actions on this branch and reviewed merge remain pending |
+| S5.6 — Acceptance and handoff | Agent suite, replay, image, Terraform drift, staging health and handoff | Local acceptance passed: 354 tests, Ruff, syntax/compile, Agent image, 15/15 unified replay, Terraform `No changes`; live read-only verification passed 5/5 scenarios (20/20 probes), plus one live rollback drill; GitHub CI and Agent image workflows passed on the pushed feature commit | Run links and remaining PR review/merge gate below |
 
 ### Sprint 5 infrastructure change
 
@@ -164,11 +164,15 @@ separate deployment gate. The Sprint 5 closeout changed the requested CIDR
 allowlist and performed one reversible Moodle staging CON-01 fault/reset; no
 resource was destroyed and no production deployment was performed.
 
-Remote check on 2026-09-30: the target repository's `develop` points to
-`9d664bf76a41348fed11c5b1a1cb815c43a3d1d8`, whose CI run
-[36583497165](https://github.com/Benjaminnhnn/Building-a-safe-and-verifiable-AI-agent-framework-for-infrastructure-operations/actions/runs/36583497165)
-completed successfully. This is not the current local work: branch
-`feature/sprint3-acceptance-handoff` has uncommitted changes, is not present on
-the remote, and has no matching PR. Consequently, local acceptance is complete
-but Sprint 3–5 work is not formally closed until the scoped changes are
-committed/pushed, their branch CI passes, and the PR is reviewed and merged.
+Remote check on 2026-09-30: commit
+`7963eb4608cf574810b87ab7edf4d422f45bccd8` is pushed to
+`moodle-framework/feature/sprint3-acceptance-handoff`; the worktree is clean.
+The branch CI run
+[36689372894](https://github.com/Benjaminnhnn/Building-a-safe-and-verifiable-AI-agent-framework-for-infrastructure-operations/actions/runs/36689372894)
+completed successfully in 3m22s, and Agent image workflow
+[36689372872](https://github.com/Benjaminnhnn/Building-a-safe-and-verifiable-AI-agent-framework-for-infrastructure-operations/actions/runs/36689372872)
+completed successfully in 1m42s. No PR currently points at this branch/commit;
+formal merge-based closeout remains pending creation, review, and merge of the
+PR. Sprint 5 acceptance itself is complete on the feature branch; the 10/10
+rollback evidence remains simulated, with one separate live CON-01 rollback
+smoke drill passed.
