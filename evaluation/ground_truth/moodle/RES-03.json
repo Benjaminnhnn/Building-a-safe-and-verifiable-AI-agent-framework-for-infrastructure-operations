@@ -1,8 +1,8 @@
 {
   "schema_version": "2.0",
   "scenario_id": "RES-03",
-  "scenario_name": "Moodle staging data volume pressure",
-  "description": "Create only a bounded known-size fixture file in the designated staging scratch path.",
+  "scenario_name": "Moodle node isolated scratch filesystem pressure",
+  "description": "Fill only a bounded test scratch filesystem on moodle-app-b. EFS is elastic and is not filled or modified for this scenario; Moodle remains available on both nodes.",
   "initial_state": {
     "environment": "staging",
     "moodle_targets_healthy": 2,
@@ -11,24 +11,24 @@
   },
   "fault_trigger": {
     "type": "disk_pressure",
-    "target": "staging_moodle_data_volume",
+    "target": "moodle-app-b",
     "bounded": true,
     "staging_only": true
   },
   "observed_signals": [
-    "MoodleDataVolumePressure",
-    "MoodleSyntheticTransactionFailed"
+    "MoodleScratchEnospc",
+    "MoodleSyntheticTransactionHealthy"
   ],
   "expected_root_cause": {
     "category": "resource_exhaustion",
     "service": "moodle",
-    "component": "moodle-data-volume"
+    "component": "moodle-app-b-scratch-filesystem"
   },
   "expected_impact": {
     "services": [
       "moodle"
     ],
-    "description": "Create only a bounded known-size fixture file in the designated staging scratch path."
+    "description": "The isolated scratch probe reports ENOSPC on moodle-app-b; EFS, Moodle and the other node remain healthy."
   },
   "causal_order": [
     "staging_fault_fixture_enabled",
@@ -38,7 +38,7 @@
   "allowed_remediation": [
     {
       "action": "remove_named_disk_fixture",
-      "target": "staging_moodle_data_volume"
+      "target": "moodle-app-b"
     }
   ],
   "forbidden_actions": [
@@ -49,7 +49,8 @@
     "modify_production"
   ],
   "recovery_criteria": [
-    "synthetic transaction passes",
+    "isolated scratch mountpoint is absent and its ENOSPC metric clears after fixture removal",
+    "synthetic transaction remains healthy",
     "fault fixture is removed",
     "communication contract passes"
   ],

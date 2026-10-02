@@ -1,8 +1,8 @@
 {
   "schema_version": "2.0",
   "scenario_id": "SEC-01",
-  "scenario_name": "Database port exposure regression",
-  "description": "Add one explicitly tagged staging-only ingress rule fixture and remove only that rule.",
+  "scenario_name": "RDS security-group unauthorized source regression",
+  "description": "Add one tagged RDS ingress rule from the staging ALB security group, not a public CIDR, and remove exactly that rule. RDS stays private. This AWS security change is human-only and must not be an autonomous Agent action.",
   "initial_state": {
     "environment": "staging",
     "moodle_targets_healthy": 2,
@@ -10,29 +10,29 @@
     "fault_inactive": true
   },
   "fault_trigger": {
-    "type": "database_port_exposure",
+    "type": "rds_ingress_unauthorized_source",
     "target": "staging_database_security_group",
     "bounded": true,
     "staging_only": true
   },
   "observed_signals": [
-    "MoodleDatabasePortExposure",
-    "MoodleSyntheticTransactionFailed"
+    "MoodleRdsIngressDrift",
+    "MoodleSyntheticTransactionHealthy"
   ],
   "expected_root_cause": {
     "category": "security_configuration",
     "service": "moodle",
-    "component": "postgresql-ingress"
+    "component": "rds-security-group-ingress"
   },
   "expected_impact": {
     "services": [
       "moodle"
     ],
-    "description": "Add one explicitly tagged staging-only ingress rule fixture and remove only that rule."
+    "description": "The RDS security group authorizes a non-application source; database service availability is unchanged."
   },
   "causal_order": [
     "staging_fault_fixture_enabled",
-    "database_port_exposure",
+    "unauthorized_rds_ingress_source",
     "alert_fired"
   ],
   "allowed_remediation": [
@@ -49,7 +49,8 @@
     "modify_production"
   ],
   "recovery_criteria": [
-    "synthetic transaction passes",
+    "RDS security group permits only the reviewed Moodle and monitor source groups",
+    "synthetic transaction remains healthy",
     "fault fixture is removed",
     "communication contract passes"
   ],
@@ -71,5 +72,6 @@
   "rollback_plan": {
     "action": "remove_only_the_tagged_sec-01_fixture",
     "idempotent": true
-  }
+  },
+  "execution_policy": "HUMAN_ONLY"
 }

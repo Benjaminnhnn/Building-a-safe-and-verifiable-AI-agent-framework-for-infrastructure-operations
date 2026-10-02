@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from core.contract_validation import (
@@ -19,6 +20,11 @@ from core.schema.common import (
 from core.schema.evidence import Evidence
 from core.schema.incident import Incident
 from core.schema.resource import Resource
+from core.schema.verification import (
+    ProbeResult,
+    StabilityObservation,
+    VerificationResult,
+)
 from core.state_machine import (
     IncidentStateMachine,
     StateTransitionError,
@@ -74,6 +80,33 @@ def _action(**overrides: object) -> TypedAction:
     return TypedAction(**values)
 
 
+def _verification(incident_id: str = "inc-db-01", **overrides: object) -> VerificationResult:
+    checked_at = datetime.now(timezone.utc)
+    values = {
+        "verification_id": "verify-db-01",
+        "incident_id": incident_id,
+        "health_passed": True,
+        "communication_contract_passed": True,
+        "stability_seconds": 120,
+        "allowed_probes": [ProbeResult(name="moodle", passed=True, details="ok")],
+        "forbidden_probes": [ProbeResult(name="public_db", passed=True, details="blocked")],
+        "related_probes": [ProbeResult(name="monitoring", passed=True, details="ok")],
+        "stability_observations": [
+            StabilityObservation(
+                observed_at=checked_at - timedelta(seconds=120), healthy=True
+            ),
+            StabilityObservation(
+                observed_at=checked_at - timedelta(seconds=60), healthy=True
+            ),
+            StabilityObservation(observed_at=checked_at, healthy=True),
+        ],
+        "verdict": "resolved",
+        "resolution_eligible": True,
+    }
+    values.update(overrides)
+    return VerificationResult(**values)
+
+
 def test_full_valid_transition_path_requires_independent_verifier() -> None:
     incident = _incident()
     machine = IncidentStateMachine()
@@ -83,17 +116,27 @@ def test_full_valid_transition_path_requires_independent_verifier() -> None:
         (IncidentStatus.GATED, "safety_gate"),
         (IncidentStatus.EXECUTED, "executor"),
         (IncidentStatus.VERIFYING, "orchestrator"),
-        (IncidentStatus.RESOLVED, "independent_verifier"),
     ]
 
     events = [
         machine.transition(incident, state, actor=actor, reason="test", evidence_refs=["ev-db-01"])
         for state, actor in path
     ]
+    events.append(
+        machine.resolve_verified(
+            incident,
+            _verification(),
+            reason="verification passed",
+            evidence_refs=["ev-db-01"],
+        )
+    )
 
     assert incident.status == IncidentStatus.RESOLVED
     assert incident.resolved_by_verifier is True
-    assert [event.new_state for event in events] == [state for state, _ in path]
+    assert [event.new_state for event in events] == [
+        *(state for state, _ in path),
+        IncidentStatus.RESOLVED,
+    ]
 
 
 @pytest.mark.parametrize(
@@ -116,19 +159,54 @@ def test_invalid_transitions_are_rejected(current: IncidentStatus, requested: In
 
     assert exc_info.value.current_state == current
     assert exc_info.value.requested_state == requested
-    assert exc_info.value.reason == "invalid"
+    if requested == IncidentStatus.RESOLVED:
+        assert "resolve_verified" in exc_info.value.reason
+    else:
+        assert exc_info.value.reason == "invalid"
 
 
-@pytest.mark.parametrize("actor", ["planner", "executor", "orchestrator"])
+@pytest.mark.parametrize("actor", ["planner", "executor", "orchestrator", "independent_verifier"])
 def test_only_verifier_can_resolve(actor: str) -> None:
     incident = _incident()
     incident.status = IncidentStatus.VERIFYING
-    with pytest.raises(StateTransitionError, match="only independent_verifier"):
+    with pytest.raises(StateTransitionError, match="resolve_verified"):
         IncidentStateMachine().transition(
             incident,
             IncidentStatus.RESOLVED,
             actor=actor,
             reason="not authorized",
+        )
+
+
+@pytest.mark.parametrize(
+    "verification",
+    [
+        _verification(resolution_eligible=False),
+        _verification(verdict="false_recovery", communication_contract_passed=False),
+        _verification(health_passed=False),
+        _verification(stability_seconds=119),
+        _verification(stability_observations=[]),
+        _verification(
+            stability_observations=[
+                StabilityObservation(
+                    observed_at=datetime.now(timezone.utc) - timedelta(seconds=120),
+                    healthy=True,
+                ),
+                StabilityObservation(observed_at=datetime.now(timezone.utc), healthy=True),
+            ]
+        ),
+        _verification(allowed_probes=[ProbeResult(name="moodle", passed=False, details="down")]),
+        _verification(incident_id="another-incident"),
+    ],
+)
+def test_resolution_requires_eligible_matching_verifier_evidence(
+    verification: VerificationResult,
+) -> None:
+    incident = _incident()
+    incident.status = IncidentStatus.VERIFYING
+    with pytest.raises(StateTransitionError):
+        IncidentStateMachine().resolve_verified(
+            incident, verification, reason="must fail closed"
         )
 
 

@@ -1,3 +1,6 @@
+# Legacy/general monitoring rules for configure-monitoring-stack.yml.
+# Moodle staging Prometheus installs ansible/config/moodle_alert_rules.yml instead.
+# Scenario labels below are NOT proof that an adapted Sprint 6 case is live-ready.
 groups:
   - name: system_alerts
     interval: 15s
@@ -497,4 +500,3 @@ groups:
         annotations:
           summary: "Moodle trusted proxy misconfigured"
           description: "Moodle rejected client requests due to misconfigured trusted proxy headers or drift."
-

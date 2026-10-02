@@ -60,7 +60,8 @@ validate_scenario() {
 scenario_hosts() {
   case "${1:-}" in
     DB-01|NET-01) printf '%s\n' moodle-app-a moodle-app-b ;;
-    RES-01|CON-01) printf '%s\n' moodle-app-b ;;
+    DB-02) printf '%s\n' moodle-app-a ;;
+    DB-03|RES-01|RES-02|RES-03|NET-02|NET-03|CON-01|CON-02|CON-03|SEC-03) printf '%s\n' moodle-app-b ;;
     SEC-02) printf '%s\n' moodle-app-a ;;
     *) echo "Scenario has no live-drill marker scope: ${1:-}" >&2; return 64 ;;
   esac
@@ -155,9 +156,11 @@ run_synthetic_once() {
 }
 
 wait_for_prometheus_alert() {
-  local alert_name="$1" timeout_seconds="${2:-120}" elapsed=0 state
+  local alert_name="$1" timeout_seconds="${2:-120}" instance="${3:-}" elapsed=0 state selector
+  selector="alertname=\"$alert_name\",alertstate=\"firing\""
+  [[ -z "$instance" ]] || selector+=",instance=\"$instance\""
   while (( elapsed < timeout_seconds )); do
-    state="$(remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=ALERTS{alertname=\"$alert_name\",alertstate=\"firing\"}' http://127.0.0.1:9090/api/v1/query | jq -r 'if (.data.result | length) > 0 then \"firing\" else \"inactive\" end'")"
+    state="$(remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=ALERTS{$selector}' http://127.0.0.1:9090/api/v1/query | jq -r 'if (.data.result | length) > 0 then \"firing\" else \"inactive\" end'")"
     [[ "$state" == firing ]] && return 0
     sleep 5
     elapsed=$((elapsed + 5))

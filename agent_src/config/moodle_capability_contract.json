@@ -66,7 +66,14 @@
       "capability_id": "reset_staging_fault",
       "access": "scoped_write",
       "roles": ["executor"],
-      "resource_ids": ["moodle-app", "postgres-db", "moodledata-volume", "moodle-rds-security-group"],
+      "resource_ids": ["moodle-app", "postgres-db", "moodledata-volume"],
+      "sources": []
+    },
+    {
+      "capability_id": "restore_rds_ingress_human",
+      "access": "scoped_write",
+      "roles": ["operator"],
+      "resource_ids": ["moodle-rds-security-group"],
       "sources": []
     },
     {
@@ -79,7 +86,6 @@
   ],
   "target_scopes": {
     "moodle-app-b": {"resource_ids": ["moodle-app"], "hosts": ["moodle-app-b"]},
-    "staging_moodle_proxy": {"resource_ids": ["moodle-proxy", "moodle-web-endpoint"], "hosts": []},
     "staging_moodle_app": {"resource_ids": ["moodle-app"], "hosts": ["moodle-app-a", "moodle-app-b"]},
     "staging_moodle_nodes": {"resource_ids": ["moodle-app", "postgres-db"], "hosts": ["moodle-app-a", "moodle-app-b"]},
     "staging_rds_postgresql": {"resource_ids": ["postgres-db"], "hosts": []},
@@ -103,7 +109,7 @@
     "CON-01": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "restore_reviewed_configuration"],
     "CON-02": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "restore_reviewed_configuration"],
     "CON-03": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "restore_reviewed_configuration"],
-    "SEC-01": ["collect_alert_evidence", "collect_aws_evidence", "verify_recovery", "reset_staging_fault"],
+    "SEC-01": ["collect_alert_evidence", "collect_aws_evidence", "verify_recovery", "restore_rds_ingress_human"],
     "SEC-02": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "restore_reviewed_configuration"],
     "SEC-03": ["collect_alert_evidence", "collect_runtime_evidence", "verify_recovery", "restore_reviewed_configuration"]
   }

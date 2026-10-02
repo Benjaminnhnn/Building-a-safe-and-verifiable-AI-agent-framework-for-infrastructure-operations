@@ -159,6 +159,17 @@ Trạng thái chung trước mỗi run: Moodle login, synthetic read/write, DB, 
 | Container/dependency | CON-01 Moodle stopped; CON-02 reverse proxy stopped/wrong upstream; CON-03 crash-loop do bad image/env |
 | Security/configuration | SEC-01 accidental DB port exposure; SEC-02 sai ownership/mode `moodledata`; SEC-03 sai trusted proxy/wwwroot/security config |
 
+For the deployed ALB + two Moodle EC2 + RDS PostgreSQL + EFS staging topology,
+the ten not-yet-live variants use the architecture-specific definitions in
+`evaluation/ground_truth/moodle/*.json` (updated 2026-09-30). In particular,
+CON-02 is Apache router drift on one Moodle node, not a nonexistent Nginx
+container; RES-03 is a bounded isolated scratch-filesystem ENOSPC drill, not
+an attempt to fill elastic EFS; SEC-01 is an unauthorized **security-group
+source** on private RDS, never public `0.0.0.0/0`, and is HUMAN_ONLY. These
+variants remain **not live-approved** until the matching injector, reset,
+node-local/SG observation, and independent recovery probes pass review. The
+five previously reviewed variants retain their existing live scope.
+
 Communication contract tối thiểu:
 
 - Allowed: client→Moodle; Moodle→database; monitor→exporter; Alertmanager→Agent.
@@ -195,6 +206,14 @@ Ba phương pháp chạy cùng snapshot, alert, runbook, seed và reset procedur
 1. Manual operator theo SOP cố định.
 2. Ansible rule-based playbook viết trước.
 3. AI Agent đầy đủ Observer→Diagnosis→Planner→Gate→Execution→Verifier.
+
+Với staging Moodle hiện tại, benchmark giữ đủ 15 × 3 × n ô nhưng không đồng
+nhất "có ô benchmark" với "được phép thực thi". Safe Executor chỉ có 5
+scenario đã duyệt; 9 scenario Moodle mới ở nhánh AI phải DENY và handoff cho
+Manual operator, không tính recovery tự động. SEC-01 là HUMAN_ONLY: cả nhánh
+AI và Ansible DENY/handoff, chỉ Manual operator được thay đổi Security Group.
+Các lượt DENY vẫn cần raw evidence, timestamp, kiểm chứng độc lập và attribution
+recovery của người vận hành; smoke test/Shadow không thay được empirical run.
 
 ### Ablation
 

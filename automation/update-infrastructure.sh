@@ -88,20 +88,30 @@ current_cidr="$(
 [[ -n "$current_cidr" ]] ||
     die "my_ip_cidr must be a quoted string in $TF_VARS."
 
-if ! public_ip="$(
-    curl --ipv4 --fail --silent --show-error --connect-timeout 5 --max-time 15 https://api.ipify.org |
-        tr -d '[:space:]'
-)"; then
-    die "Could not determine the public IPv4 address from api.ipify.org."
-fi
+public_ip=""
+for endpoint in https://checkip.amazonaws.com https://api.ipify.org; do
+    candidate="$(
+        curl --ipv4 --fail --silent --connect-timeout 5 --max-time 15 "$endpoint" 2>/dev/null |
+            tr -d '[:space:]'
+    )" || true
+    [[ "$candidate" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || continue
 
-[[ "$public_ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] ||
-    die "The IP service did not return a valid IPv4 address."
-
-IFS='.' read -r -a octets <<< "$public_ip"
-for octet in "${octets[@]}"; do
-    (( 10#$octet <= 255 )) || die "The IP service returned an invalid IPv4 address."
+    IFS='.' read -r -a octets <<< "$candidate"
+    candidate_valid=true
+    for octet in "${octets[@]}"; do
+        if (( 10#$octet > 255 )); then
+            candidate_valid=false
+            break
+        fi
+    done
+    if [[ "$candidate_valid" == true ]]; then
+        public_ip="$candidate"
+        break
+    fi
 done
+
+[[ -n "$public_ip" ]] ||
+    die "Could not determine a valid public IPv4 address from the configured IP-check services."
 
 new_cidr="$public_ip/32"
 

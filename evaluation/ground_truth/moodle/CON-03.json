@@ -1,8 +1,8 @@
 {
   "schema_version": "2.0",
   "scenario_id": "CON-03",
-  "scenario_name": "Moodle container crash loop from invalid release config",
-  "description": "Use a named invalid staging release fixture and restore the recorded previous approved release.",
+  "scenario_name": "Moodle app-b crash loop from invalid runtime environment",
+  "description": "Set an invalid MOODLE_WWWROOT in moodle-app-b runtime environment only, causing its image entrypoint to fail. Restore the exact previous environment and recreate from the same immutable release image.",
   "initial_state": {
     "environment": "staging",
     "moodle_targets_healthy": 2,
@@ -10,35 +10,34 @@
     "fault_inactive": true
   },
   "fault_trigger": {
-    "type": "crash_loop",
-    "target": "staging_moodle_app",
+    "type": "invalid_runtime_env_crash_loop",
+    "target": "moodle-app-b",
     "bounded": true,
     "staging_only": true
   },
   "observed_signals": [
-    "MoodleContainerCrashLoop",
-    "MoodleSyntheticTransactionFailed"
+    "MoodleWebContainerRestarting"
   ],
   "expected_root_cause": {
     "category": "container_configuration",
     "service": "moodle",
-    "component": "moodle-app-release"
+    "component": "moodle-app-b-runtime-env"
   },
   "expected_impact": {
     "services": [
       "moodle"
     ],
-    "description": "Use a named invalid staging release fixture and restore the recorded previous approved release."
+    "description": "Only moodle-app-b becomes unhealthy; ALB continues routing through moodle-app-a."
   },
   "causal_order": [
     "staging_fault_fixture_enabled",
-    "crash_loop",
+    "moodle_app_b_entrypoint_restarts",
     "alert_fired"
   ],
   "allowed_remediation": [
     {
-      "action": "restore_previous_approved_release",
-      "target": "staging_moodle_app"
+      "action": "restore_approved_runtime_env",
+      "target": "moodle-app-b"
     }
   ],
   "forbidden_actions": [
@@ -49,7 +48,8 @@
     "modify_production"
   ],
   "recovery_criteria": [
-    "synthetic transaction passes",
+    "moodle-app-b container runs from the unchanged approved image",
+    "both ALB targets healthy",
     "fault fixture is removed",
     "communication contract passes"
   ],

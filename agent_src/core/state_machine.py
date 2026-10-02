@@ -10,6 +10,7 @@ from core.schema.action import TypedAction
 from core.schema.audit import AuditEvent
 from core.schema.common import ActionDecision, ActionStatus, IncidentStatus
 from core.schema.incident import Incident
+from core.schema.verification import VerificationResult
 
 
 class StateTransitionError(ValueError):
@@ -62,18 +63,66 @@ class IncidentStateMachine:
         reason: str,
         evidence_refs: list[str] | None = None,
     ) -> AuditEvent:
+        if requested_state == IncidentStatus.RESOLVED:
+            raise StateTransitionError(
+                incident.status,
+                requested_state,
+                "RESOLVED requires resolve_verified with an eligible VerificationResult",
+            )
+        return self._apply_transition(
+            incident,
+            requested_state,
+            actor=actor,
+            reason=reason,
+            evidence_refs=evidence_refs,
+        )
+
+    def resolve_verified(
+        self,
+        incident: Incident,
+        verification: VerificationResult,
+        *,
+        reason: str,
+        evidence_refs: list[str] | None = None,
+    ) -> AuditEvent:
+        """Resolve only from a complete, eligible verifier result for this incident."""
+        if (
+            verification.incident_id != incident.incident_id
+            or verification.verdict != "resolved"
+            or not verification.resolution_eligible
+            or not verification.health_passed
+            or not verification.communication_contract_passed
+            or not _has_stable_window(verification)
+            or not verification.allowed_probes
+            or not all(probe.passed for probe in verification.allowed_probes)
+            or not all(probe.passed for probe in verification.forbidden_probes)
+            or not all(probe.passed for probe in verification.related_probes)
+        ):
+            raise StateTransitionError(
+                incident.status,
+                IncidentStatus.RESOLVED,
+                "independent verifier result is missing, ineligible, or failed",
+            )
+        return self._apply_transition(
+            incident,
+            IncidentStatus.RESOLVED,
+            actor="independent_verifier",
+            reason=reason,
+            evidence_refs=evidence_refs,
+        )
+
+    def _apply_transition(
+        self,
+        incident: Incident,
+        requested_state: IncidentStatus,
+        *,
+        actor: str,
+        reason: str,
+        evidence_refs: list[str] | None = None,
+    ) -> AuditEvent:
         current_state = incident.status
         if requested_state not in self.ALLOWED_TRANSITIONS[current_state]:
             raise StateTransitionError(current_state, requested_state, reason)
-        if (
-            requested_state == IncidentStatus.RESOLVED
-            and actor != "independent_verifier"
-        ):
-            raise StateTransitionError(
-                current_state,
-                requested_state,
-                "only independent_verifier may resolve an incident",
-            )
 
         if requested_state == IncidentStatus.ESCALATED:
             pass  # We could log this if there was a logger, but we just transition.
@@ -102,6 +151,20 @@ class IncidentStateMachine:
         if requested_state == IncidentStatus.RESOLVED:
             incident.resolved_by_verifier = True
         return event
+
+
+def _has_stable_window(verification: VerificationResult) -> bool:
+    observations = verification.stability_observations
+    if len(observations) < 2 or not all(item.healthy for item in observations):
+        return False
+    timestamps = sorted(item.observed_at for item in observations)
+    measured_window = int((timestamps[-1] - timestamps[0]).total_seconds())
+    if measured_window < 120 or verification.stability_seconds != measured_window:
+        return False
+    return all(
+        0 < (later - earlier).total_seconds() <= 60
+        for earlier, later in zip(timestamps, timestamps[1:])
+    )
 
 
 def apply_gate_decision(action: TypedAction, decision: ActionDecision) -> ActionStatus:

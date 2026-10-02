@@ -16,6 +16,12 @@
       changed_when: false
 
   tasks:
+    - name: Install traffic-control utility for container-scoped NET-03 drill
+      tags: [moodle_node_netem]
+      ansible.builtin.package:
+        name: iproute-tc
+        state: present
+
     - name: Create exporter runtime directory
       ansible.builtin.file:
         path: "{{ moodle_observability_root }}"
@@ -25,6 +31,7 @@
         mode: '0755'
 
     - name: Create Node Exporter textfile directory
+      tags: [moodle_node_probes]
       ansible.builtin.file:
         path: /var/lib/node_exporter/textfile_collector
         state: directory
@@ -101,6 +108,76 @@
         name: moodle-efs-metric.timer
         enabled: true
         state: started
+
+    - name: Install read-only node-local Moodle probes
+      tags: [moodle_node_probes]
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../files/moodle-monitoring/moodle-node-probes.sh"
+        dest: /usr/local/sbin/moodle-node-probes
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Install node-local Moodle probe service
+      tags: [moodle_node_probes]
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/moodle-node-probes.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Publish read-only Moodle container and RDS path metrics
+          After=docker.service network-online.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/moodle-node-probes
+          TimeoutStartSec=25
+
+    - name: Install node-local Moodle probe timer
+      tags: [moodle_node_probes]
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/moodle-node-probes.timer
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Refresh read-only Moodle node-local metrics
+
+          [Timer]
+          OnBootSec=20s
+          OnActiveSec=5s
+          OnUnitActiveSec=30s
+          RandomizedDelaySec=0
+          AccuracySec=1s
+          Unit=moodle-node-probes.service
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Publish initial node-local Moodle probe sample
+      tags: [moodle_node_probes]
+      ansible.builtin.systemd:
+        name: moodle-node-probes.service
+        state: started
+        daemon_reload: true
+
+    - name: Enable node-local Moodle probe timer
+      tags: [moodle_node_probes]
+      ansible.builtin.systemd:
+        name: moodle-node-probes.timer
+        enabled: true
+        state: restarted
+        daemon_reload: true
+
+    - name: Confirm node-local probe sample exists
+      tags: [moodle_node_probes]
+      ansible.builtin.stat:
+        path: /var/lib/node_exporter/textfile_collector/moodle_node_probes.prom
+      register: moodle_node_probe_sample
+      failed_when: not moodle_node_probe_sample.stat.exists
 
     - name: Remove legacy synthetic timer from application nodes
       ansible.builtin.shell:
@@ -479,12 +556,25 @@
                   target_label: target
 
     - name: Install Moodle alert rules
+      tags: [moodle_node_alerts]
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../config/moodle_alert_rules.yml"
         dest: "{{ moodle_observability_root }}/prometheus/rules/moodle.yml"
         owner: root
         group: root
         mode: '0644'
+
+    - name: Validate Moodle alert rules in the running Prometheus image
+      tags: [moodle_node_alerts]
+      ansible.builtin.command:
+        cmd: docker exec moodle-prometheus promtool check rules /etc/prometheus/rules/moodle.yml
+      changed_when: false
+
+    - name: Reload Prometheus after Moodle alert rule validation
+      tags: [moodle_node_alerts]
+      ansible.builtin.command:
+        cmd: docker kill --signal=HUP moodle-prometheus
+      changed_when: true
 
     - name: Install Blackbox Exporter configuration
       ansible.builtin.copy:

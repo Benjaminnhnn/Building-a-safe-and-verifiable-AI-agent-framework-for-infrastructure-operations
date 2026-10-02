@@ -103,6 +103,10 @@ class ActionCatalog:
             required_role="executor",
             environment_scope=["staging"],
         )
+        _operator_staging = ActionPermission(
+            required_role="operator",
+            environment_scope=["staging"],
+        )
         _verifier_staging_ro = ActionPermission(
             required_role="verifier",
             environment_scope=["staging"],
@@ -225,10 +229,10 @@ class ActionCatalog:
             ),
             CatalogEntry(
                 action_id="remove_tagged_database_ingress_rule",
-                description="Remove a tagged firewall rule that exposes the database port.",
+                description="Human-only removal of the exact tagged unauthorized RDS security-group ingress rule.",
                 adapter="ansible",
-                permission=_executor_staging,
-                blast_radius="LOW",
+                permission=_operator_staging,
+                blast_radius="HIGH",
                 is_reversible=True,
                 rollback_action="restore_tagged_database_ingress_rule",
                 idempotent=True,
@@ -319,9 +323,20 @@ class ActionCatalog:
                 forbidden_in_production=False,
             ),
             CatalogEntry(
-                action_id="start_moodle_reverse_proxy",
-                description="Start or reload the Moodle reverse proxy service.",
+                action_id="restore_moodle_apache_router",
+                description="Recreate only moodle-app-b web from the approved image to restore its Apache router configuration.",
                 adapter="docker",
+                permission=_executor_staging,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action=None,
+                idempotent=True,
+                forbidden_in_production=True,
+            ),
+            CatalogEntry(
+                action_id="restore_approved_runtime_env",
+                description="Restore moodle-app-b's exact pre-fault runtime env and recreate its unchanged approved image.",
+                adapter="ansible",
                 permission=_executor_staging,
                 blast_radius="LOW",
                 is_reversible=True,
@@ -419,7 +434,7 @@ class ActionCatalog:
             ),
             CatalogEntry(
                 action_id="remove_named_disk_fixture",
-                description="Delete named disk fill fixture file.",
+                description="Remove only the named file from moodle-app-b's isolated scratch filesystem; never fill EFS.",
                 adapter="docker",
                 permission=_executor_staging,
                 blast_radius="LOW",

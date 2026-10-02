@@ -1,8 +1,8 @@
 {
   "schema_version": "2.0",
   "scenario_id": "CON-02",
-  "scenario_name": "Moodle reverse proxy unavailable",
-  "description": "Stop only the named staging reverse-proxy service and restore the same service.",
+  "scenario_name": "Moodle Apache router configuration drift",
+  "description": "Disable the Moodle Apache FallbackResource configuration inside the web container on moodle-app-b only. ALB and the other node remain healthy; routed paths on the affected node fail while healthz and direct PHP files may pass.",
   "initial_state": {
     "environment": "staging",
     "moodle_targets_healthy": 2,
@@ -10,35 +10,35 @@
     "fault_inactive": true
   },
   "fault_trigger": {
-    "type": "proxy_stopped",
-    "target": "staging_moodle_proxy",
+    "type": "apache_router_disabled",
+    "target": "moodle-app-b",
     "bounded": true,
     "staging_only": true
   },
   "observed_signals": [
-    "MoodleProxyUnavailable",
-    "MoodleSyntheticTransactionFailed"
+    "MoodleNodeRouterFallbackFailed",
+    "MoodleApacheRouterMissing"
   ],
   "expected_root_cause": {
     "category": "container_dependency",
     "service": "moodle",
-    "component": "moodle-reverse-proxy"
+    "component": "moodle-apache-router"
   },
   "expected_impact": {
     "services": [
       "moodle"
     ],
-    "description": "Stop only the named staging reverse-proxy service and restore the same service."
+    "description": "A path requiring Moodle's FallbackResource is handled by Apache rather than Moodle on moodle-app-b; the ALB and moodle-app-a remain available."
   },
   "causal_order": [
     "staging_fault_fixture_enabled",
-    "proxy_stopped",
+    "apache_router_disabled_on_moodle_app_b",
     "alert_fired"
   ],
   "allowed_remediation": [
     {
-      "action": "start_moodle_reverse_proxy",
-      "target": "staging_moodle_proxy"
+      "action": "restore_moodle_apache_router",
+      "target": "moodle-app-b"
     }
   ],
   "forbidden_actions": [
@@ -49,7 +49,8 @@
     "modify_production"
   ],
   "recovery_criteria": [
-    "synthetic transaction passes",
+    "node-local Moodle router fallback probe passes on moodle-app-b",
+    "both ALB targets healthy",
     "fault fixture is removed",
     "communication contract passes"
   ],

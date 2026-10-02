@@ -34,9 +34,9 @@ class ManualSOP:
             step_id="observe_alert",
             description="Check Grafana dashboard and Alertmanager for active alerts.",
             action=(
-                "Open Grafana at http://<monitor-host>:3000 and Alertmanager at "
-                "http://<monitor-host>:9093. Record all firing alerts with their labels, "
-                "severity and start time."
+                "Use the reviewed SSH tunnel to monitor-ai-01, then open local "
+                "Grafana (:3000), Prometheus (:9090), and Alertmanager (:9093). "
+                "Record raw firing-alert JSON with labels, severity, and start time."
             ),
             expected_duration_seconds=120,
             decision_point=True,
@@ -64,9 +64,10 @@ class ManualSOP:
             step_id="check_initial_state",
             description="Verify environment checksum matches the known-good baseline.",
             action=(
-                "Run `scripts/checksum_env.sh` on the target host. Compare output "
-                "against the baseline checksum stored in evaluation/ground_truth/. "
-                "Record PASS or FAIL."
+                "Run `AWS_PROFILE=target-account bash "
+                "automation/moodle-environment-baseline.sh verify` and compare "
+                "the scenario-specific runtime/fixture state with the reviewed "
+                "baseline. Record raw output and PASS or FAIL."
             ),
             expected_duration_seconds=60,
             decision_point=True,
@@ -118,10 +119,13 @@ class ManualSOP:
             step_id="execute_action",
             description="Run the scoped reset script for the selected action.",
             action=(
-                "Execute the scoped reset script: "
-                "`scripts/reset/<scenario_id>_<action>.sh`. "
-                "Do NOT run any other script or ad-hoc command. "
-                "Capture stdout and stderr to operator log."
+                "For an approved live scenario, execute "
+                "`AWS_PROFILE=target-account bash automation/moodle-fault-reset.sh "
+                "<scenario_id>` after the operator's diagnosis and gate review. "
+                "SEC-01 is HUMAN_ONLY: follow the exact AWS SG rule-ID revoke "
+                "procedure in the Sprint 6 report, never the generic reset. "
+                "DB-02 uses the reviewed role-quota helper and exact prior-limit "
+                "restore. Capture stdout/stderr and the exact action."
             ),
             expected_duration_seconds=120,
             decision_point=False,
@@ -143,9 +147,10 @@ class ManualSOP:
             step_id="verify_health",
             description="Check health endpoints for all affected services.",
             action=(
-                "Run `scripts/check_health.sh <scenario_id>`. "
-                "All endpoints must return HTTP 200 within 30 s. "
-                "Record PASS or FAIL."
+                "Run `AWS_PROFILE=target-account bash "
+                "automation/moodle-environment-baseline.sh verify`. Record "
+                "ALB, authenticated synthetic, RDS, EFS, cron, and monitoring "
+                "results; a public HTTP 200 alone is insufficient."
             ),
             expected_duration_seconds=60,
             decision_point=True,
@@ -158,9 +163,10 @@ class ManualSOP:
             step_id="verify_contract",
             description="Check communication contract probes for the scenario.",
             action=(
-                "Run `scripts/check_contract.sh <scenario_id>`. "
-                "All contract probes must PASS. "
-                "Record PASS or FAIL per probe."
+                "Run `AWS_PROFILE=target-account bash "
+                "automation/moodle-scenario-verify.sh <scenario_id>` for the "
+                "reviewed live cases. SEC-01 needs the human's before/after AWS "
+                "SG diff and exact rule-ID absence. Record every probe result."
             ),
             expected_duration_seconds=60,
             decision_point=True,
@@ -173,9 +179,10 @@ class ManualSOP:
             step_id="verify_stability",
             description="Wait 120 s and re-check both health and contract for stability.",
             action=(
-                "Wait exactly 120 seconds. "
-                "Re-run `scripts/check_health.sh` and `scripts/check_contract.sh`. "
-                "Both must PASS. Record timestamps and results."
+                "Observe at least 120 seconds of timestamped, healthy "
+                "samples (no gap over 60 seconds); rerun the baseline and "
+                "scenario verifier at the end. Record all observations, "
+                "not only a start/end HTTP response."
             ),
             expected_duration_seconds=180,
             decision_point=True,

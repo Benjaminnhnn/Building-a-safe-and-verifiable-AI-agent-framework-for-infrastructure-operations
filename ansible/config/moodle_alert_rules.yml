@@ -83,3 +83,64 @@ groups:
         for: 15s
         labels: {severity: critical, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-container}
         annotations: {summary: "Moodle web container missing for controlled scenario {{ $labels.scenario_id }}"}
+
+      # These are real node-local symptoms, without a scenario_id label.
+      # A fault marker and independent evidence must bind a specific scenario;
+      # the alert alone cannot distinguish DB-03 from NET-02, for example.
+      - alert: MoodleNodeRdsTcpFailed
+        expr: |
+          (moodle_node_rds_tcp_success{job="moodle_node"} == 0)
+          and on(instance) (moodle_node_web_running{job="moodle_node"} == 1)
+        for: 30s
+        labels: {severity: critical, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-node-rds-path}
+        annotations: {summary: "Moodle web container on {{ $labels.instance }} cannot reach RDS TCP 5432"}
+      - alert: MoodleNodeRdsTcpLatencyHigh
+        expr: |
+          (moodle_node_rds_tcp_duration_seconds{job="moodle_node"} > 0.2)
+          and on(instance) (moodle_node_rds_tcp_success{job="moodle_node"} == 1)
+        for: 30s
+        labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-node-rds-path}
+        annotations: {summary: "Moodle web container on {{ $labels.instance }} has high RDS TCP latency"}
+      - alert: MoodleApacheRouterMissing
+        expr: |
+          (moodle_node_apache_router_enabled{job="moodle_node"} == 0)
+          and on(instance) (moodle_node_web_running{job="moodle_node"} == 1)
+        for: 15s
+        labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-apache-router}
+        annotations: {summary: "Moodle Apache router configuration is missing on {{ $labels.instance }}"}
+      - alert: MoodleNodeRouterFallbackFailed
+        expr: |
+          (moodle_node_router_fallback_success{job="moodle_node"} == 0)
+          and on(instance) (moodle_node_web_running{job="moodle_node"} == 1)
+        for: 15s
+        labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-router-fallback}
+        annotations: {summary: "Moodle node-local router fallback failed on {{ $labels.instance }}"}
+      - alert: MoodleTrustedProxyConfigDrift
+        expr: |
+          (moodle_node_reverse_proxy_enabled{job="moodle_node"} == 1)
+          and on(instance) (moodle_node_web_running{job="moodle_node"} == 1)
+        for: 15s
+        labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-trusted-proxy}
+        annotations: {summary: "Moodle reverse-proxy trust differs from the approved staging baseline on {{ $labels.instance }}"}
+      - alert: MoodleScratchEnospc
+        expr: moodle_node_scratch_enospc{job="moodle_node"} == 1
+        for: 15s
+        labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-isolated-scratch}
+        annotations: {summary: "Isolated Moodle fault scratch filesystem is full on {{ $labels.instance }}"}
+      - alert: MoodleNodeMemoryPressure
+        expr: |
+          (container_memory_working_set_bytes{job="moodle_cadvisor",name="moodle-fault-res-02"} > 67108864)
+          and on(instance,name) (time() - container_last_seen{job="moodle_cadvisor",name="moodle-fault-res-02"} < 30)
+        for: 15s
+        labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-bounded-memory}
+        annotations: {summary: "Named bounded memory fixture is active on {{ $labels.instance }}"}
+      - alert: MoodleWebContainerRestarting
+        expr: changes(moodle_node_web_restart_count{job="moodle_node"}[2m]) >= 2
+        for: 15s
+        labels: {severity: critical, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-container-restart}
+        annotations: {summary: "Moodle web container restarted repeatedly on {{ $labels.instance }}"}
+      - alert: MoodleNodeProbeStale
+        expr: time() - moodle_node_probe_timestamp_seconds{job="moodle_node"} > 120
+        for: 1m
+        labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-node-probes}
+        annotations: {summary: "Moodle node-local probes have not refreshed on {{ $labels.instance }}"}

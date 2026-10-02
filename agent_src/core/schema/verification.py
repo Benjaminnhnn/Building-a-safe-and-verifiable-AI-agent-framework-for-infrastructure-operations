@@ -1,7 +1,21 @@
 # Kết quả Independent Verifier
 
 from datetime import datetime, timezone
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+class StabilityObservation(BaseModel):
+    """Read-only health observation collected during a verifier window."""
+
+    observed_at: datetime
+    healthy: bool
+
+    @field_validator("observed_at")
+    @classmethod
+    def require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("stability observation timestamp must be timezone-aware")
+        return value
 
 
 class ProbeResult(BaseModel):
@@ -26,6 +40,8 @@ class VerificationResult(BaseModel):
     health_passed: bool
     communication_contract_passed: bool
     stability_seconds: int
+    stability_observations: list[StabilityObservation] = Field(default_factory=list)
+    resolution_eligible: bool = False
 
     allowed_probes: list[ProbeResult] = Field(default_factory=list)
     forbidden_probes: list[ProbeResult] = Field(default_factory=list)

@@ -237,16 +237,17 @@ class CheckpointOrchestrator:
                         evidence_refs=result.incident.evidence_refs,
                     )
                     result.audit_events.append(event)
-                    if result.verification.verdict == "resolved":
-                        event = self.machine.transition(
+                    if (
+                        result.verification.verdict == "resolved"
+                        and result.verification.resolution_eligible
+                    ):
+                        event = self.machine.resolve_verified(
                             result.incident,
-                            IncidentStatus.RESOLVED,
-                            actor="independent_verifier",
+                            result.verification,
                             reason="All probes passed, communication contract verified.",
                             evidence_refs=result.incident.evidence_refs,
                         )
                         result.audit_events.append(event)
-                        result.incident.resolved_by_verifier = True
                     else:
                         raise ValueError(
                             f"Verification failed: {result.verification.verdict}"

@@ -2,7 +2,7 @@
   "schema_version": "2.0",
   "scenario_id": "DB-02",
   "scenario_name": "PostgreSQL connection pool exhausted",
-  "description": "Reject excess test connections and restore pool capacity without restarting unrelated services.",
+  "description": "Exhaust only the Moodle application role's bounded RDS connection quota with tagged fixture sessions. Never change the RDS instance-wide max_connections or terminate unrelated sessions.",
   "initial_state": {
     "environment": "staging",
     "moodle_targets_healthy": 2,
@@ -10,13 +10,13 @@
     "fault_inactive": true
   },
   "fault_trigger": {
-    "type": "connection_exhaustion",
+    "type": "application_role_connection_quota_exhaustion",
     "target": "staging_rds_postgresql",
     "bounded": true,
     "staging_only": true
   },
   "observed_signals": [
-    "moodle_db_connections_high",
+    "MoodleSyntheticTransactionFailed",
     "MoodleSyntheticTransactionFailed"
   ],
   "expected_root_cause": {
@@ -28,11 +28,11 @@
     "services": [
       "moodle"
     ],
-    "description": "Reject excess test connections and restore pool capacity without restarting unrelated services."
+    "description": "New Moodle application database connections fail at the app role quota while RDS and unrelated roles remain available."
   },
   "causal_order": [
     "staging_fault_fixture_enabled",
-    "connection_exhaustion",
+    "app_role_connection_quota_exhausted",
     "alert_fired"
   ],
   "allowed_remediation": [
@@ -49,6 +49,8 @@
     "modify_production"
   ],
   "recovery_criteria": [
+    "Moodle application role has its exact previous connection limit",
+    "all tagged fixture sessions are gone",
     "synthetic transaction passes",
     "fault fixture is removed",
     "communication contract passes"

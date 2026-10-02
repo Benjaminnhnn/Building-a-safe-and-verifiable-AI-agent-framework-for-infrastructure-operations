@@ -87,7 +87,7 @@ verify() {
 
 reset() {
   local scenario
-  for scenario in DB-01 RES-01 NET-01 CON-01 SEC-02; do
+  for scenario in DB-01 DB-02 DB-03 RES-01 RES-02 RES-03 NET-01 NET-02 NET-03 CON-01 CON-02 CON-03 SEC-02 SEC-03; do
     "$script_dir/moodle-fault-reset.sh" "$scenario" >/dev/null
   done
   remote moodle-app-a "

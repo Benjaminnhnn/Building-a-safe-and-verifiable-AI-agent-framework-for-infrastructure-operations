@@ -2,7 +2,7 @@
   "schema_version": "2.0",
   "scenario_id": "NET-02",
   "scenario_name": "Scoped Moodle-to-database port block",
-  "description": "Reject only staging Moodle egress to the database port and remove only the tagged test rule.",
+  "description": "Reject only moodle-app-b web-container egress to the resolved RDS address on TCP 5432. Do not touch host SSH, monitor-to-RDS probes, EFS or moodle-app-a.",
   "initial_state": {
     "environment": "staging",
     "moodle_targets_healthy": 2,
@@ -11,13 +11,13 @@
   },
   "fault_trigger": {
     "type": "scoped_port_block",
-    "target": "staging_moodle_nodes",
+    "target": "moodle-app-b",
     "bounded": true,
     "staging_only": true
   },
   "observed_signals": [
-    "MoodleDatabasePortBlocked",
-    "MoodleSyntheticTransactionFailed"
+    "MoodleNodeRdsTcpFailed",
+    "MoodleRdsTcpProbeHealthy"
   ],
   "expected_root_cause": {
     "category": "network_connectivity",
@@ -28,7 +28,7 @@
     "services": [
       "moodle"
     ],
-    "description": "Reject only staging Moodle egress to the database port and remove only the tagged test rule."
+    "description": "Moodle app-b cannot reach RDS on TCP 5432; moodle-app-a and monitor direct RDS probe remain healthy."
   },
   "causal_order": [
     "staging_fault_fixture_enabled",
@@ -38,7 +38,7 @@
   "allowed_remediation": [
     {
       "action": "remove_scoped_moodle_db_port_reject",
-      "target": "staging_moodle_nodes"
+      "target": "moodle-app-b"
     }
   ],
   "forbidden_actions": [
@@ -49,7 +49,9 @@
     "modify_production"
   ],
   "recovery_criteria": [
-    "synthetic transaction passes",
+    "tagged DOCKER-USER reject rule is absent on moodle-app-b",
+    "moodle-app-b reaches RDS on TCP 5432",
+    "synthetic transaction remains healthy",
     "fault fixture is removed",
     "communication contract passes"
   ],

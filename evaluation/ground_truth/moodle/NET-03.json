@@ -2,7 +2,7 @@
   "schema_version": "2.0",
   "scenario_id": "NET-03",
   "scenario_name": "Moodle-to-database latency and packet loss",
-  "description": "Apply a bounded tc netem profile to the staging interface and remove that exact profile.",
+  "description": "Apply a bounded tc netem delay/loss profile only inside the moodle-app-b web container network namespace. Host eth0 and SSH remain untouched; reset removes only the recorded netem qdisc.",
   "initial_state": {
     "environment": "staging",
     "moodle_targets_healthy": 2,
@@ -11,13 +11,13 @@
   },
   "fault_trigger": {
     "type": "latency_and_loss",
-    "target": "staging_moodle_node",
+    "target": "moodle-app-b",
     "bounded": true,
     "staging_only": true
   },
   "observed_signals": [
-    "MoodleDatabaseLatencyHigh",
-    "MoodleSyntheticTransactionFailed"
+    "MoodleNodeRdsTcpLatencyHigh",
+    "MoodleSyntheticTransactionHealthy"
   ],
   "expected_root_cause": {
     "category": "network_quality",
@@ -28,7 +28,7 @@
     "services": [
       "moodle"
     ],
-    "description": "Apply a bounded tc netem profile to the staging interface and remove that exact profile."
+    "description": "Only moodle-app-b web-container egress becomes slow/lossy; host SSH, EFS and the other Moodle node remain healthy."
   },
   "causal_order": [
     "staging_fault_fixture_enabled",
@@ -38,7 +38,7 @@
   "allowed_remediation": [
     {
       "action": "remove_scoped_netem_profile",
-      "target": "staging_moodle_node"
+      "target": "moodle-app-b"
     }
   ],
   "forbidden_actions": [
@@ -49,7 +49,9 @@
     "modify_production"
   ],
   "recovery_criteria": [
-    "synthetic transaction passes",
+    "recorded container netem qdisc is absent",
+    "moodle-app-b to RDS latency returns to baseline range",
+    "synthetic transaction remains healthy",
     "fault fixture is removed",
     "communication contract passes"
   ],

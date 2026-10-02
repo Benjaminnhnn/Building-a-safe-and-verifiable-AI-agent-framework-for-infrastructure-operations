@@ -2,7 +2,7 @@
   "schema_version": "2.0",
   "scenario_id": "DB-03",
   "scenario_name": "Moodle database endpoint configuration drift",
-  "description": "Restore the reviewed endpoint from the deployment manifest; do not expose or rotate database credentials.",
+  "description": "Set only moodle-app-b MOODLE_DB_HOST to a deliberately invalid hostname; restore its exact previous runtime environment and recreate the same immutable image. RDS and moodle-app-a remain healthy.",
   "initial_state": {
     "environment": "staging",
     "moodle_targets_healthy": 2,
@@ -11,13 +11,13 @@
   },
   "fault_trigger": {
     "type": "endpoint_configuration_drift",
-    "target": "staging_moodle_configuration",
+    "target": "moodle-app-b",
     "bounded": true,
     "staging_only": true
   },
   "observed_signals": [
-    "MoodleDatabaseEndpointInvalid",
-    "MoodleSyntheticTransactionFailed"
+    "MoodleNodeRdsTcpFailed",
+    "MoodleRdsTcpProbeHealthy"
   ],
   "expected_root_cause": {
     "category": "database_configuration",
@@ -28,7 +28,7 @@
     "services": [
       "moodle"
     ],
-    "description": "Restore the reviewed endpoint from the deployment manifest; do not expose or rotate database credentials."
+    "description": "Only moodle-app-b cannot use the configured RDS endpoint; RDS and moodle-app-a stay healthy."
   },
   "causal_order": [
     "staging_fault_fixture_enabled",
@@ -38,7 +38,7 @@
   "allowed_remediation": [
     {
       "action": "restore_approved_database_endpoint",
-      "target": "staging_moodle_configuration"
+      "target": "moodle-app-b"
     }
   ],
   "forbidden_actions": [
@@ -49,7 +49,9 @@
     "modify_production"
   ],
   "recovery_criteria": [
-    "synthetic transaction passes",
+    "moodle-app-b runtime environment hash matches its pre-fault baseline",
+    "moodle-app-b connects to the approved RDS hostname using TLS",
+    "both ALB targets healthy",
     "fault fixture is removed",
     "communication contract passes"
   ],

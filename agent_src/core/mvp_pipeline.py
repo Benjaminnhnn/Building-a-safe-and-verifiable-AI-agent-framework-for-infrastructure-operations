@@ -8,7 +8,7 @@ finishes EC2, Compose, monitoring, injector, and reset wiring.
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from core.schema.action import RollbackPlan, TypedAction
@@ -18,7 +18,8 @@ from core.schema.evidence import Evidence
 from core.schema.incident import Incident
 from core.schema.safety import SafetyDecision
 from core.schema.scenario import ScenarioGroundTruth
-from core.schema.verification import ProbeResult, VerificationResult
+from core.schema.verification import ProbeResult, StabilityObservation, VerificationResult
+from core.state_machine import IncidentStateMachine
 
 ACTION_MAP: dict[str, ActionType] = {
     "DB-01": ActionType.START_CONTAINER,
@@ -105,9 +106,33 @@ def replay_scenario(data: dict[str, Any]) -> dict[str, Any]:
 
     verification = verify_dry_run(incident, scenario)
     audit["timeline"]["t_verify"] = _now()
-    if verification.verdict == "resolved":
-        incident.status = IncidentStatus.RESOLVED
-        incident.resolved_by_verifier = True
+    machine = IncidentStateMachine()
+    audit_events = []
+    for next_state, actor in (
+        (IncidentStatus.TRIAGED, "observer"),
+        (IncidentStatus.PLANNED, "planner"),
+        (IncidentStatus.GATED, "safety_gate"),
+        (IncidentStatus.EXECUTED, "executor"),
+        (IncidentStatus.VERIFYING, "orchestrator"),
+    ):
+        audit_events.append(
+            machine.transition(
+                incident,
+                next_state,
+                actor=actor,
+                reason="Moodle ground-truth dry-run stage completed.",
+                evidence_refs=incident.evidence_refs,
+            )
+        )
+    if verification.resolution_eligible:
+        audit_events.append(
+            machine.resolve_verified(
+                incident,
+                verification,
+                reason="Verifier probes, contract, and simulated stability window passed.",
+                evidence_refs=incident.evidence_refs,
+            )
+        )
         audit["timeline"]["t_resolved"] = _now()
 
     audit.update(
@@ -119,6 +144,7 @@ def replay_scenario(data: dict[str, Any]) -> dict[str, Any]:
             "safety": safety,
             "execution": execution,
             "verification": verification,
+            "audit_events": audit_events,
         }
     )
     return audit
@@ -259,12 +285,23 @@ def verify_dry_run(incident: Incident, scenario: ScenarioGroundTruth) -> Verific
         for name in contract.get("related", [])
     ]
 
+    checked_at = datetime.now(timezone.utc)
     return VerificationResult(
         verification_id=_stable_id("verify", scenario.scenario_id),
         incident_id=incident.incident_id,
         health_passed=True,
         communication_contract_passed=True,
         stability_seconds=120,
+        stability_observations=[
+            StabilityObservation(
+                observed_at=checked_at - timedelta(seconds=120), healthy=True
+            ),
+            StabilityObservation(
+                observed_at=checked_at - timedelta(seconds=60), healthy=True
+            ),
+            StabilityObservation(observed_at=checked_at, healthy=True),
+        ],
+        resolution_eligible=True,
         allowed_probes=allowed,
         forbidden_probes=forbidden,
         related_probes=related,

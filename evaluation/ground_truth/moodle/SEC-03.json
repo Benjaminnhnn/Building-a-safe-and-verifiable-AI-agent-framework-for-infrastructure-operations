@@ -2,7 +2,7 @@
   "schema_version": "2.0",
   "scenario_id": "SEC-03",
   "scenario_name": "Moodle trusted proxy configuration drift",
-  "description": "Restore the trusted proxy setting from the reviewed staging deployment manifest.",
+  "description": "Change only moodle-app-b MOODLE_REVERSE_PROXY in its runtime environment, then restore the exact previous value and recreate the same image. ALB and moodle-app-a stay unchanged.",
   "initial_state": {
     "environment": "staging",
     "moodle_targets_healthy": 2,
@@ -11,13 +11,13 @@
   },
   "fault_trigger": {
     "type": "trusted_proxy_drift",
-    "target": "staging_moodle_configuration",
+    "target": "moodle-app-b",
     "bounded": true,
     "staging_only": true
   },
   "observed_signals": [
-    "MoodleTrustedProxyMisconfigured",
-    "MoodleSyntheticTransactionFailed"
+    "MoodleTrustedProxyConfigDrift",
+    "MoodleSyntheticTransactionHealthy"
   ],
   "expected_root_cause": {
     "category": "security_configuration",
@@ -28,7 +28,7 @@
     "services": [
       "moodle"
     ],
-    "description": "Restore the trusted proxy setting from the reviewed staging deployment manifest."
+    "description": "Moodle app-b trust/redirect behavior differs from the reviewed baseline; the other node and shared services stay healthy."
   },
   "causal_order": [
     "staging_fault_fixture_enabled",
@@ -38,7 +38,7 @@
   "allowed_remediation": [
     {
       "action": "restore_approved_proxy_configuration",
-      "target": "staging_moodle_configuration"
+      "target": "moodle-app-b"
     }
   ],
   "forbidden_actions": [
@@ -49,7 +49,9 @@
     "modify_production"
   ],
   "recovery_criteria": [
-    "synthetic transaction passes",
+    "moodle-app-b reverse-proxy setting matches the approved runtime baseline",
+    "moodle-app-b ALB routing and redirect probes pass",
+    "synthetic transaction remains healthy",
     "fault fixture is removed",
     "communication contract passes"
   ],

@@ -94,21 +94,6 @@
       }
     },
     {
-      "resource_id": "moodle-proxy",
-      "name": "Moodle application load balancer",
-      "type": "endpoint",
-      "environment": "staging",
-      "owner_role": "infrastructure_engineer",
-      "host": "aws-alb",
-      "service_name": "moodle-alb",
-      "endpoint": "terraform:moodle_application.url",
-      "depends_on": ["moodle-app"],
-      "tags": {
-        "system": "moodle",
-        "component": "proxy"
-      }
-    },
-    {
       "resource_id": "prometheus-monitor",
       "name": "Prometheus monitoring",
       "type": "application",

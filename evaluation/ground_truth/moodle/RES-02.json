@@ -2,7 +2,7 @@
   "schema_version": "2.0",
   "scenario_id": "RES-02",
   "scenario_name": "Moodle node memory pressure",
-  "description": "Run a bounded named memory pressure fixture on one staging application node.",
+  "description": "Run one named, memory-capped fixture container on moodle-app-b that actually allocates memory; preflight checks preserve host headroom and the other node remains healthy.",
   "initial_state": {
     "environment": "staging",
     "moodle_targets_healthy": 2,
@@ -17,7 +17,7 @@
   },
   "observed_signals": [
     "MoodleNodeMemoryPressure",
-    "MoodleSyntheticTransactionFailed"
+    "MoodleSyntheticTransactionHealthy"
   ],
   "expected_root_cause": {
     "category": "resource_exhaustion",
@@ -28,7 +28,7 @@
     "services": [
       "moodle"
     ],
-    "description": "Run a bounded named memory pressure fixture on one staging application node."
+    "description": "Host memory availability falls on moodle-app-b but ALB, RDS, EFS, monitoring and moodle-app-a remain healthy."
   },
   "causal_order": [
     "staging_fault_fixture_enabled",
@@ -49,7 +49,9 @@
     "modify_production"
   ],
   "recovery_criteria": [
-    "synthetic transaction passes",
+    "named memory fixture container is absent",
+    "moodle-app-b available memory returns to baseline range",
+    "synthetic transaction remains healthy",
     "fault fixture is removed",
     "communication contract passes"
   ],
