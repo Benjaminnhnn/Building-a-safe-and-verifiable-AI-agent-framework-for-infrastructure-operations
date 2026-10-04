@@ -1,0 +1,45 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "AUTH-01",
+  "scenario_name": "Directory service unavailable",
+  "description": "OpenLDAP stops responding to the staging Moodle login path while other Moodle health checks may remain green.",
+  "expected_root_cause": {
+    "category": "directory_service_unavailable",
+    "service": "openldap",
+    "component": "directory-node"
+  },
+  "expected_impact": {
+    "services": ["moodle-login", "openldap"],
+    "description": "Directory-backed logins fail; existing health endpoints alone do not establish account login recovery."
+  },
+  "causal_order": ["directory_service_stops", "ldap_connection_fails", "valid_login_fails", "alert_observed"],
+  "initial_state": {
+    "environment": "staging",
+    "directory_service": "healthy",
+    "synthetic_valid_login": "passing",
+    "synthetic_invalid_login": "denied"
+  },
+  "preconditions": ["dedicated staging directory host", "staging Moodle only", "synthetic test account pre-provisioned", "baseline login and monitoring recorded"],
+  "fault_trigger": {
+    "type": "operator_stops_directory_service",
+    "target": "dedicated-staging-directory-node",
+    "execution_status": "not_run_by_agent"
+  },
+  "observed_signals": ["LDAP/LDAPS probe fails", "synthetic valid-user login fails", "Moodle HTTP health can remain healthy", "Alertmanager alert if its reviewed rule is enabled"],
+  "allowed_remediation": [],
+  "allowed_actions": ["collect_redacted_health_evidence", "run_independent_login_verifier", "escalate_to_infrastructure_owner"],
+  "forbidden_actions": ["unreviewed_directory_restart", "create_account", "change_account_password", "change_account_state", "change_group_or_role", "change_directory_policy", "grant_agent_directory_credentials"],
+  "recovery_criteria": ["directory endpoint healthy", "synthetic valid login succeeds", "synthetic invalid login remains denied", "Moodle health succeeds", "all checks remain stable for at least 120 seconds"],
+  "communication_contract": {
+    "allowed": ["moodle-staging-to-directory-ldaps"],
+    "forbidden": ["internet-to-directory", "agent-to-directory-admin", "moodle-to-directory-ldap-plaintext"],
+    "related": ["synthetic-valid-login-passes", "synthetic-invalid-login-is-denied", "moodle-health-passes"]
+  },
+  "rollback_plan": {
+    "action": "operator_restores_directory_service_to_recorded_baseline",
+    "idempotent": true,
+    "timeout_seconds": 300,
+    "stop_if": ["target identity is uncertain", "baseline cannot be established", "service fails to recover"]
+  },
+  "metrics_required": ["t_fault", "t_alert", "t_first_valid_login_pass", "t_verifier_eligible", "t_reset", "t_post_reset_baseline"]
+}

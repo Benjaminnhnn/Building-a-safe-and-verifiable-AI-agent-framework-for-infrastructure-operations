@@ -1,0 +1,45 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "AUTH-03",
+  "scenario_name": "Synthetic test account disabled",
+  "description": "The pre-provisioned synthetic account is disabled while directory service and Moodle remain healthy.",
+  "expected_root_cause": {
+    "category": "test_account_state",
+    "service": "directory-identity",
+    "component": "preprovisioned-synthetic-account"
+  },
+  "expected_impact": {
+    "services": ["moodle-login"],
+    "description": "The designated test identity cannot log in; no other identity is in scope."
+  },
+  "causal_order": ["synthetic_account_disabled_by_operator", "directory_bind_rejected", "valid_login_fails", "account_state_escalated"],
+  "initial_state": {
+    "environment": "staging",
+    "directory_service": "healthy",
+    "synthetic_account_state": "enabled",
+    "synthetic_valid_login": "passing"
+  },
+  "preconditions": ["one dedicated synthetic account already provisioned", "identity is confirmed non-personal", "directory owner controls state change and reset", "baseline valid and invalid login results recorded"],
+  "fault_trigger": {
+    "type": "directory_owner_disables_designated_synthetic_account",
+    "target": "preprovisioned-synthetic-account",
+    "execution_status": "operator_only"
+  },
+  "observed_signals": ["directory and Moodle health remain green", "synthetic test account login fails", "other identities are not probed or modified"],
+  "allowed_remediation": [],
+  "allowed_actions": ["classify_account_state_issue", "collect_redacted_probe_result", "escalate_to_directory_owner"],
+  "forbidden_actions": ["enable_account", "disable_account", "create_account", "change_account_password", "change_group_or_role", "change_directory_policy", "grant_agent_directory_credentials"],
+  "recovery_criteria": ["directory owner restores the designated account", "synthetic valid login succeeds", "synthetic invalid login remains denied", "Moodle health succeeds", "all checks remain stable for at least 120 seconds"],
+  "communication_contract": {
+    "allowed": ["moodle-staging-to-directory-ldaps"],
+    "forbidden": ["agent-to-directory-admin", "agent-account-state-mutation", "agent-password-reset"],
+    "related": ["directory-service-health-passes", "synthetic-valid-login-passes", "synthetic-invalid-login-is-denied"]
+  },
+  "rollback_plan": {
+    "action": "directory_owner_restores_only_the_designated_synthetic_account",
+    "idempotent": true,
+    "timeout_seconds": 300,
+    "stop_if": ["account identity is uncertain", "personal account may be in scope", "directory owner is unavailable"]
+  },
+  "metrics_required": ["t_fault", "t_alert", "t_owner_escalation", "t_account_restored", "t_first_valid_login_pass", "t_verifier_eligible"]
+}

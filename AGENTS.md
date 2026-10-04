@@ -2,6 +2,13 @@
 
 Repo-specific guidance for AI agents working in this codebase. Verify against config before trusting prose.
 
+## Agent model policy
+
+- The main agent must keep the model selected for the current user session. Do not override or replace the main agent's model.
+- Every sub-agent must use `gpt-5.6-luna` with reasoning effort `xhigh`.
+- Whenever spawning a sub-agent, explicitly set `model` to `gpt-5.6-luna` and `reasoning_effort` to `xhigh`; do not rely on inherited defaults.
+- This policy applies to all sub-agent roles and to sub-agents spawned by other sub-agents.
+
 ## Critical: Markdown and sensitive files
 
 `.gitignore` ignores `*.md` by default, but explicitly allows `README.md`, `AGENTS.md`, and files under `docs/` (including `docs/AIops_CICD.md`). Keep the allow-list in sync when adding Markdown outside those paths.
@@ -25,7 +32,7 @@ pip install pytest ruff "httpx<0.28"
 PYTHONPATH=agent_src            pytest -q agent_src/tests
 
 # Validate automation scripts used by CI
-python -m py_compile automation/moodle-synthetic-transaction.py automation/moodle-pipeline-replay.py
+python -m py_compile automation/moodle-synthetic-transaction.py automation/moodle-pipeline-replay.py automation/aiops-unified-replay.py automation/harvest-benchmark-results.py automation/inspect_live_db.py automation/trigger_live_agent.py automation/run-benchmark.py
 bash -n automation/lib/moodle-fault-common.sh automation/moodle-environment-baseline.sh
 bash -n automation/moodle-fault-inject.sh automation/moodle-fault-reset.sh automation/moodle-fault-trial.sh
 bash -n automation/moodle-synthetic-soak.sh automation/moodle-sprint2-live-drill.sh
@@ -75,6 +82,11 @@ The intended deployment roles are `monitor`, `core`, and `web`, mapped to the co
 |-------|----------------------------|------------------------|--------------------------------------------|
 | monitor | `aws-hybrid-ai-agent` | `agent_src/` | `agent_src/` |
 | core/web | workflow references `demo-web` | missing in this checkout | verify before changing CD |
+
+`.github/workflows/agent-image.yml` publishes the same AI image under both
+`aws-hybrid-ai-agent:<sha>` (release Compose) and `moodle-ai-agent:<sha>`
+(`automation/configure-moodle-monitoring.sh`). This builds artifacts for both
+consumers; it does not deploy them.
 
 Changes under `release/`, `automation/`, or the workflow file itself trigger all roles. Each role deploys to its dedicated EC2 host group (`monitor`/`core`/`web`) via `automation/github-deploy-role.sh`.
 

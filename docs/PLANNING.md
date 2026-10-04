@@ -170,6 +170,13 @@ variants remain **not live-approved** until the matching injector, reset,
 node-local/SG observation, and independent recovery probes pass review. The
 five previously reviewed variants retain their existing live scope.
 
+The separate identity case study adds `AUTH-01` (directory service unavailable),
+`AUTH-02` (Moodle-to-directory path unavailable), and `AUTH-03` (synthetic test
+account disabled). These do not replace or rename the 15 Moodle infrastructure
+scenarios. Their fixtures live under `evaluation/ground_truth/auth/` and remain
+post-decision scoring data. Current implementation and staging blockers are
+recorded in `docs/AI_ENGINEER_AUTH_RECOVERY.md`.
+
 Communication contract tối thiểu:
 
 - Allowed: client→Moodle; Moodle→database; monitor→exporter; Alertmanager→Agent.

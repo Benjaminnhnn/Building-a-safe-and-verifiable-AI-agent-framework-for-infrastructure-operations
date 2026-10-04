@@ -128,7 +128,7 @@ run_controlled_reset() {
   "$script_dir/moodle-fault-reset.sh" "$scenario" >/dev/null
   jq -n \
     --arg run_id "$run_id" --arg scenario_id "$scenario" \
-    '{run_id:$run_id,scenario_id:$scenario_id,ai_layer_mode:"shadow",ai_execution:false,execution_authority:"allowlisted_test_harness",action:"moodle-fault-reset",status:"executed",mutated:true,evidence_store:"monitor-ai-01:moodle-ai-agent:/app/data/evidence.db"}' \
+    '{run_id:$run_id,scenario_id:$scenario_id,method:"ai_agent_shadow",evidence_class:"staging_runtime_shadow",ai_layer_mode:"shadow",ai_execution:false,execution_authority:"allowlisted_test_harness",action:"moodle-fault-reset",status:"executed",mutated:true,evidence_store:"monitor-ai-01:moodle-ai-agent:/app/data/evidence.db"}' \
     > "$report_path"
 }
 
@@ -189,7 +189,7 @@ run_one() (
     --argjson mttd_seconds "$mttd" --argjson recovery_seconds "$recovery" \
     --argjson stability_seconds "$stability_seconds" \
     --arg pipeline_report "$pipeline_report" \
-    '{run_id:$run_id,scenario_id:$scenario_id,status:$status,prometheus_alert:$alert,t_inject:$t_inject,t_detect:$t_detect,t_ai_observed:$t_ai_observed,ai_layer_mode:"shadow",ai_shadow_observed:"passed",t_execute_start:$t_execute_start,t_execute_end:$t_execute_end,t_verify:$t_verify,t_resolved:$t_resolved,mttd_seconds:$mttd_seconds,recovery_seconds:$recovery_seconds,stability_seconds:$stability_seconds,baseline_after_stability:"passed",pipeline_report:$pipeline_report}' \
+    '{run_id:$run_id,scenario_id:$scenario_id,method:"ai_agent_shadow",evidence_class:"staging_runtime_shadow",status:$status,prometheus_alert:$alert,t_inject:$t_inject,t_detect:$t_detect,t_ai_observed:$t_ai_observed,ai_layer_mode:"shadow",ai_execution:false,execution_authority:"allowlisted_test_harness",ai_shadow_observed:"passed",t_execute_start:$t_execute_start,t_execute_end:$t_execute_end,t_verify:$t_verify,t_resolved:$t_resolved,mttd_seconds:$mttd_seconds,recovery_seconds:$recovery_seconds,stability_seconds:$stability_seconds,baseline_after_stability:"passed",pipeline_report:$pipeline_report}' \
     > "$result"
   chmod 0600 "$result" "$pipeline_report"
   if [[ "$status" != passed ]]; then

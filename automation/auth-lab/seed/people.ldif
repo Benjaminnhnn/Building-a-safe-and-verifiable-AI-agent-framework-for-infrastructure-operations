@@ -1,0 +1,16 @@
+dn: ou=moodleusers,dc=example,dc=org
+objectClass: organizationalUnit
+ou: moodleusers
+
+dn: uid=authlab-user,ou=moodleusers,dc=example,dc=org
+objectClass: inetOrgPerson
+objectClass: posixAccount
+cn: Auth Lab Synthetic User
+sn: Synthetic
+uid: authlab-user
+uidNumber: 20001
+gidNumber: 20001
+homeDirectory: /home/authlab-user
+loginShell: /bin/false
+mail: authlab-user@example.invalid
+userPassword: {SSHA}lUSfpZsbuu3np1bxW3KZXkV6xve2OgAZ

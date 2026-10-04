@@ -26,6 +26,7 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from core.moodle_alert_integration import process_moodle_alert
+from core.auth_alert_pipeline import attempt_auth01_recovery, auth_incident_id, is_auth_alert, process_auth_alert
 from tools.diag_tools import AGENT_TOOLS
 from tools.prometheus_check import get_prometheus_checker
 from utils.telegram_bot import send_telegram_message
@@ -476,8 +477,27 @@ def save_incident_to_redis(incident_id: str, context: dict, ttl: int = 86400):
         logger.error("Redis client unavailable, skipping incident save.")
         return
     try:
+        existing_raw = redis_client.get(f"incident:{incident_id}")
+        if existing_raw:
+            existing_context = json.loads(existing_raw)
+            verifier_resolved = (
+                existing_context.get("scenario") == "AUTH-01"
+                and existing_context.get("status") == "RESOLVED"
+                and existing_context.get("resolution_authority") == "independent_verifier"
+            )
+            incoming_is_same_verified_resolution = (
+                context.get("status") == "RESOLVED"
+                and context.get("resolution_authority") == "independent_verifier"
+            )
+            if verifier_resolved and not incoming_is_same_verified_resolution:
+                logger.warning(
+                    "Refusing to downgrade verifier-resolved AUTH incident %s to %s",
+                    incident_id,
+                    context.get("status", "unknown"),
+                )
+                return
         redis_client.setex(f"incident:{incident_id}", ttl, json.dumps(context))
-    except redis.RedisError as e:
+    except (redis.RedisError, json.JSONDecodeError) as e:
         logger.error(f"Error writing to Redis: {e}")
 
 
@@ -551,6 +571,9 @@ def _mark_matching_incident_recovery_signal(alert: dict) -> str | None:
 
         context = _load_incident_from_redis(incident_id)
         if context is not None:
+            if context.get("status") == "RESOLVED" and context.get("resolution_authority") == "independent_verifier":
+                logger.info("Keeping verifier-resolved AUTH incident %s resolved after Alertmanager recovery signal", incident_id)
+                return incident_id
             context["status"] = "verification_pending"
             context["recovery_signal_at"] = str(
                 alert.get("endsAt") or datetime.now(VN_TZ).isoformat()
@@ -921,6 +944,33 @@ async def process_single_alert(alert: dict) -> None:
         instance    = alert["labels"].get("instance", "Unknown")
         if alert.get("status") == "resolved":
             _clear_alert_cooldown(alert)
+            if is_auth_alert(alert):
+                if not _reserve_alert_notification(alert, "resolved"):
+                    ALERTS_PROCESSED_TOTAL.labels(status='deduped').inc()
+                    return
+                result = process_auth_alert(alert)
+                recovered_incident_id = _mark_matching_incident_recovery_signal(alert)
+                saved_incident = _load_incident_from_redis(recovered_incident_id) if recovered_incident_id else None
+                verifier_resolved = bool(
+                    saved_incident
+                    and saved_incident.get("status") == "RESOLVED"
+                    and saved_incident.get("resolution_authority") == "independent_verifier"
+                )
+                send_telegram_message(
+                    (
+                        "AUTH incident RESOLVED by independent verifier. "
+                        if verifier_resolved
+                        else "AUTH alert recovery signal received; incident remains unresolved. "
+                    )
+                    + f"incident={recovered_incident_id or result['incident_id']} "
+                    + ("" if verifier_resolved else "Run the independent authentication verifier."),
+                    parse_mode=None,
+                )
+                logger.info("AUTH recovery signal: %s", json.dumps(result, sort_keys=True))
+                ALERTS_PROCESSED_TOTAL.labels(
+                    status="resolved" if verifier_resolved else "verification_pending"
+                ).inc()
+                return
             labels = alert.get("labels") or {}
             moodle_shadow_event = labels.get("service") == "moodle" and labels.get("environment") == "staging"
             resolved_incident_id = None if moodle_shadow_event else _mark_matching_incident_resolved(alert)
@@ -965,6 +1015,48 @@ async def process_single_alert(alert: dict) -> None:
                 instance,
             )
             ALERTS_PROCESSED_TOTAL.labels(status='deduped').inc()
+            return
+
+        if is_auth_alert(alert):
+            # AUTH alerts never enter the legacy Moodle oracle/Gemini route.
+            # The sole local action is enabled only by the exact live gate.
+            auth_id = auth_incident_id(alert)
+            existing_auth = _load_incident_from_redis(auth_id)
+            if (
+                existing_auth
+                and existing_auth.get("status") == "RESOLVED"
+                and existing_auth.get("resolution_authority") == "independent_verifier"
+            ):
+                logger.info("Ignoring stale duplicate AUTH alert for verifier-resolved incident %s", auth_id)
+                ALERTS_PROCESSED_TOTAL.labels(status="deduped").inc()
+                return
+            result = attempt_auth01_recovery(alert)
+            if result is None:
+                result = process_auth_alert(alert)
+            save_incident_to_redis(result["incident_id"], {
+                "alert_name": result["alert_name"],
+                "scenario": result["scenario"],
+                "status": result["status"],
+                "diagnosis": result["diagnosis"],
+                "action_decision": result["action_decision"],
+                "action_status": result.get("action_status", "NOT_ATTEMPTED"),
+                "resolution_eligible": result["resolution_eligible"],
+                "resolution_authority": result.get("resolution_authority"),
+                "verifier": result.get("verifier"),
+            })
+            _link_active_incident(alert, result["incident_id"])
+            send_telegram_message(
+                "AUTH recovery result. "
+                f"scenario={result['scenario']} incident={result['incident_id']} "
+                f"status={result['status']} action={result['action_decision']} "
+                f"action_status={result.get('action_status', 'NOT_ATTEMPTED')} "
+                f"resolution_eligible={str(result['resolution_eligible']).lower()} "
+                f"diagnosis={result['diagnosis']}",
+                parse_mode=None,
+            )
+            logger.info("AUTH incident decision: %s", json.dumps(result, sort_keys=True))
+            result_metric = "resolved" if result["status"] == "RESOLVED" else "escalated"
+            ALERTS_PROCESSED_TOTAL.labels(status=result_metric).inc()
             return
 
         moodle_report = process_moodle_alert(alert)

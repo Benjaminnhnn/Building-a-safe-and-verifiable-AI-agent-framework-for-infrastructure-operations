@@ -44,7 +44,12 @@ jobs:
             automation/aiops-unified-replay.py \
             automation/moodle-safe-executor-api.py \
             automation/moodle-safe-approval.py \
-            automation/moodle-safe-executor-request.py
+            automation/moodle-safe-executor-request.py \
+            automation/harvest-benchmark-results.py \
+            automation/inspect_live_db.py \
+            automation/trigger_live_agent.py \
+            automation/run-benchmark.py \
+            automation/moodle-auth-verify.py
           bash -n \
             automation/lib/moodle-fault-common.sh \
             automation/moodle-environment-baseline.sh \

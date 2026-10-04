@@ -5,6 +5,8 @@
 * **Nhánh mã nguồn:** `full-ai-framework` (đã đồng bộ và hợp nhất từ `origin/develop`)
 * **Mục tiêu kiểm thử:** Xác thực tính toàn vẹn của mô hình tác tử AI 6 tầng, độ an toàn Cổng chính sách (RQ1), tính xác thực độc lập (RQ2) và tình trạng thực tế của hạ tầng AWS.
 
+> **Giới hạn bằng chứng:** Đây là snapshot lịch sử ngày 25-09-2026, không phải trạng thái được xác nhận hiện tại. Checkout có snapshot ALB/RDS/EFS/host và báo cáo offline replay, nhưng `prometheus-targets.json` trong baseline đang rỗng; không thấy capture gốc của lần POST webhook, Celery log hoặc metric snapshot để đối chiếu các khẳng định tương ứng trong báo cáo. Địa chỉ host trong runtime snapshot cũng khác các địa chỉ nêu tại mục 1.2. Benchmark JSONL hiện có do harness dùng fixture và RNG tạo ra, không phải các lần fault-injection quan sát được. Không dùng dấu `ĐẠT/Hoàn thiện` bên dưới làm bằng chứng staging/live acceptance nếu chưa đối chiếu artifact có provenance.
+
 ---
 
 ## 1. TỔNG QUAN NHỮNG GÌ ĐÃ THỰC THI (WHAT WAS RUN)
@@ -163,14 +165,16 @@ Bạn có thể tự tay chạy lại các lệnh sau trên terminal bất kỳ 
    ```powershell
    python automation/aiops-unified-replay.py all
    ```
-3. **Kiểm tra dữ liệu sự cố thật đang lưu trên container EC2:**
+3. **Đếm metadata trong SQLite evidence do operator cung cấp sẵn trên máy local:**
    ```powershell
-   python automation/inspect_live_db.py
+   python automation/inspect_live_db.py --database <local-path-to-evidence.db>
    ```
-4. **Bắn thử một sự cố mới vào AI Agent trên EC2:**
+   Script mở DB read-only và chỉ in số lượng hàng; không kết nối EC2 hoặc in nội dung evidence.
+4. **Xem trước payload webhook thử nghiệm (mặc định không gửi request):**
    ```powershell
    python automation/trigger_live_agent.py
    ```
+   Chỉ thêm `--send` khi Docker AI API local đang chạy. Script từ chối URL không phải loopback. Lệnh này thử kết nối webhook, không bơm lỗi hạ tầng.
 
 ---
-*Báo cáo được tổng hợp tự động dựa trên dữ liệu thực thi thực tế từ mã nguồn và hạ tầng AWS.*
+*Tài liệu ghi lại snapshot mã nguồn và các quan sát được báo cáo tại thời điểm tạo; trạng thái AWS hiện tại và các phép thử live cần raw artifacts có provenance để xác minh lại.*

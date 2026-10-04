@@ -19,6 +19,7 @@ RUN apt-get update \
         libfreetype6-dev \
         libicu-dev \
         libjpeg62-turbo-dev \
+        libldap2-dev \
         libonig-dev \
         libpng-dev \
         libpq-dev \
@@ -26,7 +27,7 @@ RUN apt-get update \
         libzip-dev \
         unzip \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j"$(nproc)" curl gd intl mbstring opcache pgsql soap zip \
+    && docker-php-ext-install -j"$(nproc)" curl gd intl ldap mbstring opcache pgsql soap zip \
     && a2enmod expires headers remoteip rewrite \
     && sed -ri 's/^Listen 80$/Listen 8080/' /etc/apache2/ports.conf \
     && sed -ri 's/<VirtualHost \*:80>/<VirtualHost *:8080>/' /etc/apache2/sites-available/000-default.conf \

@@ -29,6 +29,16 @@ required_var MOODLE_DB_NAME
 required_var MOODLE_DB_USER
 required_var MOODLE_DATA_ROOT
 required_file MOODLE_DB_PASSWORD_FILE
+MOODLE_DB_SSLMODE="${MOODLE_DB_SSLMODE:-verify-full}"
+export MOODLE_DB_SSLMODE
+
+case "$MOODLE_DB_SSLMODE" in
+    disable|prefer|require|verify-full) ;;
+    *)
+        echo 'MOODLE_DB_SSLMODE must be disable, prefer, require or verify-full' >&2
+        exit 64
+        ;;
+esac
 
 case "$MOODLE_WWWROOT" in
     http://*|https://*) ;;
@@ -82,7 +92,7 @@ global \$CFG;
     'dbpersist' => false,
     'dbsocket' => false,
     'dbport' => $(php_env_literal MOODLE_DB_PORT),
-    'ssl' => 'verify-full',
+    'ssl' => $(php_env_literal MOODLE_DB_SSLMODE),
 ];
 \$CFG->wwwroot = $(php_env_literal MOODLE_WWWROOT);
 \$CFG->dataroot = $(php_env_literal MOODLE_DATA_ROOT);

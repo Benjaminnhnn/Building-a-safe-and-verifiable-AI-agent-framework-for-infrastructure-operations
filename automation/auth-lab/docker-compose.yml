@@ -1,0 +1,311 @@
+name: moodle-auth-lab
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [authlab]
+
+  ai-agent:
+    image: local/ai-agent:auth-lab
+    build:
+      context: ../../agent_src
+    environment:
+      AI_AGENT_PORT: "8000"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+      PROMETHEUS_URL: http://prometheus:9090
+      AIOPS_EVIDENCE_DB_PATH: /app/data/evidence.db
+      VECTOR_DB_PATH: /app/vector_db
+      GEMINI_MAX_REMOTE_CALLS: "0"
+      AUTH_LAB_AUTO_RECOVERY_ENABLED: "true"
+      AUTH_LAB_RECOVERY_TOKEN: ${LAB_RECOVERY_TOKEN:?run prepare.ps1 first}
+      AUTH_LAB_ACTUATOR_URL: http://recovery-actuator:9191
+      AUTH_LAB_VERIFIER_URL: http://auth-verifier:9200/verify
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "127.0.0.1:18000:8000"
+    volumes:
+      - aiops-evidence:/app/data
+      - aiops-vector-db:/app/vector_db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    depends_on:
+      redis: {condition: service_healthy}
+      recovery-actuator: {condition: service_started}
+      auth-verifier: {condition: service_started}
+    networks: [authlab]
+
+  celery-worker:
+    image: local/ai-agent:auth-lab
+    command: ["celery", "-A", "core.celery_app.celery_app", "worker", "--loglevel=INFO", "--concurrency=1"]
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+      PROMETHEUS_URL: http://prometheus:9090
+      AIOPS_EVIDENCE_DB_PATH: /app/data/evidence.db
+      VECTOR_DB_PATH: /app/vector_db
+      GEMINI_MAX_REMOTE_CALLS: "0"
+      AUTH_LAB_AUTO_RECOVERY_ENABLED: "true"
+      AUTH_LAB_RECOVERY_TOKEN: ${LAB_RECOVERY_TOKEN:?run prepare.ps1 first}
+      AUTH_LAB_ACTUATOR_URL: http://recovery-actuator:9191
+      AUTH_LAB_VERIFIER_URL: http://auth-verifier:9200/verify
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - aiops-evidence:/app/data
+      - aiops-vector-db:/app/vector_db
+    depends_on:
+      redis: {condition: service_healthy}
+      recovery-actuator: {condition: service_started}
+      auth-verifier: {condition: service_started}
+    networks: [authlab]
+
+  recovery-actuator:
+    image: python:3.12.8-alpine3.21
+    command: ["python", "/opt/auth-actuator.py"]
+    environment:
+      AUTH_LAB_RECOVERY_TOKEN: ${LAB_RECOVERY_TOKEN:?run prepare.ps1 first}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./scripts/auth-actuator.py:/opt/auth-actuator.py:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9191/healthz').read()"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [authlab]
+
+  postgres:
+    image: postgres:16.6-alpine
+    environment:
+      POSTGRES_DB: moodle
+      POSTGRES_USER: moodle
+      POSTGRES_PASSWORD: ${LAB_DB_PASSWORD:?copy .env.example to .env.local first}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moodle -d moodle"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [authlab]
+
+  openldap:
+    image: local/openldap:auth-lab
+    build:
+      context: .
+      dockerfile: openldap/Dockerfile
+    hostname: openldap
+    environment:
+      LDAP_ORGANISATION: Local Moodle Auth Lab
+      LDAP_DOMAIN: example.org
+      LDAP_BASE_DN: dc=example,dc=org
+      LDAP_ADMIN_PASSWORD: ${LAB_LDAP_ADMIN_PASSWORD:?copy .env.example to .env.local first}
+      LDAP_READONLY_USER: "true"
+      LDAP_READONLY_USER_USERNAME: moodle-reader
+      LDAP_READONLY_USER_PASSWORD: ${LAB_LDAP_READ_PASSWORD:?copy .env.example to .env.local first}
+      LDAP_TLS: "true"
+      LDAP_TLS_ENFORCE: "true"
+      LDAP_TLS_VERIFY_CLIENT: never
+      LDAP_TLS_DH_PARAM_FILENAME: dhparam.pem
+    volumes:
+      - ldapdata:/var/lib/ldap
+      - ldapconfig:/etc/ldap/slapd.d
+      - ldapcerts:/container/service/slapd/assets/certs
+    depends_on:
+      cert-init: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD-SHELL", "ldapwhoami -x -H ldaps://localhost:636 -D 'cn=admin,dc=example,dc=org' -w \"$${LDAP_ADMIN_PASSWORD}\" >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    networks: [authlab]
+
+  cert-init:
+    image: local/moodle:auth-lab
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["rm -f /dest/ldap.crt /dest/ldap.key /dest/ca.crt /dest/dhparam.pem && cp /source/ldap.crt /source/ldap.key /source/ca.crt /source/dhparam.pem /dest/ && chmod 0644 /dest/ldap.crt /dest/ca.crt /dest/dhparam.pem && chmod 0600 /dest/ldap.key && chown -R 911:911 /dest"]
+    volumes:
+      - ./secrets/certs:/source:ro
+      - ldapcerts:/dest
+    networks: [authlab]
+
+  moodle-web:
+    image: local/moodle:auth-lab
+    build:
+      context: ../../moodle
+    depends_on:
+      postgres: {condition: service_healthy}
+      openldap: {condition: service_healthy}
+    env_file: .env.local
+    environment:
+      MOODLE_WWWROOT: http://127.0.0.1:18080
+      MOODLE_DB_HOST: postgres
+      MOODLE_DB_PORT: "5432"
+      MOODLE_DB_NAME: moodle
+      MOODLE_DB_USER: moodle
+      MOODLE_DB_PASSWORD_FILE: /run/secrets/moodle_db_password
+      MOODLE_DB_SSLMODE: disable
+      MOODLE_DATA_ROOT: /var/moodledata
+      MOODLE_REVERSE_PROXY: "false"
+      MOODLE_SSL_PROXY: "false"
+      LDAPTLS_CACERT: /run/ldap-ca/ca.crt
+    ports:
+      - "127.0.0.1:18080:8080"
+    volumes:
+      - moodledata:/var/moodledata
+      - ./secrets/certs/ca.crt:/run/ldap-ca/ca.crt:ro
+      - ./scripts/configure-auth.php:/opt/auth-lab/configure-auth.php:ro
+    secrets:
+      - moodle_db_password
+      - ldap_reader_password
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/healthz.php"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
+    networks: [authlab]
+
+  moodle-install:
+    image: local/moodle:auth-lab
+    profiles: [setup]
+    depends_on:
+      postgres: {condition: service_healthy}
+    env_file: .env.local
+    environment:
+      MOODLE_WWWROOT: http://127.0.0.1:18080
+      MOODLE_DB_HOST: postgres
+      MOODLE_DB_PORT: "5432"
+      MOODLE_DB_NAME: moodle
+      MOODLE_DB_USER: moodle
+      MOODLE_DB_PASSWORD_FILE: /run/secrets/moodle_db_password
+      MOODLE_DB_SSLMODE: disable
+      MOODLE_REVERSE_PROXY: "false"
+      MOODLE_SSL_PROXY: "false"
+      MOODLE_DATA_ROOT: /var/moodledata
+      MOODLE_SITE_FULLNAME: Moodle Authentication Lab
+      MOODLE_SITE_SHORTNAME: AuthLab
+      MOODLE_SITE_SUMMARY: Disposable local Moodle and OpenLDAP authentication exercise
+      MOODLE_ADMIN_USER: labadmin
+      MOODLE_ADMIN_EMAIL: labadmin@example.invalid
+      MOODLE_ADMIN_PASSWORD_FILE: /run/secrets/moodle_admin_password
+    volumes:
+      - moodledata:/var/moodledata
+    secrets:
+      - moodle_db_password
+      - moodle_admin_password
+    command: ["/usr/local/bin/moodle-install.sh"]
+    networks: [authlab]
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports:
+      - "127.0.0.1:19090:9090"
+    depends_on: [openldap, moodle-web, blackbox, auth-probe]
+    networks: [authlab]
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.25.0
+    command: ["--config.file=/etc/blackbox/blackbox.yml"]
+    volumes:
+      - ./blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    networks: [authlab]
+
+  auth-probe:
+    image: python:3.12.8-alpine3.21
+    command: ["python", "/opt/auth-probe.py"]
+    environment:
+      MOODLE_LOGIN_URL: http://moodle-web:8080/login/index.php
+      MOODLE_HEALTH_URL: http://moodle-web:8080/healthz.php
+      MOODLE_CANONICAL_HOST: 127.0.0.1:18080
+      AUTH_PROBE_INTERVAL: "15"
+      AUTH_USER_FILE: /run/secrets/auth_user
+      AUTH_PASSWORD_FILE: /run/secrets/auth_password
+    volumes:
+      - ./scripts/auth-probe.py:/opt/auth-probe.py:ro
+    secrets:
+      - auth_user
+      - auth_password
+    depends_on:
+      moodle-web: {condition: service_healthy}
+    networks: [authlab]
+
+  auth-verifier:
+    image: python:3.12.8-alpine3.21
+    command: ["python", "/opt/auth-probe.py"]
+    environment:
+      AUTH_VERIFIER_MODE: "true"
+      AUTH_SERVICE_PORT: "9200"
+      MOODLE_LOGIN_URL: http://moodle-web:8080/login/index.php
+      MOODLE_HEALTH_URL: http://moodle-web:8080/healthz.php
+      MOODLE_CANONICAL_HOST: 127.0.0.1:18080
+      AUTH_USER_FILE: /run/secrets/auth_user
+      AUTH_PASSWORD_FILE: /run/secrets/auth_password
+      AUTH_LAB_RECOVERY_TOKEN: ${LAB_RECOVERY_TOKEN:?run prepare.ps1 first}
+      LDAP_HEALTH_HOST: openldap
+      LDAP_HEALTH_CA_FILE: /run/ldap-ca/ca.crt
+    volumes:
+      - ./scripts/auth-probe.py:/opt/auth-probe.py:ro
+      - ./secrets/certs/ca.crt:/run/ldap-ca/ca.crt:ro
+    secrets:
+      - auth_user
+      - auth_password
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9200/healthz').read()"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    depends_on:
+      moodle-web: {condition: service_healthy}
+      openldap: {condition: service_healthy}
+    networks: [authlab]
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.0
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "127.0.0.1:19093:9093"
+    depends_on:
+      ai-agent: {condition: service_healthy}
+    networks: [authlab]
+
+secrets:
+  moodle_db_password:
+    file: ./secrets/moodle-db-password
+  moodle_admin_password:
+    file: ./secrets/moodle-admin-password
+  ldap_reader_password:
+    file: ./secrets/ldap-reader-password
+  auth_user:
+    file: ./secrets/auth-user
+  auth_password:
+    file: ./secrets/auth-password
+
+volumes:
+  pgdata:
+  ldapdata:
+  ldapconfig:
+  ldapcerts:
+  moodledata:
+  aiops-evidence:
+  aiops-vector-db:
+
+networks:
+  authlab:
