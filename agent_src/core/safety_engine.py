@@ -155,6 +155,7 @@ class SafetyPolicyEngine:
         return SafetyDecision(
             decision_id=_stable_id("gate", action.action_id),
             action_id=action.action_id,
+            action_hash=action.action_hash,
             incident_id=action.incident_id,
             decision=decision,
             reasons=reasons,

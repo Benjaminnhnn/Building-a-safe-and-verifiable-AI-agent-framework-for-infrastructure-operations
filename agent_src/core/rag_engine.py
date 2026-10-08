@@ -7,6 +7,7 @@ from typing import Any
 
 import chromadb
 from chromadb.utils import embedding_functions
+from core.sanitization import sanitize_log_excerpt
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,26 @@ RUNBOOK_ALERT_NAMES = {
     "runbook_postgresql.md": ("PostgreSQLDown", "PaymentAPIEndpointDown"),
     "runbook_redis.md": ("RedisDown", "RedisBrokerDown"),
     "runbook_docker.md": ("DockerContainerDown",),
+    "moodle/runbook_moodle_connectivity.md": (
+        "MoodleRdsTcpProbeFailed", "MoodleNodeRdsTcpFailed", "MoodleNodeRdsTcpLatencyHigh",
+        "MoodleDatabaseEndpointInvalid", "MoodleDatabasePortBlocked", "MoodleDatabaseLatencyHigh",
+        "MoodleSyntheticTransactionFailed",
+    ),
+    "moodle/runbook_moodle_service.md": (
+        "MoodlePublicProbeFailed", "MoodleWebContainerMissing", "MoodleWebContainerRestarting",
+        "MoodleApacheRouterMissing", "MoodleNodeRouterFallbackFailed", "MoodleTrustedProxyConfigDrift",
+        "MoodleProxyUnavailable", "MoodleContainerCrashLoop", "MoodleSyntheticTransactionFailed",
+    ),
+    "moodle/runbook_moodle_storage_resources.md": (
+        "MoodleEfsMountMissing", "MoodleScratchEnospc", "MoodleNodeCpuHigh", "MoodleNodeMemoryPressure",
+        "MoodleDataVolumePressure", "MoodleSyntheticTransactionFailed",
+    ),
+    "moodle/runbook_moodle_monitoring.md": (
+        "MoodleNodeExporterDown", "MoodleCAdvisorDown", "MoodleNodeProbeStale", "MoodleSyntheticTransactionStale",
+    ),
+    "moodle/runbook_moodle_security.md": (
+        "MoodleDatabasePortExposure", "MoodleTrustedProxyMisconfigured", "MoodleTrustedProxyConfigDrift",
+    ),
 }
 
 
@@ -85,6 +106,14 @@ class RAGEngine:
         self._migrate_legacy_collection()
         self._ingest_initial_data()
 
+    def _delete_runbook_chunks(self, source_file: str) -> None:
+        """Remove prior chunks or stop rather than serve a mixed runbook revision."""
+        try:
+            self.standard_runbooks.delete(where={"source_file": source_file})
+        except Exception as exc:
+            logger.exception("Unable to replace indexed runbook %s", source_file)
+            raise RuntimeError(f"Unable to replace indexed runbook {source_file}") from exc
+
     def _migrate_legacy_collection(self) -> None:
         """Copy dynamic legacy memory into the new incident collection."""
         try:
@@ -127,46 +156,46 @@ class RAGEngine:
             return
 
         total_chunks = 0
-        for filename in sorted(os.listdir(kb_path)):
-            if not filename.endswith(".md"):
-                continue
+        for root, directories, filenames in os.walk(kb_path):
+            directories.sort()
+            for filename in sorted(filenames):
+                if not filename.endswith(".md"):
+                    continue
 
-            file_path = os.path.join(kb_path, filename)
-            with open(file_path, "r", encoding="utf-8") as file:
-                content = file.read()
+                file_path = os.path.join(root, filename)
+                source_file = os.path.relpath(file_path, kb_path).replace(os.sep, "/")
+                with open(file_path, "r", encoding="utf-8") as file:
+                    content = file.read()
 
-            try:
-                self.standard_runbooks.delete(where={"source_file": filename})
-            except Exception:
-                pass
+                self._delete_runbook_chunks(source_file)
 
-            chunks = _chunk_markdown(content)
-            if not chunks:
-                continue
+                chunks = _chunk_markdown(content)
+                if not chunks:
+                    continue
 
-            ids = []
-            documents = []
-            metadatas = []
-            provenance = _source_provenance(filename, content, source_path=file_path)
-            alert_names = RUNBOOK_ALERT_NAMES.get(filename, ("Unknown",))
-            for alert_name in alert_names:
-                for index, (heading, chunk) in enumerate(chunks):
-                    digest = hashlib.sha256(chunk.encode("utf-8")).hexdigest()[:12]
-                    ids.append(f"runbook::{filename}::{alert_name}::{index:03d}::{digest}")
-                    documents.append(chunk)
-                    metadatas.append(
-                        {
-                            **provenance,
-                            "source_file": filename,
-                            "document_type": "standard_runbook",
-                            "alert_name": alert_name,
-                            "chunk_index": index,
-                            "heading": heading,
-                        }
-                    )
+                ids = []
+                documents = []
+                metadatas = []
+                provenance = _source_provenance(source_file, content, source_path=file_path)
+                alert_names = RUNBOOK_ALERT_NAMES.get(source_file, ("Unknown",))
+                for alert_name in alert_names:
+                    for index, (heading, chunk) in enumerate(chunks):
+                        digest = hashlib.sha256(chunk.encode("utf-8")).hexdigest()[:12]
+                        ids.append(f"runbook::{source_file}::{alert_name}::{index:03d}::{digest}")
+                        documents.append(chunk)
+                        metadatas.append(
+                            {
+                                **provenance,
+                                "source_file": source_file,
+                                "document_type": "standard_runbook",
+                                "alert_name": alert_name,
+                                "chunk_index": index,
+                                "heading": heading,
+                            }
+                        )
 
-            self.standard_runbooks.upsert(ids=ids, documents=documents, metadatas=metadatas)
-            total_chunks += len(ids)
+                self.standard_runbooks.upsert(ids=ids, documents=documents, metadatas=metadatas)
+                total_chunks += len(ids)
 
         logger.info("Loaded %s runbook chunks from %s", total_chunks, kb_path)
 
@@ -184,10 +213,7 @@ class RAGEngine:
         source_file = os.path.relpath(file_path, kb_root)
         document_type = "published_runbook" if "published" in file_path.split(os.sep) else "standard_runbook"
 
-        try:
-            self.standard_runbooks.delete(where={"source_file": source_file})
-        except Exception:
-            pass
+        self._delete_runbook_chunks(source_file)
 
         ids = []
         documents = []
@@ -256,6 +282,12 @@ class RAGEngine:
         review_status: str,
     ) -> None:
         timestamp = datetime.now()
+        incident_id = sanitize_log_excerpt(incident_id, max_chars=128)
+        alert_name = sanitize_log_excerpt(alert_name, max_chars=128)
+        incident_details = sanitize_log_excerpt(incident_details, max_chars=3000)
+        admin_feedback = sanitize_log_excerpt(admin_feedback, max_chars=3000)
+        reviewed_solution = sanitize_log_excerpt(reviewed_solution, max_chars=2000)
+        review_status = sanitize_log_excerpt(review_status, max_chars=32)
         doc_id = f"admin_feedback_{timestamp.strftime('%Y%m%d_%H%M%S_%f')}_{incident_id}"
         document = (
             f"# Admin Feedback: {alert_name}\n"
@@ -344,6 +376,14 @@ class RAGEngine:
         if memory_text:
             sections.append(f"## Kinh nghiệm từ incident và feedback trước đây\n{memory_text}")
         return "\n\n".join(sections)
+
+    def query_standard_runbooks(self, alert_description: str, alert_name: str) -> str:
+        """Retrieve authored runbooks only, excluding dynamic incident memory."""
+        return self._retrieve(
+            self.standard_runbooks,
+            alert_description,
+            alert_name=alert_name,
+        )
 
     def query_runbook(self, alert_description: str) -> str:
         """Backward-compatible alias for callers using the old method name."""

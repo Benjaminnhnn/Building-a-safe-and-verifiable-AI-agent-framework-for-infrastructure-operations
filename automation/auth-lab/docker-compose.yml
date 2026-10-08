@@ -10,15 +10,38 @@ services:
       retries: 10
     networks: [authlab]
 
+  floci:
+    image: floci/floci:2.2.0
+    user: "0:0"
+    ports:
+      - "127.0.0.1:4566:4566"
+      - "127.0.0.1:7001-7099:7001-7099"
+      - "127.0.0.1:18081:80"
+    environment:
+      FLOCI_HOSTNAME: floci
+      FLOCI_BASE_URL: http://floci:4566
+      FLOCI_STORAGE_MODE: persistent
+      FLOCI_STORAGE_PERSISTENT_PATH: /app/data
+      FLOCI_SERVICES_DOCKER_NETWORK: moodle-auth-lab_authlab
+      FLOCI_SERVICES_RDS_ENDPOINT_HOST: host.docker.internal
+      FLOCI_SERVICES_RDS_PROXY_BASE_PORT: "7001"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - floci-data:/app/data
+    networks: [authlab]
+
   ai-agent:
     image: local/ai-agent:auth-lab
     build:
-      context: ../../agent_src
+      context: ../..
+      dockerfile: agent_src/Dockerfile
+    env_file:
+      - ../../agent_src/.env
     environment:
       AI_AGENT_PORT: "8000"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
-      REDIS_DB: "0"
+      REDIS_DB: ${LAB_REDIS_DB:-1}
       PROMETHEUS_URL: http://prometheus:9090
       AIOPS_EVIDENCE_DB_PATH: /app/data/evidence.db
       VECTOR_DB_PATH: /app/vector_db
@@ -48,10 +71,12 @@ services:
   celery-worker:
     image: local/ai-agent:auth-lab
     command: ["celery", "-A", "core.celery_app.celery_app", "worker", "--loglevel=INFO", "--concurrency=1"]
+    env_file:
+      - ../../agent_src/.env
     environment:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
-      REDIS_DB: "0"
+      REDIS_DB: ${LAB_REDIS_DB:-1}
       PROMETHEUS_URL: http://prometheus:9090
       AIOPS_EVIDENCE_DB_PATH: /app/data/evidence.db
       VECTOR_DB_PATH: /app/vector_db
@@ -86,6 +111,7 @@ services:
     networks: [authlab]
 
   postgres:
+    profiles: [legacy-local-db]
     image: postgres:16.6-alpine
     environment:
       POSTGRES_DB: moodle
@@ -147,27 +173,28 @@ services:
     build:
       context: ../../moodle
     depends_on:
-      postgres: {condition: service_healthy}
+      floci: {condition: service_healthy}
       openldap: {condition: service_healthy}
     env_file: .env.local
     environment:
-      MOODLE_WWWROOT: http://127.0.0.1:18080
-      MOODLE_DB_HOST: postgres
-      MOODLE_DB_PORT: "5432"
-      MOODLE_DB_NAME: moodle
-      MOODLE_DB_USER: moodle
+      MOODLE_WWWROOT: ${LAB_MOODLE_WWWROOT:-http://127.0.0.1:18082}
+      MOODLE_DB_HOST: ${LAB_MOODLE_DB_HOST:-host.docker.internal}
+      MOODLE_DB_PORT: ${LAB_MOODLE_DB_PORT:-7001}
+      MOODLE_DB_NAME: ${LAB_MOODLE_DB_NAME:-moodle}
+      MOODLE_DB_USER: ${LAB_MOODLE_DB_USER:-moodle_local}
       MOODLE_DB_PASSWORD_FILE: /run/secrets/moodle_db_password
       MOODLE_DB_SSLMODE: disable
       MOODLE_DATA_ROOT: /var/moodledata
+      MOODLE_SESSION_HANDLER: database
       MOODLE_REVERSE_PROXY: "false"
       MOODLE_SSL_PROXY: "false"
       LDAPTLS_CACERT: /run/ldap-ca/ca.crt
-    ports:
-      - "127.0.0.1:18080:8080"
     volumes:
       - moodledata:/var/moodledata
       - ./secrets/certs/ca.crt:/run/ldap-ca/ca.crt:ro
       - ./scripts/configure-auth.php:/opt/auth-lab/configure-auth.php:ro
+    ports:
+      - "127.0.0.1:18082:8080"
     secrets:
       - moodle_db_password
       - ldap_reader_password
@@ -179,18 +206,48 @@ services:
       start_period: 90s
     networks: [authlab]
 
+  moodle-web-b:
+    extends:
+      service: moodle-web
+    ports: !reset []
+
+  moodle-cron:
+    image: local/moodle:auth-lab
+    command: ["/usr/local/bin/cron-runner.sh"]
+    env_file: .env.local
+    environment:
+      MOODLE_WWWROOT: ${LAB_MOODLE_WWWROOT:-http://127.0.0.1:18082}
+      MOODLE_DB_HOST: ${LAB_MOODLE_DB_HOST:-host.docker.internal}
+      MOODLE_DB_PORT: ${LAB_MOODLE_DB_PORT:-7001}
+      MOODLE_DB_NAME: ${LAB_MOODLE_DB_NAME:-moodle}
+      MOODLE_DB_USER: ${LAB_MOODLE_DB_USER:-moodle_local}
+      MOODLE_DB_PASSWORD_FILE: /run/secrets/moodle_db_password
+      MOODLE_DB_SSLMODE: disable
+      MOODLE_DATA_ROOT: /var/moodledata
+      MOODLE_SESSION_HANDLER: database
+      MOODLE_CRON_INTERVAL_SECONDS: "60"
+      MOODLE_REVERSE_PROXY: "false"
+      MOODLE_SSL_PROXY: "false"
+    volumes:
+      - moodledata:/var/moodledata
+    secrets:
+      - moodle_db_password
+    depends_on:
+      moodle-web: {condition: service_healthy}
+    networks: [authlab]
+
   moodle-install:
     image: local/moodle:auth-lab
     profiles: [setup]
     depends_on:
-      postgres: {condition: service_healthy}
+      floci: {condition: service_healthy}
     env_file: .env.local
     environment:
-      MOODLE_WWWROOT: http://127.0.0.1:18080
-      MOODLE_DB_HOST: postgres
-      MOODLE_DB_PORT: "5432"
-      MOODLE_DB_NAME: moodle
-      MOODLE_DB_USER: moodle
+      MOODLE_WWWROOT: ${LAB_MOODLE_WWWROOT:-http://127.0.0.1:18082}
+      MOODLE_DB_HOST: ${LAB_MOODLE_DB_HOST:-host.docker.internal}
+      MOODLE_DB_PORT: ${LAB_MOODLE_DB_PORT:-7001}
+      MOODLE_DB_NAME: ${LAB_MOODLE_DB_NAME:-moodle}
+      MOODLE_DB_USER: ${LAB_MOODLE_DB_USER:-moodle_local}
       MOODLE_DB_PASSWORD_FILE: /run/secrets/moodle_db_password
       MOODLE_DB_SSLMODE: disable
       MOODLE_REVERSE_PROXY: "false"
@@ -220,6 +277,23 @@ services:
     depends_on: [openldap, moodle-web, blackbox, auth-probe]
     networks: [authlab]
 
+  grafana:
+    image: grafana/grafana:12.4.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/auth-lab-overview.json
+    ports:
+      - "127.0.0.1:13000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus: {condition: service_started}
+    networks: [authlab]
+
   blackbox:
     image: prom/blackbox-exporter:v0.25.0
     command: ["--config.file=/etc/blackbox/blackbox.yml"]
@@ -233,7 +307,7 @@ services:
     environment:
       MOODLE_LOGIN_URL: http://moodle-web:8080/login/index.php
       MOODLE_HEALTH_URL: http://moodle-web:8080/healthz.php
-      MOODLE_CANONICAL_HOST: 127.0.0.1:18080
+      MOODLE_CANONICAL_HOST: ${LAB_MOODLE_CANONICAL_HOST:-127.0.0.1:18082}
       AUTH_PROBE_INTERVAL: "15"
       AUTH_USER_FILE: /run/secrets/auth_user
       AUTH_PASSWORD_FILE: /run/secrets/auth_password
@@ -254,7 +328,7 @@ services:
       AUTH_SERVICE_PORT: "9200"
       MOODLE_LOGIN_URL: http://moodle-web:8080/login/index.php
       MOODLE_HEALTH_URL: http://moodle-web:8080/healthz.php
-      MOODLE_CANONICAL_HOST: 127.0.0.1:18080
+      MOODLE_CANONICAL_HOST: ${LAB_MOODLE_CANONICAL_HOST:-127.0.0.1:18082}
       AUTH_USER_FILE: /run/secrets/auth_user
       AUTH_PASSWORD_FILE: /run/secrets/auth_password
       AUTH_LAB_RECOVERY_TOKEN: ${LAB_RECOVERY_TOKEN:?run prepare.ps1 first}
@@ -299,6 +373,7 @@ secrets:
     file: ./secrets/auth-password
 
 volumes:
+  floci-data:
   pgdata:
   ldapdata:
   ldapconfig:
@@ -306,6 +381,8 @@ volumes:
   moodledata:
   aiops-evidence:
   aiops-vector-db:
+  grafana-data:
 
 networks:
   authlab:
+    name: moodle-auth-lab_authlab

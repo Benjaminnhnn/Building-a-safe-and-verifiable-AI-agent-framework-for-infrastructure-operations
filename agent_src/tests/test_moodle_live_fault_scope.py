@@ -18,11 +18,28 @@ OFFLINE_SCENARIOS = {
 }
 
 
+def _bash_command(script: Path) -> list[str]:
+    if os.name != "nt":
+        return ["bash", str(script)]
+    git_root = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git"
+    bash = git_root / "bin" / "bash.exe"
+    cygpath = git_root / "usr" / "bin" / "cygpath.exe"
+    if bash.is_file() and cygpath.is_file():
+        converted = subprocess.run(
+            [str(cygpath), "-u", str(script)],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        return [str(bash), converted]
+    return ["bash", str(script)]
+
+
 def _run_script(script: Path, scenario: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env.pop("MOODLE_FAULT_CONFIRM", None)
     return subprocess.run(
-        ["bash", str(script), scenario],
+        [*_bash_command(script), scenario],
         cwd=REPO_ROOT,
         env=env,
         capture_output=True,

@@ -1,40 +1,20 @@
-# MASTER RUNBOOK — AIOps Safe & Verifiable AI Agent Framework
+# Historical AIOps Master Runbook (Moodle AWS)
 
-> **Mục đích:** Hướng dẫn deploy toàn bộ hệ thống lên AWS và chạy đầy đủ 15 kịch bản Moodle (3 phương pháp × 15 scenarios × 3 reps). Bất kỳ kỹ sư nào đọc tài liệu này đều có thể reproduce kết quả thực nghiệm của khóa luận.
+> **Status reviewed 2026-10-05:** This document is a historical procedure collection, not a verified end-to-end reproduction guide. The planned Manual/Ansible/AI matrix remains 0/225 empirical cells; synthetic and shadow records are excluded. Use the current Moodle operations and AI Engineer recovery runbooks, and verify every command against the current script/config before running it.
 >
-> **Phiên bản:** 1.0 | **Cập nhật:** 2025-01 | **Tác giả:** Nguyễn Tiến Lê
+> The 3 methods x 15 scenarios x 3 repetitions are a target design, not completed results. Infrastructure provisioning, live fault injection, and teardown require separate review and are outside AI-only code work.
 
 ---
 
-## Mục lục
+## Contents
 
-- [0. Tổng quan và Prerequisites](#0-tổng-quan-và-prerequisites)
-  - [0.1 Sơ đồ kiến trúc](#01-sơ-đồ-kiến-trúc)
-  - [0.2 Tools cần cài](#02-tools-cần-cài)
-  - [0.3 AWS Credentials](#03-aws-credentials)
-  - [0.4 SSH Key Setup](#04-ssh-key-setup)
-  - [0.5 Ước tính chi phí](#05-ước-tính-chi-phí)
-- [1. Provision AWS Infrastructure (Terraform)](#1-provision-aws-infrastructure-terraform)
-- [2. Configure Hosts (Ansible)](#2-configure-hosts-ansible)
-- [3. Deploy Moodle](#3-deploy-moodle)
-- [4. Environment Baseline](#4-environment-baseline)
-- [5. Offline Replay (không cần live infra)](#5-offline-replay-không-cần-live-infra)
-- [6. Chạy từng Scenario](#6-chạy-từng-scenario)
-  - [6.1 Quy trình chung](#61-quy-trình-chung)
-  - [6.2 Bảng tham khảo 15 Scenarios](#62-bảng-tham-khảo-15-scenarios)
-- [7. Benchmark đầy đủ (3 Methods × 15 Scenarios × 3 Reps)](#7-benchmark-đầy-đủ-3-methods--15-scenarios--3-reps)
-  - [7.1 AI Agent Runs](#71-ai-agent-runs)
-  - [7.2 Manual SOP Runs](#72-manual-sop-runs)
-  - [7.3 Ansible Rule-Based Runs](#73-ansible-rule-based-runs)
-- [8. Ablation Studies](#8-ablation-studies)
-  - [8.1 No-Safety-Gate (Shadow Mode)](#81-no-safety-gate-shadow-mode)
-  - [8.2 No-Verifier (Health-Only Counterfactual)](#82-no-verifier-health-only-counterfactual)
-- [9. Thu thập và Validate Kết quả](#9-thu-thập-và-validate-kết-quả)
-- [10. ERPNext (Nếu Applicable)](#10-erpnext-nếu-applicable)
-- [11. Teardown](#11-teardown)
-- [12. Troubleshooting](#12-troubleshooting)
+- [Provisioning and deployment](#1-provision-aws-infrastructure-terraform)
+- [Offline replay and scenario procedures](#5-offline-replay-không-cần-live-infra)
+- [Empirical benchmark status](#7-empirical-benchmark-pending)
+- [Ablation status](#8-ablation-studies-empirical-execution-pending)
+- [Result validation](#9-collect-and-validate-results)
+- [Teardown and troubleshooting](#11-teardown)
 
----
 
 ## 0. Tổng quan và Prerequisites
 
@@ -740,6 +720,8 @@ PYTHONPATH=agent_src pytest -q agent_src/tests/
 
 ## 6. Chạy từng Scenario
 
+> The fault/reset scripts currently have reviewed pairs for 14 scenarios; `SEC-01` is HUMAN_ONLY. The AI live-execution allowlist is narrower: `DB-01`, `RES-01`, `NET-01`, `CON-01`, and `SEC-02`. A staging smoke/injector pass outside that set does not authorize AI execution. Always check the current allowlist in `automation/moodle-fault-inject.sh`, `automation/moodle-fault-reset.sh`, and `automation/sprint6-acceptance.py` before a live operation.
+
 ### 6.1 Quy trình chung
 
 > [!IMPORTANT]
@@ -899,321 +881,66 @@ bash automation/moodle-fault-trial.sh DB-01
 
 ---
 
-## 7. Benchmark đầy đủ (3 Methods × 15 Scenarios × 3 Reps)
+## 7. Empirical benchmark (pending)
 
-> [!IMPORTANT]
-> **Tổng số runs:** 3 methods × 15 scenarios × 3 reps = **135 runs**. Ước tính thời gian: 8–12 giờ. Nên chạy qua đêm hoặc chia thành nhiều session.
+The default target design is 15 Moodle scenarios x 3 methods (Manual, Ansible, AI) x 5
+repetitions = 225 matched empirical runs. The latest default acceptance report records
+0/225 valid empirical runs. A reduced n=3 main matrix requires an explicit written
+limitation; it does not lower the 50-run minimum for either ablation. Individual
+staging fault/reset smokes and AI shadow runs are not matched benchmark cells and
+must remain separate.
 
-### 7.1 AI Agent Runs
+This checkout does not provide verified per-scenario Manual SOP records or the
+`<scenario>-remediate.yml` Ansible playbooks described in older drafts. Do not
+run guessed commands or count assumed outcomes. Infrastructure and experiment
+owners must approve and document the method procedures, execution authority,
+reset, verifier evidence, and timestamps before collection. The AI benchmark
+acceptance checker is `automation/sprint6-acceptance.py`; it audits submitted
+records and does not create results.
 
-#### Full automated run (tất cả 15 scenarios × 3 reps)
-
-- ☐ Đảm bảo baseline pass trước:
-
-```bash
-bash automation/moodle-environment-baseline.sh verify
-```
-
-- ☐ Chạy E2E live drill:
-
-```bash
-AIOPS_E2E_LIVE_CONFIRM=staging \
-  bash automation/run-aiops-e2e.sh live all --runs 3
-```
-
-**Expected output (mỗi scenario):**
-```
-[E2E][DB-01][run=1] Injecting fault...
-[E2E][DB-01][run=1] t_inject=1735689600
-[E2E][DB-01][run=1] Waiting for detection...
-[E2E][DB-01][run=1] t_detect=1735689632 (MTTD=32s)
-[E2E][DB-01][run=1] Agent plan: restart-postgres
-[E2E][DB-01][run=1] t_gate=1735689638 (decision=APPROVED)
-[E2E][DB-01][run=1] t_execute_start=1735689639
-[E2E][DB-01][run=1] t_execute_end=1735689645
-[E2E][DB-01][run=1] t_verify=1735689665 (result=PASS)
-[E2E][DB-01][run=1] t_resolved=1735689665
-[E2E][DB-01][run=1] COMPLETE ✓
-```
-
-**Kết quả lưu tại:**
-```
-terraform/.artifacts/moodle-sprint2-live/
-├── DB-01/run-1.json
-├── DB-01/run-2.json
-├── DB-01/run-3.json
-├── ...
-└── SEC-03/run-3.json
-```
-
-#### Live drill cho 5 scenarios đã review (Sprint 2)
-
-```bash
-bash automation/moodle-sprint2-live-drill.sh
-```
-
-### 7.2 Manual SOP Runs
-
-> [!NOTE]
-> **Method này yêu cầu người thực hiện theo dõi và ghi timestamps thủ công.** Không có automation. Đây là baseline để so sánh với AI Agent.
-
-#### SOP cho mỗi scenario (Manual)
-
-**Bước chung:**
-
-1. ☐ SSH vào các nodes liên quan:
-
-```bash
-# Monitor node
-ssh -i ~/.ssh/aiops_staging_key ubuntu@$MONITOR_IP
-
-# Moodle app node
-ssh -i ~/.ssh/aiops_staging_key -J ubuntu@$MONITOR_IP ubuntu@10.0.2.10
-```
-
-2. ☐ Inject fault (dùng cùng script):
-
-```bash
-MOODLE_FAULT_CONFIRM=staging bash automation/moodle-fault-inject.sh <SCENARIO>
-T_INJECT=$(date -u +%s)
-```
-
-3. ☐ **Phát hiện thủ công** (quan sát và ghi timestamps):
-
-```bash
-# Kiểm tra Grafana dashboards: http://$MONITOR_IP:3000
-# Kiểm tra Prometheus alerts: http://$MONITOR_IP:9090/alerts
-# Ghi lại thời điểm phát hiện vấn đề
-T_DETECT=$(date -u +%s)
-```
-
-4. ☐ **Chẩn đoán thủ công** theo SOP:
-
-| Scenario | Lệnh chẩn đoán |
-|----------|----------------|
-| DB-01 | `systemctl status postgresql` hoặc `docker ps \| grep postgres` |
-| DB-02 | `psql -c "SELECT count(*) FROM pg_stat_activity;"` |
-| DB-03 | `cat /etc/moodle/config.php \| grep dbhost` |
-| RES-01 | `top -bn1 \| head -20` |
-| RES-02 | `free -m && cat /proc/meminfo \| grep MemAvail` |
-| RES-03 | `df -h` |
-| NET-01 | `dig moodle.internal` |
-| NET-02 | `iptables -L -n \| grep 5432` |
-| NET-03 | `tc qdisc show dev eth0` |
-| CON-01 | `docker ps \| grep moodle` |
-| CON-02 | `systemctl status nginx` |
-| CON-03 | `docker logs moodle --tail 50` |
-| SEC-01 | `aws ec2 describe-security-groups --group-ids <rds-sg-id>` |
-| SEC-02 | `stat /var/moodledata` |
-| SEC-03 | `grep debug /var/www/moodle/config.php` |
-
-5. ☐ **Remediation thủ công:**
-
-```bash
-T_EXECUTE_START=$(date -u +%s)
-# Thực hiện lệnh fix tương ứng với scenario
-# (xem bảng 15 scenarios ở 6.2)
-T_EXECUTE_END=$(date -u +%s)
-```
-
-6. ☐ **Verify thủ công:**
-
-```bash
-curl -s -o /dev/null -w "%{http_code}" https://$ALB_URL/healthz.php
-# Expected: 200
-T_VERIFY=$(date -u +%s)
-T_RESOLVED=$(date -u +%s)
-```
-
-#### Form ghi timestamps (Manual Method)
-
-Sao chép và điền vào sau mỗi run:
-
-| Field | Value |
-|-------|-------|
-| Scenario | `DB-01` (thay) |
-| Run # | `1` |
-| t_inject | `________` |
-| t_detect | `________` |
-| t_incident | `________` |
-| t_plan | `N/A (manual)` |
-| t_gate | `N/A (manual)` |
-| t_execute_start | `________` |
-| t_execute_end | `________` |
-| t_verify | `________` |
-| t_resolved | `________` |
-| Notes | `________` |
-
-```bash
-# Ghi vào CSV
-echo "DB-01,manual,1,$T_INJECT,$T_DETECT,N/A,N/A,N/A,$T_EXECUTE_START,$T_EXECUTE_END,$T_VERIFY,$T_RESOLVED" \
-  >> terraform/.artifacts/timestamps.csv
-```
-
-### 7.3 Ansible Rule-Based Runs
-
-> [!NOTE]
-> Ansible method sử dụng pre-written playbooks để remediate. Timestamps được ghi tự động bởi playbook.
-
-#### Chạy playbook remediation
-
-- ☐ Inject fault trước:
-
-```bash
-MOODLE_FAULT_CONFIRM=staging bash automation/moodle-fault-inject.sh <SCENARIO>
-T_INJECT=$(date -u +%s)
-```
-
-- ☐ Chạy Ansible remediation playbook (thay `<scenario>` bằng tên lowercase, e.g., `db-01`):
-
-```bash
-ansible-playbook \
-  -i ansible/inventory.ini \
-  ansible/playbooks/<scenario>-remediate.yml \
-  -e "t_inject=$T_INJECT scenario=<SCENARIO>" \
-  --diff
-```
-
-**Ví dụ cho DB-01:**
-```bash
-T_INJECT=$(date -u +%s)
-MOODLE_FAULT_CONFIRM=staging bash automation/moodle-fault-inject.sh DB-01
-ansible-playbook \
-  -i ansible/inventory.ini \
-  ansible/playbooks/db-01-remediate.yml \
-  -e "t_inject=$T_INJECT scenario=DB-01" \
-  --diff
-```
-
-**Expected output:**
-```
-TASK [Detect PostgreSQL down] *****************************
-ok: [moodle-app-a] => {"t_detect": 1735689632}
-
-TASK [Restart PostgreSQL] *********************************
-changed: [moodle-app-a]
-
-TASK [Verify Moodle accessible] ***************************
-ok: [moodle-app-a] => {"t_resolved": 1735689665}
-
-PLAY RECAP ************************************************
-moodle-app-a : ok=5  changed=1  unreachable=0  failed=0
-```
-
-#### Bảng playbooks theo scenario
-
-| Scenario | Playbook | Target Host |
-|----------|----------|-------------|
-| DB-01 | `ansible/playbooks/db-01-remediate.yml` | `moodle_app` |
-| DB-02 | `ansible/playbooks/db-02-remediate.yml` | `moodle_app` |
-| DB-03 | `ansible/playbooks/db-03-remediate.yml` | `moodle_app` |
-| RES-01 | `ansible/playbooks/res-01-remediate.yml` | `moodle_app` |
-| RES-02 | `ansible/playbooks/res-02-remediate.yml` | `moodle_app` |
-| RES-03 | `ansible/playbooks/res-03-remediate.yml` | `moodle_app` |
-| NET-01 | `ansible/playbooks/net-01-remediate.yml` | `monitor` |
-| NET-02 | `ansible/playbooks/net-02-remediate.yml` | `moodle_app` |
-| NET-03 | `ansible/playbooks/net-03-remediate.yml` | `moodle_app` |
-| CON-01 | `ansible/playbooks/con-01-remediate.yml` | `moodle_app` |
-| CON-02 | `ansible/playbooks/con-02-remediate.yml` | `moodle_app` |
-| CON-03 | `ansible/playbooks/con-03-remediate.yml` | `moodle_app` |
-| SEC-01 | `ansible/playbooks/sec-01-remediate.yml` | `monitor` |
-| SEC-02 | `ansible/playbooks/sec-02-remediate.yml` | `moodle_app` |
-| SEC-03 | `ansible/playbooks/sec-03-remediate.yml` | `moodle_app` |
+The simulation harness `automation/run-benchmark.py` is for scorer development
+only. It does not perform any of the three methods or an empirical ablation;
+see Section 8.
 
 ---
 
-## 8. Ablation Studies
+## 8. Ablation Studies (empirical execution pending)
 
-> [!IMPORTANT]
-> Ablation studies **phải chạy trên live infrastructure** và **sau khi** hoàn thành full benchmark (Section 7).
+The historical ablation commands/results below were removed because the current
+`automation/run-benchmark.py` only generates randomized fixture simulations. It
+does not disable a live Safety Gate, execute Moodle recovery, or run a
+health-only production decision. Never use its `--ablation` options against AWS
+or describe their output as measured trials.
 
-### 8.1 No-Safety-Gate (Shadow Mode)
+The empirical no-gate and no-verifier comparisons remain **not collected**.
+They require a separately reviewed staging protocol, matched scenarios and
+methods, a safe counterfactual that cannot dispatch forbidden actions, raw
+provenance-bearing records, and independent scoring. Current Sprint 6 coverage
+is 0/225 empirical cells; existing shadow runs are excluded. See
+`docs/SPRINT3_SPRINT4_COMPLETION_REPORT.md` and
+`automation/sprint6-acceptance.py` for the acceptance boundary.
 
-> Mục đích: Đo lường tỉ lệ false positive actions khi bỏ qua Safety Gate. Chứng minh tầm quan trọng của Gate trong pipeline.
-
-- ☐ Baseline verify:
-
-```bash
-bash automation/moodle-environment-baseline.sh verify
-```
-
-- ☐ Chạy ablation no-gate:
-
-```bash
-PYTHONPATH=agent_src python3 automation/run-benchmark.py \
-  --ablation no-gate \
-  --scenarios DB-01 DB-02 RES-01 CON-01 SEC-01 \
-  --reps 5 \
-  --output terraform/.artifacts/ablation/no-gate/
-```
-
-**Expected output:**
-```
-[ABLATION no-gate] DB-01 rep=1 action=restart-postgres gate=BYPASSED result=PASS
-[ABLATION no-gate] DB-01 rep=2 action=restart-postgres gate=BYPASSED result=PASS
-...
-[ABLATION no-gate] SEC-01 rep=5 action=close-port gate=BYPASSED result=PASS
-─────────────────────────────────────────────────────────────────────
-[ABLATION no-gate] Summary: 25 runs, false_positive_rate=X%
-Results saved to: terraform/.artifacts/ablation/no-gate/results.csv
-```
-
-> [!WARNING]
-> Trong shadow mode, Gate bị bypass nhưng actions vẫn **thực sự thực thi**. Đảm bảo môi trường staging không có dữ liệu quan trọng.
-
-### 8.2 No-Verifier (Health-Only Counterfactual)
-
-> Mục đích: Đo MTTD nếu không có Verifier step (chỉ dùng HTTP health check). Chứng minh giá trị của Verifier.
-
-- ☐ Baseline verify:
-
-```bash
-bash automation/moodle-environment-baseline.sh verify
-```
-
-- ☐ Chạy ablation no-verifier:
+For local harness/scorer development only:
 
 ```bash
 PYTHONPATH=agent_src python3 automation/run-benchmark.py \
-  --ablation no-verifier \
-  --scenarios DB-01 DB-02 RES-01 CON-01 SEC-01 \
-  --reps 5 \
-  --output terraform/.artifacts/ablation/no-verifier/
+  --moodle-only --repetitions 1 --synthetic-smoke \
+  --output-dir terraform/.artifacts/sprint6-benchmark-simulation/
 ```
 
-**Expected output:**
-```
-[ABLATION no-verifier] DB-01 rep=1 resolved_via=http-health-only t_resolved=1735689660
-[ABLATION no-verifier] DB-01 rep=1 [WITH verifier] t_resolved=1735689665
-[ABLATION no-verifier] DB-01 rep=1 delta=-5s (verifier adds 5s overhead)
-...
-─────────────────────────────────────────────────────────────────────
-[ABLATION no-verifier] Summary: 25 runs, false_negative_rate=X%
-Results saved to: terraform/.artifacts/ablation/no-verifier/results.csv
-```
-
-#### So sánh ablation results
-
-```bash
-# Generate comparison report
-PYTHONPATH=agent_src python3 automation/run-benchmark.py \
-  --compare \
-  --baseline terraform/.artifacts/moodle-sprint2-live/ \
-  --ablations terraform/.artifacts/ablation/ \
-  --output evaluation/benchmark/results/ablation-comparison.csv
-```
-
----
+The generated output is `synthetic_simulation_not_empirical`; do not cite it
+for RQ1/RQ2, recovery, or ablation acceptance.
 
 ## 9. Collect and validate results
 
 ### 9.1 Keep source and evidence class attached
 
-The harvester accepts producer-marked runtime `result.json` records and
-`benchmark_results.jsonl` records from the fixture benchmark harness. It does
-not fill missing timestamps, infer recovery from health, or label a harness
-reset as an AI action. The CSV preserves `evidence_class`, `method`, and
-`execution_authority`.
+The harvester accepts producer-marked runtime `result.json` records and can
+ingest fixture-harness `benchmark_results.jsonl` only with the explicit
+`simulated_fixture_benchmark` evidence class. It does not fill missing
+timestamps, infer recovery from health, or label a harness reset as an AI
+action. The CSV preserves `evidence_class`, `method`, and `execution_authority`;
+synthetic rows remain excluded from empirical acceptance and analysis.
 
 The Sprint 2 AWS drill observes the AI in shadow mode; the test harness resets
 the fault. Its records are `staging_runtime_shadow`, not evidence of AI
@@ -1222,14 +949,16 @@ RNG-derived outcomes; its records are labeled `simulated_fixture_benchmark`
 and must not be presented as a live benchmark. Keep these evidence classes
 separate in analysis.
 
-Audit on 2026-10-04 found the checked-in `benchmark_results.jsonl` has 990
-rows but only 270 unique `(method, run_id)` keys; it contains 720 extra records
-from prior appends, including ERPNext rows in a file that also holds Moodle
-results. The collector rejects these duplicate keys on purpose. Do not treat
-that legacy file as 990 independent trials. The generator now assigns a unique
-campaign prefix, and `--include-erpnext` explicitly controls the optional
-fixture set; new output still remains simulated unless sourced from the
-separate runtime drill.
+Historical audit on 2026-10-04 found the former checked-in synthetic
+`benchmark_results.jsonl` had 990 rows but only 270 unique `(method, run_id)`
+keys, including ERPNext fixture rows mixed with Moodle fixtures. The former
+CSV had 225 synthetic rows. These generated result files were removed from the
+active result directory on 2026-10-05; the counts document the reason for
+removal and are not trial observations. The collector rejects duplicate keys.
+The generator assigns a unique campaign prefix, and `--include-erpnext`
+explicitly controls the optional fixture set; generated output remains
+simulation-only. Fresh empirical acceptance must use separate provenance-
+bearing runtime records.
 
 ```bash
 python3 automation/harvest-benchmark-results.py \
@@ -1252,7 +981,8 @@ python3 automation/harvest-benchmark-results.py \
 A campaign with no supported records fails instead of writing an empty CSV.
 Missing producer timestamps remain empty. Only compare methods, scenarios,
 and repetitions when independent raw trials exist; the harvester does not
-assert a 135-run target or synthesize rows to fill missing groups.
+assert a run target or synthesize rows to fill missing groups; the acceptance gate
+requires the 225-run default or a documented reduced n=3 main design.
 
 ## 10. ERPNext (Nếu Applicable)
 

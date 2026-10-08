@@ -1,0 +1,112 @@
+{
+  "id": null,
+  "uid": "auth-lab-overview",
+  "title": "Moodle AIOps - Local Environment",
+  "tags": ["moodle", "aiops", "auth-lab"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Moodle health",
+      "description": "1 = healthy, 0 = failed",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-local" },
+      "targets": [{ "refId": "A", "expr": "probe_success{job=\"moodle\"}", "legendFormat": "Moodle" }],
+      "fieldConfig": { "defaults": { "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }, "mappings": [{ "type": "value", "options": { "0": { "text": "FAILED", "color": "red" }, "1": { "text": "HEALTHY", "color": "green" } } }] }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "value_and_name", "colorMode": "background", "graphMode": "area", "justifyMode": "center" }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Floci ALB health",
+      "description": "1 = healthy, 0 = failed",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-local" },
+      "targets": [{ "refId": "A", "expr": "probe_success{job=\"moodle_alb\"}", "legendFormat": "ALB" }],
+      "fieldConfig": { "defaults": { "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }, "mappings": [{ "type": "value", "options": { "0": { "text": "FAILED", "color": "red" }, "1": { "text": "HEALTHY", "color": "green" } } }] }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "value_and_name", "colorMode": "background", "graphMode": "area", "justifyMode": "center" }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "OpenLDAP LDAPS",
+      "description": "1 = reachable, 0 = unavailable",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-local" },
+      "targets": [{ "refId": "A", "expr": "probe_success{job=\"openldap_ldaps\"}", "legendFormat": "LDAPS" }],
+      "fieldConfig": { "defaults": { "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }, "mappings": [{ "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }] }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "value_and_name", "colorMode": "background", "graphMode": "area", "justifyMode": "center" }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Valid Moodle login",
+      "description": "Synthetic valid-user login probe",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-local" },
+      "targets": [{ "refId": "A", "expr": "auth_lab_valid_login_success", "legendFormat": "Login" }],
+      "fieldConfig": { "defaults": { "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }, "mappings": [{ "type": "value", "options": { "0": { "text": "FAILED", "color": "red" }, "1": { "text": "PASS", "color": "green" } } }] }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "value_and_name", "colorMode": "background", "graphMode": "area", "justifyMode": "center" }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "AUTH-01 alert state",
+      "description": "The series appears at 1 while Prometheus considers the alert firing.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-local" },
+      "targets": [{ "refId": "A", "expr": "ALERTS{alertname=~\"AuthLabOpenLdapUnavailable|AuthLabSyntheticLdapLoginFailed\",alertstate=\"firing\"}", "legendFormat": "{{ alertname }}" }],
+      "fieldConfig": { "defaults": { "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "AI webhook activity",
+      "description": "Alert events accepted by the AI webhook per minute.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-local" },
+      "targets": [{ "refId": "A", "expr": "sum by (status) (rate(aiops_webhook_events_total[5m]) * 60)", "legendFormat": "{{ status }}" }],
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Celery queue",
+      "description": "Number of tasks waiting for the AI worker.",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-local" },
+      "targets": [{ "refId": "A", "expr": "aiops_celery_queue_depth", "legendFormat": "queued" }],
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 20 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "value_and_name", "colorMode": "background", "graphMode": "area", "justifyMode": "center" }
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "AI tasks active",
+      "description": "Current in-flight alert analysis tasks.",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-local" },
+      "targets": [{ "refId": "A", "expr": "aiops_active_tasks", "legendFormat": "active" }],
+      "fieldConfig": { "defaults": { "min": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "value_and_name", "colorMode": "value", "graphMode": "none", "justifyMode": "center" }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "AI alert outcomes",
+      "description": "Processing outcomes reported by the agent.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-local" },
+      "targets": [{ "refId": "A", "expr": "sum by (status) (rate(aiops_alerts_processed_total[5m]) * 60)", "legendFormat": "{{ status }}" }],
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    }
+  ]
+}

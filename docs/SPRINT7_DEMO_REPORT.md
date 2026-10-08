@@ -72,9 +72,10 @@ ERPNext application fault drills or the required repeated ablations.”
 | No core-schema change required for ERPNext | PARTIAL | Contract demo uses existing schema/catalog; still needs integration evidence from a runtime path |
 | Analysis/report/demo handoff | PARTIAL | This report and offline evidence exist; final statistics, reproduction bundle, and two end-to-end rehearsals remain |
 
-Do not use `automation/run-benchmark.py` output or checked-in sample benchmark
+Do not use `automation/run-benchmark.py` output or historical synthetic benchmark
 rows as live evidence: that runner is synthetic and must be clearly separated
-from observed runtime data. Likewise, existing five-repetition ablation config
+from observed runtime data. The former generated result files have been removed
+from the active results directory. Likewise, existing five-repetition ablation config
 is not a substitute for the Sprint 7 plan's 50+50 target.
 
 ## Reproduction and safety
@@ -89,7 +90,14 @@ It does not require AWS credentials, does not invoke Docker/Ansible, and writes
 only the ignored artifact named above. Keep the raw JSON with any presentation
 copy so every shown decision can be traced to the run.
 
-## Full-system demo on Moodle staging (2026-10-01)
+## Historical full-system demo claim on Moodle staging (2026-10-01)
+
+Evidence recheck on 2026-10-07: the referenced drill record
+`terraform/.artifacts/moodle-faults/CON-01-20261001T105413Z.json` and redacted
+Agent record `terraform/.artifacts/sprint7-demo/live-agent-shadow.json` are
+absent from the current checkout. The following is an unreconciled historical
+claim, not verified live evidence; do not present it as a completed staging
+drill unless the original records are restored and their provenance is checked.
 
 Per operator selection, one controlled `CON-01` drill was run against the
 already deployed Moodle staging environment. No Terraform apply or resource
@@ -139,9 +147,12 @@ Two limitations surfaced during the demonstration:
   successful scenario match; review whether the alert should be bound to
   CON-01 or kept as a separate generic observation.
 
-This proves an end-to-end **Moodle staging** monitoring/Agent shadow/reset
-demonstration. It does **not** satisfy Sprint 7's ERPNext generalization gate,
-the 50+50 empirical ablations, or Sprint 6 benchmark closure.
+Because the referenced raw records are absent, this section currently proves
+no end-to-end staging result. If those records are restored and provenance is
+verified, the bounded claim would be limited to Moodle monitoring, shadow
+processing, reset, and verification. It would still not satisfy Sprint 7's
+ERPNext generalization gate, the 50+50 empirical ablations, or Sprint 6
+benchmark closure.
 
 ## Next gates before declaring Sprint 7 complete
 

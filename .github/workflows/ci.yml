@@ -14,17 +14,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r agent_src/requirements.txt
+          pip install --require-hashes -r agent_src/requirements.txt
           pip install pytest ruff "httpx<0.28"
 
       - name: Lint (critical rules)
@@ -36,7 +36,7 @@ jobs:
           PYTHONPATH: agent_src
         run: pytest -q agent_src/tests
 
-      - name: Validate Moodle experiment automation
+      - name: Validate Moodle and auth experiment automation
         run: |
           python -m py_compile \
             automation/moodle-synthetic-transaction.py \
@@ -49,7 +49,11 @@ jobs:
             automation/inspect_live_db.py \
             automation/trigger_live_agent.py \
             automation/run-benchmark.py \
-            automation/moodle-auth-verify.py
+            automation/moodle-auth-verify.py \
+            automation/auth-lab/scripts/auth-probe.py \
+            automation/auth-lab/scripts/auth-actuator.py \
+            automation/sprint6-acceptance.py \
+            evaluation/benchmark/statistical_analysis.py
           bash -n \
             automation/lib/moodle-fault-common.sh \
             automation/moodle-environment-baseline.sh \
@@ -63,8 +67,8 @@ jobs:
             automation/configure-moodle-safe-executor-api.sh \
             automation/moodle-safe-executor-drill.sh \
             automation/moodle-scenario-verify.sh
-          if bash automation/moodle-scenario-verify.sh DB-02 >/dev/null 2>&1; then
-            echo "offline-only scenario was unexpectedly accepted" >&2
+          if bash automation/moodle-scenario-verify.sh SEC-01 >/dev/null 2>&1; then
+            echo "HUMAN_ONLY scenario was unexpectedly accepted for live verification" >&2
             exit 1
           else
             status=$?
@@ -98,10 +102,10 @@ jobs:
       - name: Build AI Agent image
         run: docker build -f agent_src/Dockerfile -t local/ai-agent:ci-${{ github.sha }} .
 
-      - name: Verify packaged Moodle ground-truth catalog
+      - name: Verify runtime image excludes evaluation ground truth
         run: |
           docker run --rm local/ai-agent:ci-${{ github.sha }} python -c \
-            'from core.moodle_alert_integration import _load_catalog; c=_load_catalog(); assert len(c) == 15; print("validated Moodle scenarios:", len(c))'
+            'import os; from pathlib import Path; from core.moodle_alert_integration import process_moodle_alert; assert not Path("/app/evaluation/ground_truth").exists(); os.environ["AIOPS_UNIFIED_CORE_MODE"]="live"; r=process_moodle_alert({"status":"firing","labels":{"service":"moodle","environment":"staging","alertname":"MoodleSyntheticTransactionFailed","scenario_id":"DB-01"}}); assert r["status"]=="escalated" and "ground truth" in r["reason"] and r["execution_permitted"] is False; print("runtime fixture boundary and live fail-closed verified")'
 
       - name: Build Moodle image
         run: docker build -t local/moodle:ci-${{ github.sha }} moodle
@@ -161,7 +165,7 @@ jobs:
 
       - name: Notify admins on failure
         if: failure()
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           sparse-checkout: automation
 

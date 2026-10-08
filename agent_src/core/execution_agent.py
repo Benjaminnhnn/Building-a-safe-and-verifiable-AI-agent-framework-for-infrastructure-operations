@@ -13,23 +13,27 @@ from __future__ import annotations
 import time
 from typing import Any, ClassVar, Protocol, runtime_checkable
 
+from core.safe_action_audit import redact_snapshot
+from core.sanitization import sanitize_log_excerpt
 from core.schema.action import TypedAction
 from core.schema.common import ActionDecision, ActionStatus, ActionType
 from core.schema.safety import SafetyDecision
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, StrictBool, ValidationError
 
 
 class ActionResult(BaseModel):
     """Result of executing an action."""
 
+    model_config = ConfigDict(extra="forbid")
+
     action_id: str
-    success: bool
-    output: str
-    duration_ms: float = 0.0
+    success: StrictBool
+    output: str = Field(max_length=2048)
+    duration_ms: FiniteFloat = Field(default=0.0, ge=0)
     pre_snapshot: dict[str, Any] = Field(default_factory=dict)
     post_snapshot: dict[str, Any] = Field(default_factory=dict)
-    dry_run: bool = True
-    rollback_available: bool = False
+    dry_run: StrictBool = True
+    rollback_available: StrictBool = False
     error: str | None = None
 
 
@@ -84,7 +88,7 @@ class DryRunAdapter:
         return ActionResult(
             action_id=action.action_id,
             success=True,
-            output=f"[DRY-RUN] Rolled back {action.action_type.value}",
+            output=f"[DRY-RUN] Would roll back {action.action_type.value}",
             dry_run=True,
             rollback_available=False,
         )
@@ -115,6 +119,30 @@ class ExecutionAgent:
         dry_run: bool = True,
         approval_granted: bool = False,
     ) -> ActionResult:
+        if not dry_run:
+            raise ExecutionAgentError(
+                "Live dispatch must use the action-bound Safe Executor workflow"
+            )
+        try:
+            action = TypedAction.model_validate(
+                action.model_dump(mode="python", warnings=False)
+            )
+            safety = SafetyDecision.model_validate(
+                safety.model_dump(mode="python", warnings=False)
+            )
+        except (AttributeError, TypeError, ValueError, ValidationError) as exc:
+            raise ExecutionAgentError("Action or Safety Gate result failed schema validation") from exc
+        if safety.action_id != action.action_id or safety.incident_id != action.incident_id:
+            raise ExecutionAgentError("Safety decision does not match the action and incident")
+        if safety.action_hash != action.action_hash:
+            raise ExecutionAgentError("Safety decision is missing or bound to a changed action")
+        if not set(safety.required_evidence_refs).issubset(action.evidence_refs):
+            raise ExecutionAgentError("Action is missing evidence required by the Safety Gate")
+        if (safety.approval_required or action.requires_approval) and not approval_granted:
+            raise ExecutionAgentError(
+                f"Action {action.action_id} requires approval (not yet granted)"
+            )
+
         # Gate check: DENY and HUMAN_ONLY cannot proceed
         if safety.decision == ActionDecision.DENY:
             raise ExecutionAgentError(
@@ -151,7 +179,25 @@ class ExecutionAgent:
 
         # Execute
         action.status = ActionStatus.EXECUTING
-        result = adapter.execute(action, dry_run=dry_run)
+        raw_result = adapter.execute(action, dry_run=dry_run)
+        try:
+            result = ActionResult.model_validate(
+                raw_result.model_dump(mode="python", warnings=False)
+            )
+        except (AttributeError, TypeError, ValueError, ValidationError) as exc:
+            raise ExecutionAgentError("Adapter result failed schema validation") from exc
+        if result.action_id != action.action_id:
+            raise ExecutionAgentError("Adapter result does not match the dispatched action")
+        if result.dry_run is not dry_run:
+            raise ExecutionAgentError("Adapter result dry-run state does not match the request")
+        result = ActionResult(
+            **{
+                **result.model_dump(mode="python"),
+                "output": sanitize_log_excerpt(result.output, max_chars=2048),
+                "pre_snapshot": redact_snapshot(result.pre_snapshot),
+                "post_snapshot": redact_snapshot(result.post_snapshot),
+            }
+        )
 
         # Update action status
         if result.success:
@@ -161,13 +207,15 @@ class ExecutionAgent:
 
         return result
 
-    def rollback(self, action: TypedAction) -> ActionResult:
-        adapter = self._find_adapter(action.action_type)
-        if adapter is None:
+    def rollback(self, action: TypedAction, *, dry_run: bool = True) -> ActionResult:
+        """Describe a declared rollback in dry-run mode; live rollback is separate."""
+        if not dry_run:
             raise ExecutionAgentError(
-                f"No adapter found for rollback: {action.action_type.value}"
+                "Live rollback must use a reviewed Safe Executor rollback capability"
             )
-        return adapter.rollback(action)
+        if not action.reversible or not action.rollback_plan.available:
+            raise ExecutionAgentError("Action has no declared reversible rollback plan")
+        return DryRunAdapter().rollback(action)
 
     def _find_adapter(self, action_type: ActionType) -> ActionAdapter | None:
         for adapter in self._adapters:

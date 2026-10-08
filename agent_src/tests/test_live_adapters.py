@@ -32,6 +32,7 @@ def test_adapter_emits_only_redacted_boolean_probe_results(tmp_path: Path, monke
             assert kwargs["valid_password"] == "synthetic-private-password"
             return {
                 "authority": "independent_verifier",
+                "simulated": True,
                 "valid_login_passed": True,
                 "invalid_login_denied": True,
                 "health_passed": True,

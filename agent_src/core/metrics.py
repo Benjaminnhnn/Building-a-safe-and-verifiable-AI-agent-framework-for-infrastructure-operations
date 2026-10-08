@@ -28,10 +28,23 @@ UNIFIED_SHADOW_EVENTS_TOTAL = Counter(
     ["status"],  # observed, skipped, error
 )
 
+MOODLE_PIPELINE_EVENTS_TOTAL = Counter(
+    "aiops_moodle_pipeline_events_total",
+    "Moodle alert outcomes recorded by the evidence-driven AI pipeline",
+    ["mode", "status"],
+)
+
 AI_WORKFLOW_LATENCY_SECONDS = Histogram(
     "aiops_ai_workflow_duration_seconds",
     "Thời gian hoàn tất workflow AI (RAG + LLM)",
     buckets=(1, 5, 10, 30, 60, 120, 300),
+)
+
+GEMINI_CALL_LATENCY_SECONDS = Histogram(
+    "aiops_gemini_call_duration_seconds",
+    "Duration of one Gemini generate-content invocation, including failures",
+    ["operation", "outcome"],
+    buckets=(0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60, 120),
 )
 
 # Để đo số task đang xử lý đồng thời

@@ -11,6 +11,8 @@ from typing import Any, Callable
 import requests
 
 from core.unified_core import Incident, IncidentState, SQLiteEvidenceStore, transition
+from core.unified_core import resolve_verified as resolve_incident_verified
+from core.schema.verification import ProbeResult, StabilityObservation, VerificationResult
 
 AUTH_ALERTS = {
     "AuthLabOpenLdapUnavailable",
@@ -269,6 +271,17 @@ def attempt_auth01_recovery(
             "authority": actor,
         })
 
+    def advance_verified(verification: VerificationResult) -> None:
+        nonlocal incident
+        old_state = incident.state.value
+        incident = resolve_incident_verified(incident, verification)
+        record("auth_incident_transition", "verifier", {
+            "old_state": old_state,
+            "new_state": incident.state.value,
+            "reason": "Independent verifier passed the typed AUTH-01 contract",
+            "authority": "independent_verifier",
+        })
+
     record("auth_alert_received", "alertmanager", {
         "scenario": scenario,
         "alert_name": name,
@@ -298,31 +311,95 @@ def attempt_auth01_recovery(
         })
         advance(IncidentState.VERIFYING, "executor", "Actuator reports OpenLDAP healthy")
         verdict = verifier()
+        raw_observations = verdict.get("stability_observations")
+        try:
+            observations = [
+                StabilityObservation.model_validate(item)
+                for item in raw_observations
+            ] if isinstance(raw_observations, list) else []
+        except (TypeError, ValueError):
+            observations = []
+        raw_related_probes = verdict.get("related_probes")
+        try:
+            related_probes = [
+                ProbeResult.model_validate(item)
+                for item in raw_related_probes
+            ] if isinstance(raw_related_probes, list) else []
+        except (TypeError, ValueError):
+            related_probes = []
+        related_probes_valid = bool(related_probes) and all(
+            item.passed and item.simulated is False for item in related_probes
+        )
+        ordered_observations = sorted(item.observed_at for item in observations)
+        observations_in_order = [item.observed_at for item in observations] == ordered_observations
+        measured_stability = (
+            int((ordered_observations[-1] - ordered_observations[0]).total_seconds())
+            if len(ordered_observations) >= 2
+            else 0
+        )
+        stability_ok = (
+            len(observations) >= 9
+            and observations_in_order
+            and measured_stability >= 120
+            and all(item.healthy for item in observations)
+            and -30 <= (datetime.now(timezone.utc) - ordered_observations[-1].astimezone(timezone.utc)).total_seconds() <= 60
+            and all(
+                0 < (later - earlier).total_seconds() <= 60
+                for earlier, later in zip(ordered_observations, ordered_observations[1:])
+            )
+        )
         proof_passed = (
             verdict.get("authority") == "independent_verifier"
+            and verdict.get("simulated") is False
             and verdict.get("valid_login_passed") is True
             and verdict.get("invalid_login_denied") is True
             and verdict.get("health_passed") is True
             and verdict.get("ldaps_passed") is True
-            and isinstance(verdict.get("stability_seconds"), (int, float))
-            and verdict["stability_seconds"] >= 120
-            and isinstance(verdict.get("observations"), int)
-            and verdict["observations"] >= 9
+            and all(item.simulated is False for item in observations)
+            and stability_ok
+            and related_probes_valid
             and verdict.get("resolution_eligible") is True
         )
         safe_verdict = {
             "authority": "independent_verifier" if verdict.get("authority") == "independent_verifier" else "unknown",
+            "simulated": verdict.get("simulated") is not False,
             "valid_login_passed": verdict.get("valid_login_passed") is True,
             "invalid_login_denied": verdict.get("invalid_login_denied") is True,
             "health_passed": verdict.get("health_passed") is True,
             "ldaps_passed": verdict.get("ldaps_passed") is True,
-            "stability_seconds": verdict.get("stability_seconds") if isinstance(verdict.get("stability_seconds"), (int, float)) else 0,
-            "observations": verdict.get("observations") if isinstance(verdict.get("observations"), int) else 0,
+            "stability_seconds": measured_stability,
+            "observations": len(observations),
+            "stability_observations": [
+                item.model_dump(mode="json") for item in observations
+            ],
+            "related_probes": [
+                item.model_dump(mode="json") for item in related_probes
+            ],
             "resolution_eligible": proof_passed,
         }
         record("auth_verifier_result", "independent_verifier", safe_verdict)
+        typed_verification = VerificationResult(
+            verification_id="auth-verify-" + hashlib.sha256(incident_id.encode()).hexdigest()[:16],
+            incident_id=incident_id,
+            health_passed=verdict.get("health_passed") is True and verdict.get("ldaps_passed") is True,
+            communication_contract_passed=proof_passed,
+            stability_seconds=measured_stability,
+            stability_observations=observations,
+            resolution_eligible=proof_passed,
+            allowed_probes=[
+                ProbeResult(name="valid_login", passed=verdict.get("valid_login_passed") is True, simulated=verdict.get("simulated") is not False, details="synthetic valid-account login"),
+                ProbeResult(name="moodle_health", passed=verdict.get("health_passed") is True, simulated=verdict.get("simulated") is not False, details="Moodle health probe"),
+                ProbeResult(name="ldaps_certificate", passed=verdict.get("ldaps_passed") is True, simulated=verdict.get("simulated") is not False, details="LDAPS certificate probe"),
+            ],
+            forbidden_probes=[
+                ProbeResult(name="invalid_login", passed=verdict.get("invalid_login_denied") is True, simulated=verdict.get("simulated") is not False, details="synthetic invalid-account denial")
+            ],
+            related_probes=related_probes,
+            verdict="resolved" if proof_passed else "not_resolved",
+            simulated=verdict.get("simulated") is not False,
+        )
         if proof_passed:
-            advance(IncidentState.RESOLVED, "verifier", "Independent verifier passed login, denial, health and stability")
+            advance_verified(typed_verification)
             status = "RESOLVED"
         else:
             advance(IncidentState.ESCALATED, "operator_gate", "Independent verification did not satisfy the full recovery contract")

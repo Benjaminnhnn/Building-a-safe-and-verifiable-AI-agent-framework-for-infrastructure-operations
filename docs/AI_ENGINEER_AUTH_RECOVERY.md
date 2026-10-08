@@ -47,9 +47,8 @@ AUTH fixtures, contact LDAP, deliver Alertmanager webhooks, or mutate services.
 
 The local lab and its multi-terminal commands are in
 [`AI_ENGINEER_AUTH_LAB.md`](AI_ENGINEER_AUTH_LAB.md). The release Moodle
-Compose file still requires prepared RDS/EFS mounts and secret files;
-`platform-config/docker-compose.dev.yml` is referenced by `AGENTS.md` but is
-absent from this checkout. The lab is separate from both release and AWS:
+Compose file still requires prepared RDS/EFS mounts and secret files. The lab
+is separate from both release and AWS:
 
 ```powershell
 docker build -t local/moodle:auth-ldap-check moodle
@@ -161,3 +160,9 @@ the separate verifier's valid login, invalid-login denial, LDAPS, health, and
 that stale firing and recovery notifications do not downgrade the resolved
 Redis incident. AWS deployed runtime and live trials are not run; AUTH-02/03
 runtime trials and AUTH benchmark results do not exist.
+
+Evidence retention: the two local trial outcomes above are documented as
+operator observations from 2026-10-04, but raw per-trial logs, probe captures,
+and verifier records are not present in this checkout. They are not
+independently auditable from retained artifacts and must not be reported as
+benchmark results or AWS/staging acceptance.

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
+
+from core.schema.common import ActionType, ResourceType
 
 # ---------------------------------------------------------------------------
 # Models
@@ -21,6 +23,7 @@ class CatalogEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action_id: str
+    action_type: ActionType | None = None
     description: str
     adapter: str  # "docker" | "ansible" | "probe" | "network"
     permission: ActionPermission
@@ -30,6 +33,94 @@ class CatalogEntry(BaseModel):
     idempotent: bool
     forbidden_in_production: bool = True
     timeout_seconds: int = 120
+    parameter_schema: dict[str, str] = Field(default_factory=dict)
+    default_requires_approval: StrictBool | None = None
+    valid_target_resource_types: list[ResourceType] = Field(default_factory=list)
+
+
+_ACTION_TYPES: dict[str, ActionType] = {
+    "remove_scoped_db_reject": ActionType.REMOVE_SCOPED_PORT_BLOCK,
+    "kill_named_cpu_hog": ActionType.STOP_FAULT_INJECTOR,
+    "remove_named_memory_pressure_container": ActionType.STOP_FAULT_INJECTOR,
+    "remove_disk_fill_fixture": ActionType.STOP_FAULT_INJECTOR,
+    "restore_dns_alias": ActionType.RUN_ANSIBLE_PLAYBOOK,
+    "remove_scoped_port_block": ActionType.REMOVE_SCOPED_PORT_BLOCK,
+    "remove_netem_rules": ActionType.STOP_FAULT_INJECTOR,
+    "restart_moodle_container": ActionType.RESTART_CONTAINER,
+    "restore_nginx_upstream": ActionType.RUN_ANSIBLE_PLAYBOOK,
+    "restore_previous_approved_release": ActionType.RUN_ANSIBLE_PLAYBOOK,
+    "remove_tagged_database_ingress_rule": ActionType.RUN_ANSIBLE_PLAYBOOK,
+    "restore_moodledata_ownership": ActionType.RESTORE_MOODLEDATA_PERMISSION,
+    "restore_moodle_security_config": ActionType.RUN_ANSIBLE_PLAYBOOK,
+    "verify_tls_database_connection": ActionType.READ_HEALTH,
+    "probe_moodle_http_health": ActionType.READ_HEALTH,
+    "probe_postgres_connectivity": ActionType.READ_HEALTH,
+    "start_reviewed_compose_service": ActionType.START_CONTAINER,
+    "wait_for_alb_target_health": ActionType.READ_HEALTH,
+    "restore_moodle_apache_router": ActionType.RUN_ANSIBLE_PLAYBOOK,
+    "restore_approved_runtime_env": ActionType.RUN_ANSIBLE_PLAYBOOK,
+    "restore_database_connection_capacity": ActionType.STOP_FAULT_INJECTOR,
+    "restore_approved_database_endpoint": ActionType.RUN_ANSIBLE_PLAYBOOK,
+    "recreate_moodle_web_from_reviewed_compose": ActionType.RUN_ANSIBLE_PLAYBOOK,
+    "verify_database_hostname": ActionType.READ_HEALTH,
+    "remove_scoped_moodle_db_port_reject": ActionType.REMOVE_SCOPED_PORT_BLOCK,
+    "remove_scoped_netem_profile": ActionType.STOP_FAULT_INJECTOR,
+    "remove_named_cpu_load_container": ActionType.STOP_FAULT_INJECTOR,
+    "verify_node_cpu_recovers": ActionType.READ_HEALTH,
+    "remove_named_disk_fixture": ActionType.STOP_FAULT_INJECTOR,
+    "restore_fixture_directory_mode": ActionType.RESTORE_MOODLEDATA_PERMISSION,
+    "verify_efs_write": ActionType.READ_HEALTH,
+    "restore_approved_proxy_configuration": ActionType.RUN_ANSIBLE_PLAYBOOK,
+    "probe_moodle_synthetic_login": ActionType.READ_HEALTH,
+    "start_erpnext_mariadb_container": ActionType.START_CONTAINER,
+    "start_erpnext_redis_container": ActionType.START_CONTAINER,
+    "restore_erpnext_nginx_config": ActionType.RUN_ANSIBLE_PLAYBOOK,
+    "probe_erpnext_mariadb_connectivity": ActionType.READ_HEALTH,
+    "probe_erpnext_redis_connectivity": ActionType.READ_HEALTH,
+    "probe_erpnext_http_health": ActionType.READ_HEALTH,
+}
+
+_TARGET_RESOURCE_TYPES: dict[str, set[ResourceType]] = {
+    "remove_scoped_db_reject": {ResourceType.APPLICATION, ResourceType.DATABASE},
+    "kill_named_cpu_hog": {ResourceType.APPLICATION},
+    "remove_named_memory_pressure_container": {ResourceType.APPLICATION},
+    "remove_disk_fill_fixture": {ResourceType.APPLICATION},
+    "restore_dns_alias": {ResourceType.APPLICATION, ResourceType.DATABASE},
+    "remove_scoped_port_block": {ResourceType.DATABASE},
+    "remove_netem_rules": {ResourceType.APPLICATION},
+    "restart_moodle_container": {ResourceType.APPLICATION},
+    "restore_nginx_upstream": {ResourceType.APPLICATION, ResourceType.ENDPOINT},
+    "restore_previous_approved_release": {ResourceType.APPLICATION},
+    "remove_tagged_database_ingress_rule": {ResourceType.NETWORK},
+    "restore_moodledata_ownership": {ResourceType.VOLUME},
+    "restore_moodle_security_config": {ResourceType.APPLICATION},
+    "verify_tls_database_connection": {ResourceType.DATABASE},
+    "probe_moodle_http_health": {ResourceType.ENDPOINT, ResourceType.APPLICATION},
+    "probe_postgres_connectivity": {ResourceType.DATABASE},
+    "start_reviewed_compose_service": {ResourceType.APPLICATION},
+    "wait_for_alb_target_health": {ResourceType.APPLICATION, ResourceType.ENDPOINT},
+    "restore_moodle_apache_router": {ResourceType.APPLICATION},
+    "restore_approved_runtime_env": {ResourceType.APPLICATION},
+    "restore_database_connection_capacity": {ResourceType.DATABASE},
+    "restore_approved_database_endpoint": {ResourceType.DATABASE},
+    "recreate_moodle_web_from_reviewed_compose": {ResourceType.APPLICATION},
+    "verify_database_hostname": {ResourceType.DATABASE},
+    "remove_scoped_moodle_db_port_reject": {ResourceType.DATABASE},
+    "remove_scoped_netem_profile": {ResourceType.APPLICATION},
+    "remove_named_cpu_load_container": {ResourceType.APPLICATION},
+    "verify_node_cpu_recovers": {ResourceType.APPLICATION},
+    "remove_named_disk_fixture": {ResourceType.APPLICATION},
+    "restore_fixture_directory_mode": {ResourceType.VOLUME},
+    "verify_efs_write": {ResourceType.VOLUME},
+    "restore_approved_proxy_configuration": {ResourceType.APPLICATION},
+    "probe_moodle_synthetic_login": {ResourceType.APPLICATION, ResourceType.ENDPOINT},
+    "start_erpnext_mariadb_container": {ResourceType.DATABASE, ResourceType.CONTAINER},
+    "start_erpnext_redis_container": {ResourceType.CONTAINER},
+    "restore_erpnext_nginx_config": {ResourceType.APPLICATION},
+    "probe_erpnext_mariadb_connectivity": {ResourceType.DATABASE},
+    "probe_erpnext_redis_connectivity": {ResourceType.CONTAINER},
+    "probe_erpnext_http_health": {ResourceType.APPLICATION, ResourceType.ENDPOINT},
+}
 
 
 # The only scenario/action/target tuples permitted for the first live
@@ -66,10 +157,36 @@ _S3_3_STAGING_EXECUTION_SCOPES: dict[str, dict[str, str]] = {
 
 class ActionCatalog:
     def __init__(self, entries: list[CatalogEntry]) -> None:
-        self._entries: dict[str, CatalogEntry] = {e.action_id: e for e in entries}
+        self._entries: dict[str, CatalogEntry] = {}
+        for entry in entries:
+            if entry.action_id in self._entries:
+                raise ValueError(f"duplicate action_id in catalog: {entry.action_id}")
+            action_type = entry.action_type or _ACTION_TYPES.get(entry.action_id)
+            target_types = entry.valid_target_resource_types or sorted(
+                _TARGET_RESOURCE_TYPES.get(entry.action_id, set()), key=lambda item: item.value
+            )
+            if action_type is not None or target_types:
+                default_approval = (
+                    entry.permission.required_role == "operator"
+                    or entry.blast_radius in {"MEDIUM", "HIGH"}
+                )
+                entry = entry.model_copy(update={
+                    "action_type": action_type or entry.action_type,
+                    "valid_target_resource_types": target_types,
+                    "default_requires_approval": (
+                        entry.default_requires_approval
+                        if entry.default_requires_approval is not None
+                        else default_approval
+                    ),
+                })
+            self._entries[entry.action_id] = entry
 
     def lookup(self, action_id: str) -> CatalogEntry | None:
         return self._entries.get(action_id)
+
+    def target_type_allowed(self, action_id: str, target_type: ResourceType) -> bool:
+        entry = self.lookup(action_id)
+        return bool(entry and target_type in entry.valid_target_resource_types)
 
     def is_allowed(self, action_id: str, *, environment: str, role: str) -> bool:
         entry = self.lookup(action_id)

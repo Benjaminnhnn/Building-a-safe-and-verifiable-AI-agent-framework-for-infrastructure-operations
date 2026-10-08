@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 
 from core.auth_alert_pipeline import (
     AUTH_PROBES,
@@ -40,14 +41,29 @@ def _reader(values=None):
 
 
 def _verdict(**overrides):
+    duration = overrides.get("stability_seconds", 120)
+    count = overrides.get("observations", 9)
+    checked_at = datetime.now(timezone.utc)
+    stability_observations = [
+        {
+            "observed_at": checked_at - timedelta(
+                seconds=duration - duration * index / max(1, count - 1)
+            ),
+            "healthy": True,
+            "simulated": overrides.get("simulated", True),
+        }
+        for index in range(count)
+    ]
     result = {
         "authority": "independent_verifier",
+        "simulated": overrides.get("simulated", True),
         "valid_login_passed": True,
         "invalid_login_denied": True,
         "health_passed": True,
         "ldaps_passed": True,
-        "stability_seconds": 120,
-        "observations": 9,
+        "stability_seconds": duration,
+        "observations": count,
+        "stability_observations": stability_observations,
         "resolution_eligible": True,
     }
     result.update(overrides)
@@ -97,7 +113,7 @@ def test_independent_verifier_is_the_only_resolution_authority(monkeypatch, tmp_
         _alert(),
         metric_reader=_reader(),
         actuator=lambda: {"target": "local-openldap", "operation": "start", "health": "healthy"},
-        verifier=_verdict,
+        verifier=lambda: _verdict(simulated=False),
         evidence_path=tmp_path / "evidence.db",
     )
 
@@ -109,8 +125,28 @@ def test_independent_verifier_is_the_only_resolution_authority(monkeypatch, tmp_
     )
     transitions = [record.payload for record in records if record.kind == "auth_incident_transition"]
     assert transitions[-1]["new_state"] == "RESOLVED"
-    assert transitions[-1]["authority"] == "verifier"
-    assert all(item["authority"] != "verifier" or item["new_state"] == "RESOLVED" for item in transitions)
+    assert transitions[-1]["authority"] == "independent_verifier"
+    assert all(item["authority"] != "independent_verifier" or item["new_state"] == "RESOLVED" for item in transitions)
+
+
+def test_fixture_verifier_result_cannot_resolve_auth_incident(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AUTH_LAB_AUTO_RECOVERY_ENABLED", "true")
+    report = attempt_auth01_recovery(
+        _alert(),
+        metric_reader=_reader(),
+        actuator=lambda: {"target": "local-openldap", "operation": "start", "health": "healthy"},
+        verifier=_verdict,
+        evidence_path=tmp_path / "evidence.db",
+    )
+
+    assert report["status"] == "ESCALATED"
+    assert report["verifier"]["simulated"] is True
+    assert report["resolution_eligible"] is False
+    records = SQLiteEvidenceStore(tmp_path / "evidence.db").query(
+        incident_id=report["incident_id"]
+    )
+    transitions = [record.payload for record in records if record.kind == "auth_incident_transition"]
+    assert transitions[-1]["new_state"] == "ESCALATED"
 
 
 def test_short_or_failed_verifier_keeps_incident_unresolved(monkeypatch, tmp_path) -> None:

@@ -1,16 +1,9 @@
-#!/usr/bin/env bash
 #!/usr/bin/env python3
-"""Full benchmark execution harness for Moodle infrastructure operations.
+"""Generate synthetic benchmark simulations for Moodle scenario fixtures.
 
-Supports the 15 Moodle fault scenarios (DB-01..03, RES-01..03, NET-01..03,
-CON-01..03, SEC-01..03) across three methods:
-1. AI Agent (Observer -> Diagnosis -> Planner -> Safety Gate -> Independent Verifier)
-2. Manual Operator (Standard Operating Procedure baseline)
-3. Ansible Rule-Based Playbooks (automation baseline)
-
-Also supports two ablation studies:
-- No-Safety-Gate (Shadow Mode): checks what dangerous actions would execute without gate
-- No-Independent-Verifier (Health-Only): checks false recovery rate when only health check is used
+This script does not run Moodle, human operators, Ansible playbooks, the
+Independent Verifier, or infrastructure actions. Its randomized outcomes are
+for harness/scorer development only and are never empirical thesis evidence.
 """
 
 from __future__ import annotations
@@ -500,12 +493,19 @@ def build_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--repetitions", type=int, default=5)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--synthetic-smoke",
+        action="store_true",
+        help="Explicitly allow randomized, non-empirical fixture output for harness development.",
+    )
     return parser
 
 
 def main() -> int:
     parser = build_argument_parser()
     args = parser.parse_args()
+    if not args.synthetic_smoke:
+        parser.error("refusing to generate randomized benchmark outcomes without --synthetic-smoke")
 
     erp_dir = None if args.moodle_only else (args.ground_truth_erpnext or REPO_ROOT / "evaluation" / "ground_truth" / "erpnext")
 

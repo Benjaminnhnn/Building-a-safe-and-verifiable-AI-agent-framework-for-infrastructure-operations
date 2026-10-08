@@ -17,6 +17,13 @@ scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: [localhost:9090]
+  - job_name: ai-agent
+    metrics_path: /metrics
+    static_configs:
+      - targets: [ai-agent:8000]
+        labels:
+          service: ai-agent
+          resource_id: authlab-ai-agent
   - job_name: openldap_ldaps
     metrics_path: /probe
     params:
@@ -42,6 +49,22 @@ scrape_configs:
         labels:
           service: moodle
           resource_id: authlab-moodle
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: __address__
+        replacement: blackbox:9115
+      - source_labels: [__param_target]
+        target_label: instance
+  - job_name: moodle_alb
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: [http://floci:80/healthz.php]
+        labels:
+          service: moodle
+          resource_id: authlab-moodle-alb
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

@@ -1,5 +1,7 @@
 # Báo cáo và runbook quay demo Moodle staging
 
+> **Kiểm tra bằng chứng ngày 2026-10-07:** Đây là tài liệu lịch sử, không phải xác nhận readiness hiện tại. Các artifact raw được trích dẫn cho CON-01 (`CON-01-20261001T105413Z.json` và `live-agent-shadow.json`) không có trong checkout này. Vì vậy các kết quả staging được mô tả bên dưới chưa được xác minh lại và không được trình bày như bằng chứng live cho đến khi artifact gốc được khôi phục, kiểm tra provenance và đối chiếu.
+
 Ngày kiểm tra: 2026-10-02 (Asia/Bangkok)
 Scenario đề xuất: **CON-01 — dừng Moodle web container trên một node**
 
@@ -34,11 +36,11 @@ Lưu ý: `TELEGRAM_TOKEN`/`TELEGRAM_CHAT_ID` chưa được cấu hình trong Ag
 Alertmanager → Agent và xử lý shadow hoạt động, nhưng **không demo được gửi tin
 Telegram**. Không đưa token vào terminal đang ghi hình hoặc commit vào repo.
 
-## 2. Kết quả demo CON-01 đã thực hiện
+## 2. Kết quả CON-01 được ghi nhận lịch sử, chưa xác minh lại
 
-Ngày 2026-10-01, đã chạy drill thật trên staging: chỉ dừng
+Tài liệu cũ ghi rằng ngày 2026-10-01 đã chạy drill trên staging: chỉ dừng
 `release-moodle-web-1` ở `moodle-app-b`, để Moodle node còn lại tiếp tục phục
-vụ. Kết quả lần chạy thành công:
+vụ. Các kết quả dưới đây là nội dung được báo cáo khi đó, chưa được xác minh lại:
 
 - Prometheus phát hiện `MoodleWebContainerMissing`; Alertmanager gửi alert tới
   AI Agent và Celery queue sau xử lý trở về 0.
@@ -67,8 +69,10 @@ Evidence đã lưu:
 - Báo cáo Sprint 7 và phần giới hạn ERPNext:
   `docs/SPRINT7_DEMO_REPORT.md`
 
-Demo này chứng minh được luồng staging Moodle. Nó **không đóng Sprint 7 theo
-acceptance ERPNext**, và không phải kết quả benchmark 50+50 ablation.
+Tài liệu cũ kết luận rằng demo chứng minh luồng staging Moodle. Do artifact gốc
+đang thiếu, kết luận đó chưa được xác minh và không được dùng làm bằng chứng
+hiện tại. Nó cũng không đóng Sprint 7 theo acceptance ERPNext và không phải
+kết quả benchmark 50+50 ablation.
 
 ## 3. Bố trí màn hình khi quay
 
@@ -89,8 +93,13 @@ Mở các địa chỉ sau sau khi tunnel đã kết nối:
 Trong Prometheus, chuẩn bị biểu thức:
 
 ```promql
-ALERTS{alertname="MoodleWebContainerMissing",scenario_id="CON-01",alertstate="firing"}
+ALERTS{alertname="MoodleWebContainerMissing",alertstate="firing"}
 ```
+
+Ghi chú: kết quả drill CON-01 ngày 2026-10-01 bên dưới là bằng chứng lịch sử
+và đã ghi nhận scenario marker trong Agent shadow. Mã nguồn hiện tại không còn
+đưa marker vào Prometheus; truy vấn ở trên chỉ kiểm tra triệu chứng. Chưa chạy
+lại drill staging sau thay đổi này.
 
 ## 4. Các bước và lệnh quay demo
 
@@ -175,8 +184,8 @@ AWS_PROFILE=target-account aws elbv2 describe-target-health \
 Trong lúc fault, kỳ vọng một target không healthy và target còn lại healthy.
 Website có thể vẫn truy cập được qua node còn lại.
 
-Trên Prometheus, chạy query ở phần 3. Kỳ vọng alert có
-`scenario_id="CON-01"`, instance `moodle-app-b`.
+Trên Prometheus, chạy query ở phần 3. Kỳ vọng alert trên instance
+`moodle-app-b`; query không tiết lộ scenario ID.
 
 Để hiện kết quả Agent shadow trong terminal:
 
@@ -292,12 +301,14 @@ Safe Gate, exact human approval: ALLOW
 Adapter dispatch: none (no mutation)
 ```
 
-Giải thích trên màn hình: request là action typed trong catalog cho DB-01
-staging, có ba evidence tham chiếu. Với confidence 0.72, gate yêu cầu người
-duyệt. Không có approval thì bị giữ lại (`REQUIRE_APPROVAL`); approval ký cho
-đúng hash của action mới cho kết quả `ALLOW`. Nếu action hoặc scope đổi thì
-approval không còn khớp. `ALLOW` chỉ cho phép request tiến tới adapter; helper
-dừng trước adapter, nên không có hành động nào được chạy trên Moodle.
+Giải thích trên màn hình: request là probe `READ_HEALTH` đã có trong catalog
+DB-01 staging, trỏ tới `postgres-db` và có ba evidence tham chiếu fixture. Với
+confidence 0.72, gate yêu cầu người duyệt. Không có approval thì bị giữ lại
+(`REQUIRE_APPROVAL`); approval ký cho đúng hash của probe mới cho kết quả
+`ALLOW`. Nếu action hoặc scope đổi thì approval không còn khớp. Đây là probe
+đọc-only nên không cần rollback. Helper dừng trước adapter, do đó không có
+hành động nào được chạy trên Moodle. Demo không xác nhận action sửa lỗi DB-01
+đã có cặp rollback thực thi được.
 
 #### Cảnh C — Independent Verifier không tin mỗi health xanh
 

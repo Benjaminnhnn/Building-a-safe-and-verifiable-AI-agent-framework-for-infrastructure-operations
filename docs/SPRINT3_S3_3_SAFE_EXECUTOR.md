@@ -1,11 +1,15 @@
 # Sprint 3.3 — Safe action adapters and staging executor
 
-Status: complete as of 2026-09-29. All five controlled staging drills passed,
-the immutable Agent image for commit `27e7b93` is deployed, GitHub CI and the
-Agent image workflow succeeded, and the Executor kill switch is off. The
-executor remains disabled except during one explicitly approved drill. Do not
-treat an executor API response as incident resolution; an independent verifier
-must check recovery.
+Status: **not currently accepted**. This document's 2026-09-29 completion
+statement is historical and is not supported by the referenced five trial
+records in the current checkout. A later catalog audit found no complete
+reciprocal executable rollback pair for the S3.3 mutating actions; the Safety
+Gate denies them, and the Moodle alert route has no caller for
+`SafeActionLiveWorkflow`. No current live remediation or rollback is claimed.
+
+The executor must remain disabled unless a separately reviewed staging drill
+is underway. An executor receipt is not incident resolution; only an
+Independent Verifier can confirm recovery.
 
 ## Boundary
 

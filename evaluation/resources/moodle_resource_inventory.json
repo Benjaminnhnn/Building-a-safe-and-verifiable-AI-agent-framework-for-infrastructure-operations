@@ -27,7 +27,7 @@
       "host": "aws-rds",
       "service_name": "moodle-postgresql-rds",
       "endpoint": "terraform:moodle_database.endpoint",
-      "depends_on": ["postgres-volume"],
+      "depends_on": ["postgres-volume", "moodle-rds-security-group"],
       "tags": {
         "system": "moodle",
         "component": "database"

@@ -21,6 +21,8 @@ def test_client_signs_exact_payload_and_sends_approval(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class Response:
+        status = 200
+
         def __enter__(self):
             return self
 
@@ -29,6 +31,11 @@ def test_client_signs_exact_payload_and_sends_approval(monkeypatch) -> None:
 
         def read(self) -> bytes:
             return b'{"status":"disabled"}'
+
+        @property
+        def headers(self):
+            body = self.read()
+            return {"X-Executor-Response-Signature": client._response_signature(200, body, b"a" * 64)}
 
     def fake_urlopen(request: Request, timeout: float):
         captured["request"] = request
@@ -73,6 +80,8 @@ def test_client_reads_transport_key_from_mounted_secret_file(monkeypatch, tmp_pa
     captured: dict[str, object] = {}
 
     class Response:
+        status = 200
+
         def __enter__(self):
             return self
 
@@ -81,6 +90,11 @@ def test_client_reads_transport_key_from_mounted_secret_file(monkeypatch, tmp_pa
 
         def read(self) -> bytes:
             return b'{"status":"disabled"}'
+
+        @property
+        def headers(self):
+            body = self.read()
+            return {"X-Executor-Response-Signature": client._response_signature(200, body, b"b" * 64)}
 
     def fake_urlopen(request: Request, timeout: float):
         captured["request"] = request
@@ -112,3 +126,33 @@ def test_client_reads_transport_key_from_mounted_secret_file(monkeypatch, tmp_pa
     expected = hmac.new(b"b" * 64, signed, hashlib.sha256).hexdigest()
     assert hmac.compare_digest(expected, request.get_header("X-executor-signature"))
     assert payload["environment"] == "staging"
+
+
+def test_client_rejects_unsigned_or_tampered_executor_response(monkeypatch) -> None:
+    class Response:
+        status = 200
+        headers = {"X-Executor-Response-Signature": "0" * 64}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self) -> bytes:
+            return b'{"status":"executed","mutated":true}'
+
+    monkeypatch.setenv("SAFE_EXECUTOR_URL", "http://host.docker.internal:8765")
+    monkeypatch.setenv("SAFE_EXECUTOR_HMAC_KEY", "c" * 64)
+    monkeypatch.setattr(client.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
+
+    import pytest
+
+    with pytest.raises(RuntimeError, match="response authentication failed"):
+        client.execute_approved_staging_action(
+            scenario_id="DB-01",
+            catalog_action_id="remove_scoped_db_reject",
+            target_scope="staging_moodle_nodes",
+            idempotency_key="tampered-response-test",
+            approval={"actor_id": "operator", "expires_at": "later", "action_sha256": "x", "signature": "y"},
+        )

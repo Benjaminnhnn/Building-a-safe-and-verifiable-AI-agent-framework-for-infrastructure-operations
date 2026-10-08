@@ -28,61 +28,28 @@ groups:
         labels: {severity: critical, service: moodle, environment: staging, resource_id: moodledata-volume, runbook: moodle-efs}
         annotations: {summary: Moodle EFS mount is not observed}
 
-      # During a controlled fault, the injector publishes a short-lived
-      # scenario marker to Node Exporter's textfile collector. Joining that
-      # marker into the alert preserves scenario_id as a Prometheus label.
+      # Alerts expose symptoms only. Scenario identity is held by the
+      # restricted experiment controller, never exported as Prometheus data.
       - alert: MoodleSyntheticTransactionFailed
-        expr: |
-          (
-            (moodle_synthetic_success{job="moodle_synthetic",instance="monitor-ai-01"} == 0)
-            * on() group_left(scenario_id,drill_id)
-            sum by (scenario_id,drill_id) (moodle_fault_scenario_active{job="moodle_node"} == 1)
-          )
-          or
-          (
-            (moodle_synthetic_success{job="moodle_synthetic",instance="monitor-ai-01"} == 0)
-            unless on() (sum(moodle_fault_scenario_active{job="moodle_node"}) > 0)
-          )
+        expr: moodle_synthetic_success{job="moodle_synthetic",instance="monitor-ai-01"} == 0
         for: 5s
         labels: {severity: critical, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-synthetic}
-        annotations: {summary: "Moodle synthetic transaction failed for controlled scenario {{ $labels.scenario_id }}"}
+        annotations: {summary: Moodle synthetic transaction failed}
       - alert: MoodleSyntheticTransactionStale
         expr: time() - moodle_synthetic_last_run_timestamp_seconds{job="moodle_synthetic",instance="monitor-ai-01"} > 180
         for: 1m
         labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-synthetic}
         annotations: {summary: Moodle synthetic transaction has not run recently}
       - alert: MoodleNodeCpuHigh
-        expr: |
-          (
-            (100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job="moodle_node",mode="idle"}[30s]))) > 70)
-            * on() group_left(scenario_id,drill_id)
-            sum by (scenario_id,drill_id) (moodle_fault_scenario_active{job="moodle_node",scenario_id="RES-01"} == 1)
-          )
-          or
-          (
-            100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job="moodle_node",mode="idle"}[30s]))) > 70
-            unless on() (sum(moodle_fault_scenario_active{job="moodle_node",scenario_id="RES-01"}) > 0)
-          )
+        expr: 100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job="moodle_node",mode="idle"}[30s]))) > 70
         for: 15s
         labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-cpu}
-        annotations: {summary: "Moodle node CPU usage high for controlled scenario {{ $labels.scenario_id }}"}
+        annotations: {summary: "Moodle node CPU usage high on {{ $labels.instance }}"}
       - alert: MoodleWebContainerMissing
-        expr: |
-          (
-            ((time() - max by (instance) (container_last_seen{job="moodle_cadvisor",name="release-moodle-web-1"}) > 30)
-              and on(instance) (up{job="moodle_cadvisor"} == 1))
-            * on() group_left(scenario_id,drill_id)
-            sum by (scenario_id,drill_id) (moodle_fault_scenario_active{job="moodle_node",scenario_id="CON-01"} == 1)
-          )
-          or
-          (
-            ((time() - max by (instance) (container_last_seen{job="moodle_cadvisor",name="release-moodle-web-1"}) > 30)
-              and on(instance) (up{job="moodle_cadvisor"} == 1))
-            unless on() (sum(moodle_fault_scenario_active{job="moodle_node",scenario_id="CON-01"}) > 0)
-          )
+        expr: ((time() - max by (instance) (container_last_seen{job="moodle_cadvisor",name="release-moodle-web-1"}) > 30) and on(instance) (up{job="moodle_cadvisor"} == 1))
         for: 15s
         labels: {severity: critical, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-container}
-        annotations: {summary: "Moodle web container missing for controlled scenario {{ $labels.scenario_id }}"}
+        annotations: {summary: "Moodle web container missing on {{ $labels.instance }}"}
 
       # These are real node-local symptoms, without a scenario_id label.
       # A fault marker and independent evidence must bind a specific scenario;
@@ -129,11 +96,10 @@ groups:
         annotations: {summary: "Isolated Moodle fault scratch filesystem is full on {{ $labels.instance }}"}
       - alert: MoodleNodeMemoryPressure
         expr: |
-          (container_memory_working_set_bytes{job="moodle_cadvisor",name="moodle-fault-res-02"} > 67108864)
-          and on(instance,name) (time() - container_last_seen{job="moodle_cadvisor",name="moodle-fault-res-02"} < 30)
+          -delta(node_memory_MemAvailable_bytes{job="moodle_node"}[1m]) > 33554432
         for: 15s
         labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-bounded-memory}
-        annotations: {summary: "Named bounded memory fixture is active on {{ $labels.instance }}"}
+        annotations: {summary: "Moodle node available memory dropped by more than 32 MiB in one minute on {{ $labels.instance }}"}
       - alert: MoodleWebContainerRestarting
         expr: changes(moodle_node_web_restart_count{job="moodle_node"}[2m]) >= 2
         for: 15s

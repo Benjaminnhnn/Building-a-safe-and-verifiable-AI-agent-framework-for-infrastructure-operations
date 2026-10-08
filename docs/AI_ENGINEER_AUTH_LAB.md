@@ -1,7 +1,7 @@
 # Local Moodle and OpenLDAP authentication lab
 
-Verified on 2026-10-04 against Docker Desktop in this checkout. This lab is
-isolated from AWS: it uses a disposable PostgreSQL database, Moodle, OpenLDAP
+Updated on 2026-10-07 to use local Floci-backed RDS and ALB. This lab is
+isolated from AWS: it uses PostgreSQL, Moodle, OpenLDAP
 over LDAPS with a locally generated CA, Prometheus, Alertmanager, the AI API,
 Redis, Celery, a scoped recovery actuator, a separate verifier, a TCP/HTTP
 blackbox exporter, and a synthetic Moodle login exporter. Only Moodle,
@@ -20,23 +20,19 @@ local secrets, a local CA/server certificate, and Docker images; it does not
 touch AWS.
 
 ```powershell
-Set-Location automation/auth-lab
-& .\prepare.ps1
-$dc = @('--env-file', '.env.local', '-f', 'docker-compose.yml')
-docker compose @dc config --quiet
-docker compose @dc up -d postgres openldap blackbox redis recovery-actuator
-docker compose @dc --profile setup run --rm moodle-install
-docker compose @dc up -d moodle-web auth-probe auth-verifier ai-agent celery-worker alertmanager prometheus
-docker compose @dc exec -T moodle-web php /opt/auth-lab/configure-auth.php
-docker compose @dc ps
+& .\automation\auth-lab\start-floci-moodle.ps1
 ```
 
-Wait until PostgreSQL, OpenLDAP, and Moodle show `healthy`, and the one-shot
-`cert-init` service has exited with code 0. `prepare.ps1` is safe to rerun for
-an existing lab but regenerates local TLS material, so rerun it only while the
-lab is stopped; it seeds the matching certificate into the named Docker volume.
+The script prepares local secrets and certificates when needed, provisions
+Floci resources, and starts PostgreSQL, Moodle, two Moodle web replicas, cron,
+OpenLDAP, Redis/Celery, the AI agent, and monitoring. The manual scenario is
+documented in `docs/LOCAL_CLOUD_TEST_ENVIRONMENT.md` and runs with:
 
-Open `http://127.0.0.1:18080` for Moodle,
+```powershell
+& .\automation\auth-lab\run-auth01-manual.ps1
+```
+
+Open `http://127.0.0.1:18082` for interactive Moodle use,
 `http://127.0.0.1:19090` for Prometheus, and
 `http://127.0.0.1:19093` for Alertmanager. The synthetic test login is
 `authlab-user` / `lab-only-password`.
@@ -90,7 +86,7 @@ this terminal visible for the full 120-second stability window:
 
 ```powershell
 $env:PYTHONPATH = 'agent_src'
-$env:MOODLE_AUTH_PROBE_BASE_URL = 'http://127.0.0.1:18080'
+$env:MOODLE_AUTH_PROBE_BASE_URL = 'http://127.0.0.1:18082'
 $env:MOODLE_AUTH_TEST_USER_FILE = (Resolve-Path 'automation/auth-lab/secrets/auth-user').Path
 $env:MOODLE_AUTH_TEST_PASSWORD_FILE = (Resolve-Path 'automation/auth-lab/secrets/auth-password').Path
 $env:MOODLE_AUTH_ALLOW_LOCAL_HTTP = 'true'
@@ -110,27 +106,11 @@ baseline verifier passes:
 docker compose @dc stop openldap
 ```
 
-Within one alert interval, Prometheus should show LDAPS and synthetic-login
-failure while Moodle health remains green. Alertmanager sends the firing alert
-through Redis/Celery. The gate allows only this exact local runtime pattern;
-the actuator starts the stopped OpenLDAP container and waits for its Docker
-health check. The separate verifier checks valid login, invalid-login denial,
-Moodle health, trusted LDAPS, and a complete 120-second stability window.
-Only its passing verdict can move the incident to `RESOLVED`.
-
-Do not manually restart OpenLDAP while the automatic drill is running. If the
-worker reports `ESCALATED`, the verifier fails, or the stack is still unhealthy
-after three minutes, use the operator recovery below and investigate before
-repeating the drill.
-
-```powershell
-docker compose @dc start openldap
-docker compose @dc ps
-```
-
-After automatic recovery, confirm OpenLDAP health, both success metrics,
-resolved alerts, and the worker's `resolution_authority=independent_verifier`
-record. If that verifier result is absent, keep the incident unresolved.
+The manual script performs the fault injection and waits for the verifier-owned
+decision. It selects an unused Redis DB, checks healthy baselines first, and
+writes a JSON evidence artifact under the ignored `automation/auth-lab/secrets`
+directory. If the test fails or times out, it restarts OpenLDAP for safety and
+reports that the trial failed. Do not manually restart OpenLDAP during the run.
 
 ## AUTH-02 local configuration-path drill
 
@@ -184,3 +164,10 @@ sent because credentials are absent. This is local-only, not a benchmark or
 staging acceptance. The Docker socket actuator is root-equivalent and must not
 be promoted to production. AWS deployment, AUTH-02/03 runtime trials, and AUTH
 benchmark results remain unverified.
+
+Evidence retention: those trial outcomes are recorded in the dated operator
+notes above, but the raw per-trial logs, probe captures, and verifier records
+are not present in this checkout. Treat the local-runtime runs as historical
+operator-reported evidence; they cannot be independently audited or reproduced
+from the retained artifacts here. Do not count them as benchmark observations
+or AWS/staging acceptance.

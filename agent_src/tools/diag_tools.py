@@ -275,32 +275,8 @@ def check_redis_ping():
     except Exception as e:
         return json.dumps({"status": "failed", "error": str(e)})
 
-def clean_temp_logs():
-    """
-    Dọn dẹp các file log cũ trong /var/log để giải phóng dung lượng đĩa.
-    AI gọi khi detect ổ đĩa đầy > 90%.
-    """
-    try:
-        # Giả lập dọn dẹp (trong thực tế sẽ xóa các file .gz hoặc log cũ)
-        result = subprocess.run(["find", "/var/log", "-name", "*.log.*", "-delete"], capture_output=True, text=True)
-        return json.dumps({"status": "success", "message": "Đã xóa các file log cũ để giải phóng dung lượng."})
-    except Exception as e:
-        return json.dumps({"status": "error", "message": str(e)})
-
-# Danh sách tools để đăng ký với Gemini
 AGENT_TOOLS = [
-    # System tools
     get_system_metrics,
     list_running_services,
-    read_service_logs,
-    propose_remediation,
-    # Network tools
     get_network_metrics,
-    ping_host,
-    check_dns_resolution,
-    # New specialized tools
-    check_http_service,
-    check_db_connection,
-    check_redis_ping,
-    clean_temp_logs
 ]

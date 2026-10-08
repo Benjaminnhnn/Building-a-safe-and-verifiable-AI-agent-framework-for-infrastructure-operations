@@ -106,7 +106,7 @@ PHP
       done
       test "$(sudo docker exec moodle-fault-res-02 stat -c %s /pressure/payload)" -eq 100663296
       after=$(awk "/^MemAvailable:/ {print \$2}" /proc/meminfo)
-      test "$((before - after))" -ge 32768 || { echo "Host memory drop below 32 MiB" >&2; exit 1; }
+      test "$((before - after))" -gt 32768 || { echo "Host memory drop did not exceed 32 MiB" >&2; exit 1; }
       printf "%s\n" "$after" | sudo tee -a "$fixture" >/dev/null
     '
     ;;
@@ -193,8 +193,8 @@ PHP
     ;;
 
   CON-01)
-    # Bind this controlled outage to its scenario before stopping the web
-    # container so Prometheus can preserve scenario_id/drill_id on the alert.
+    # Keep the controlled-outage identity in the restricted host marker only;
+    # Prometheus receives the missing-container symptom without scenario IDs.
     publish_scenario_marker "$scenario" "$(date -u +%Y%m%dT%H%M%SZ)"
     remote moodle-app-b "sudo docker stop release-moodle-web-1 >/dev/null && test \"\$(sudo docker inspect --format '{{.State.Running}}' release-moodle-web-1)\" = false"
     ;;

@@ -22,6 +22,55 @@ harvester = load_script("benchmark_harvester", "automation/harvest-benchmark-res
 inspector = load_script("evidence_inspector", "automation/inspect_live_db.py")
 trigger = load_script("local_agent_trigger", "automation/trigger_live_agent.py")
 benchmark_runner = load_script("benchmark_runner", "automation/run-benchmark.py")
+aiops_replay = load_script("aiops_replay", "automation/aiops-unified-replay.py")
+
+
+def test_unified_replay_accepts_safe_simulated_verification_only() -> None:
+    report = {
+        "error": None,
+        "incident_status": "verified_dry_run",
+        "resolved_by_verifier": False,
+        "execution_dry_run": True,
+        "simulated": True,
+        "pipeline_mode": "offline_simulation",
+        "live_verification_executed": False,
+        "recovery_claim_scope": "simulated_fixture_only",
+        "scenario_binding": {"execution_permitted_by_binding": False},
+    }
+
+    assert aiops_replay._is_valid_offline_result(report)
+    assert not aiops_replay._has_forbidden_execution(report)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("incident_status", "resolved"),
+        ("resolved_by_verifier", True),
+        ("execution_dry_run", False),
+        ("simulated", False),
+        ("live_verification_executed", True),
+    ],
+)
+def test_unified_replay_rejects_live_or_resolution_claims(
+    field: str, value: object
+) -> None:
+    report = {
+        "error": None,
+        "incident_status": "verified_dry_run",
+        "resolved_by_verifier": False,
+        "execution_dry_run": True,
+        "simulated": True,
+        "pipeline_mode": "offline_simulation",
+        "live_verification_executed": False,
+        "recovery_claim_scope": "simulated_fixture_only",
+        "scenario_binding": {"execution_permitted_by_binding": False},
+    }
+    report[field] = value
+
+    assert not aiops_replay._is_valid_offline_result(report)
+    if field in {"resolved_by_verifier", "execution_dry_run", "live_verification_executed"}:
+        assert aiops_replay._has_forbidden_execution(report)
 
 
 def test_harvest_labels_fixture_benchmark_as_simulated(tmp_path: Path) -> None:
@@ -111,6 +160,15 @@ def test_repeated_simulated_campaigns_get_distinct_run_ids() -> None:
     second = benchmark_runner.simulate_manual_run(scenario, 1, base_time, random.Random(42), "campaign-b")
 
     assert first.run_id != second.run_id
+
+
+def test_benchmark_runner_requires_explicit_synthetic_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["run-benchmark.py"])
+
+    with pytest.raises(SystemExit) as exc:
+        benchmark_runner.main()
+
+    assert exc.value.code == 2
 
 
 def test_benchmark_cli_can_include_erpnext_explicitly() -> None:

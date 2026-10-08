@@ -1,12 +1,14 @@
 # Sự cố đang xử lý
 
 from datetime import datetime, timezone
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .common import IncidentStatus
 
 
 class Incident(BaseModel):
+    model_config = ConfigDict(validate_assignment=True)
+
     # PLACEHOLDER LÀ GÌ:
     # incident_id là ID của một sự cố thật.
     # LẤY Ở ĐÂU:
@@ -33,3 +35,10 @@ class Incident(BaseModel):
     # PLACEHOLDER: Giả thuyết hiện tại thật của Diagnosis Agent. Không dùng để kết luận RESOLVED.
     current_hypothesis: str | None = None
     resolved_by_verifier: bool = False
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if name == "status":
+            raise ValueError(
+                "incident states must be changed through IncidentStateMachine"
+            )
+        super().__setattr__(name, value)

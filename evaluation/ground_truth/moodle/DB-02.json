@@ -17,7 +17,7 @@
   },
   "observed_signals": [
     "MoodleSyntheticTransactionFailed",
-    "MoodleSyntheticTransactionFailed"
+    "MoodleNodeRdsTcpProbeHealthy"
   ],
   "expected_root_cause": {
     "category": "database_exhaustion",

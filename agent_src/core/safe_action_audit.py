@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 import sqlite3
@@ -12,9 +13,15 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from core.adapters import ActionResult, SafeActionRequest, sanitize_adapter_output
-from core.safe_execution_gate import GateVerdict
+from core.sanitization import sanitize_log_excerpt
+from core.safe_execution_gate import GateVerdict, SafeExecutionGate
+from pydantic import ValidationError
 
-_SENSITIVE_KEY = re.compile(r"password|secret|token|private.?key|authorization", re.IGNORECASE)
+_SENSITIVE_KEY = re.compile(
+    r"password|secret|token|private.?key|access.?key|api.?key|authorization|"
+    r"credential|connection.?string|database.?url|dsn",
+    re.IGNORECASE,
+)
 
 
 def _canonical(value: dict[str, Any]) -> str:
@@ -30,7 +37,10 @@ def redact_snapshot(value: dict[str, Any]) -> dict[str, Any]:
             return {str(k): redact(v, str(k)) for k, v in item.items()}
         if isinstance(item, list):
             return [redact(v) for v in item]
-        return sanitize_adapter_output(item) if isinstance(item, str) else item
+        if isinstance(item, str):
+            sanitized = sanitize_adapter_output(item)
+            return sanitize_log_excerpt(sanitized, max_chars=max(1, len(sanitized)))
+        return item
 
     return redact(value)
 
@@ -71,7 +81,7 @@ class SafeActionAuditStore:
 
     def append(self, *, incident_id: str, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
         previous = self._connection.execute(
-            "SELECT event_hash FROM safe_action_audit WHERE incident_id = ? ORDER BY occurred_at DESC, event_id DESC LIMIT 1",
+            "SELECT event_hash FROM safe_action_audit WHERE incident_id = ? ORDER BY rowid DESC LIMIT 1",
             (incident_id,),
         ).fetchone()
         event = {
@@ -91,7 +101,7 @@ class SafeActionAuditStore:
 
     def list_for_incident(self, incident_id: str) -> list[dict[str, Any]]:
         rows = self._connection.execute(
-            "SELECT canonical_json FROM safe_action_audit WHERE incident_id = ? ORDER BY occurred_at, event_id", (incident_id,)
+            "SELECT canonical_json FROM safe_action_audit WHERE incident_id = ? ORDER BY rowid", (incident_id,)
         ).fetchall()
         return [json.loads(row["canonical_json"]) for row in rows]
 
@@ -116,12 +126,68 @@ class SafeDryRunOrchestrator:
         self._audit, self._adapter = audit, adapter
 
     def run(self, request: SafeActionRequest, gate: GateVerdict, *, pre_snapshot: dict[str, Any]) -> ActionResult | None:
-        incident_id = request.action.incident_id
-        self._audit.append(incident_id=incident_id, event_type="gate", payload=gate.model_dump())
-        if gate.decision != "ALLOW":
+        try:
+            request = SafeActionRequest.model_validate(
+                request.model_dump(mode="python", warnings=False)
+            )
+            gate = GateVerdict.model_validate(gate.model_dump(mode="python", warnings=False))
+        except (AttributeError, TypeError, ValueError, ValidationError):
+            self._audit.append(
+                incident_id="unknown",
+                event_type="invalid_gate_or_request",
+                payload={"failure": "schema_validation"},
+            )
             return None
-        self._audit.append(incident_id=incident_id, event_type="pre_snapshot", payload=pre_snapshot)
-        result = self._adapter.execute(request)
+        incident_id = request.action.incident_id
+        expected_hash = SafeExecutionGate.action_hash(request)
+        self._audit.append(incident_id=incident_id, event_type="gate", payload=gate.model_dump())
+        if (
+            gate.decision != "ALLOW"
+            or not hmac.compare_digest(gate.action_sha256, expected_hash)
+            or request.dry_run is not True
+        ):
+            self._audit.append(
+                incident_id=incident_id,
+                event_type="gate_rejected",
+                payload={"reason": "decision_or_request_binding_failed"},
+            )
+            return None
+        self._audit.append(
+            incident_id=incident_id,
+            event_type="pre_snapshot",
+            payload=redact_snapshot(pre_snapshot),
+        )
+        try:
+            raw_result = self._adapter.execute(request)
+            result = ActionResult.model_validate(
+                raw_result.model_dump(mode="python", warnings=False)
+            )
+        except (AttributeError, TypeError, ValueError, ValidationError) as exc:
+            self._audit.append(
+                incident_id=incident_id,
+                event_type="adapter_result_invalid",
+                payload={"failure_type": type(exc).__name__},
+            )
+            return None
+        if (
+            result.request_id != request.request_id
+            or result.idempotency_key != request.idempotency_key
+            or result.executed is not False
+        ):
+            self._audit.append(
+                incident_id=incident_id,
+                event_type="adapter_result_invalid",
+                payload={"failure_type": "identity_or_execution_state_mismatch"},
+            )
+            return None
+        result = ActionResult.model_validate(
+            {
+                **result.model_dump(mode="python"),
+                "sanitized_output": sanitize_log_excerpt(
+                    sanitize_adapter_output(result.sanitized_output), max_chars=2048
+                ),
+            }
+        )
         self._audit.append(incident_id=incident_id, event_type="adapter_result", payload=result.model_dump())
         self._audit.append(incident_id=incident_id, event_type="post_snapshot", payload={"dry_run": True, "executed": result.executed})
         if not result.success:

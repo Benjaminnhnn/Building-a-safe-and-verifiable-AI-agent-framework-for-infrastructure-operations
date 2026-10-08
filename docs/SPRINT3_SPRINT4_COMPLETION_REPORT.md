@@ -1,12 +1,19 @@
 # Sprint 3–6 Completion Report
 
-Status: **Sprint 4–5 acceptance remains as recorded below. Sprint 6 verifier and safety/coverage gates pass locally. Ten pending Moodle scenario definitions are aligned with ALB/RDS/EFS; DB-02, DB-03, RES-02, RES-03, NET-02, NET-03, CON-02, CON-03 and SEC-03 now have controlled live trials; SEC-01 remains HUMAN_ONLY. Fifteen earlier staging shadow-harness runs passed; the empirical Manual/Ansible/AI matrix remains 0/135. Sprint 6 is not closed.**
-Last updated: 2026-10-01.
+Status: **Sprint 4–5 acceptance remains as recorded below. Sprint 6 verifier and safety/coverage gates pass locally. Historical reports claim controlled live Moodle trials and shadow-harness runs, but their referenced raw trial directories are empty in this checkout; those outcomes are unverified here and must not be used as current live proof. SEC-01 remains HUMAN_ONLY. The current default n=5 empirical Manual/Ansible/AI matrix remains 0/225; Sprint 6 is not closed.**
+Last audited: 2026-10-07.
 
 This is the combined record for Sprint 3 through Sprint 6 stage outcomes. Runtime
 evidence under `terraform/.artifacts/` is local, ignored, and must not be
 committed. This work does not authorize autonomous execution or production
 changes.
+
+Evidence audit (2026-10-07): `terraform/.artifacts/moodle-faults/` and
+`terraform/.artifacts/moodle-sprint2-live/`, which are cited below for live
+trials and shadow-harness campaigns, contain no files in the current checkout.
+The detailed trial narratives remain historical records, not independently
+verified evidence. The unrelated baseline snapshots and offline demo artifact
+do not replace those missing raw trial records.
 
 ## Sprint 6 — Independent verification and Moodle benchmark
 
@@ -20,9 +27,9 @@ for live infrastructure results:
 | S6.0 — Entry audit and plan | Audit verifier authority, probe contract, benchmark provenance, and staging boundary | Complete | Found a direct `RESOLVED` assignment in the legacy dry-run pipeline and a benchmark that emitted randomized proxy results as if they represented Moodle methods |
 | S6.1 — Independent verifier | Contract probe coverage, read-only stability observations, false-recovery behavior, no execution API | Passed locally | Verifier now measures the window from timestamped observations; missing contract probes and absent/short live windows cannot resolve; 10/10 repeated synthetic health-only/forbidden-channel traps were caught. Dry-run observations are explicitly simulated |
 | S6.2 — Benchmark harness | Data provenance, timestamps, safe output location, smoke validation | Passed as a harness smoke test only | Run produced 45 synthetic rows (15 scenarios × 3 methods × 1 repetition). Summary labels data `synthetic_simulation_not_empirical`; this is not measured Moodle evidence and must not be used for Sprint acceptance or research conclusions |
-| S6.3 — Controlled empirical campaign | Reset validation and matched Manual / Ansible / AI runs | Partial: 15/15 approved live shadow-harness trials passed over 5 implemented staging scenarios × 3 runs | DB-01, RES-01, NET-01, CON-01, SEC-02; MTTD ≤60s, recovery ≤600s, stability 120s. AI remained `shadow`; the allowlisted test harness performed reset. This is not the planned matched Manual/Ansible/AI comparison and does not cover all 15 scenario definitions |
-| S6.3a — Architecture adaptation | Rebind ten pending scenarios to actual ALB/RDS/EFS failure modes; retain live deny boundary | Ground-truth/contract design passed; DB-02, DB-03, RES-02, RES-03, NET-02, NET-03, CON-02, CON-03 and SEC-03 observed live; SEC-01 is HUMAN_ONLY | Node-local probes and scenario-independent symptom alerts deployed. Nine new inject/alert/reset/baseline trials passed. No new Agent executor permission was deployed |
-| S6.4 — Acceptance and handoff | Score raw live evidence, reconcile mandatory metrics, freeze dataset and close Sprint 6 | Blocked by missing comparative dataset | `automation/sprint6-acceptance.py` reports 0/135 empirical cells for the documented n=3 design and keeps 15 shadow-harness runs separate. Per-run evidence and baseline artifacts are ignored under `terraform/.artifacts/`; a fresh Terraform plan returned `No changes` |
+| S6.3 — Controlled empirical campaign | Reset validation and matched Manual / Ansible / AI runs | Historical report claims 15/15 approved live shadow-harness trials; raw campaign directories are absent, so this result is unverified in the current checkout | The narrative names DB-01, RES-01, NET-01, CON-01, SEC-02 and reports MTTD ≤60s, recovery ≤600s, stability 120s. AI was `shadow`; even if recovered, this was not the matched Manual/Ansible/AI comparison. Exclude from current live or empirical claims until raw artifacts and provenance are restored and checked |
+| S6.3a — Architecture adaptation | Rebind ten pending scenarios to actual ALB/RDS/EFS failure modes; retain live deny boundary | Historical report claims DB-02, DB-03, RES-02, RES-03, NET-02, NET-03, CON-02, CON-03 and SEC-03 were observed live; cited raw trial files are absent, so the outcomes are unverified in this checkout. SEC-01 remains HUMAN_ONLY | The report also claims nine inject/alert/reset/baseline trials and deployed node-local probes; current source does not prove those historical runtime events. No new Agent executor permission was deployed |
+| S6.4 — Acceptance and handoff | Score raw live evidence, reconcile mandatory metrics, freeze dataset and close Sprint 6 | Blocked by missing comparative dataset | Latest default n=5 acceptance reports 0/225 empirical cells; the historical n=3 audit and 15 shadow-harness runs remain separate. Per-run evidence and baseline artifacts are ignored under `terraform/.artifacts/`; a previously recorded Terraform plan returned `No changes` |
 
 ### Sprint 6 implementation and verification
 
@@ -367,9 +374,19 @@ samples spanning 120 seconds, and record `t_verify`/`t_resolved`. Save the raw
 alert, action, verifier, synthetic, ALB/RDS/EFS and cost traces under ignored
 `terraform/.artifacts/sprint6-benchmark-live/`. Each accepted JSONL row must
 have the fields validated by `automation/sprint6-acceptance.py`, including
-`data_classification=empirical_live`, `execution_authority=manual_operator`,
+unique `run_id`, `data_classification=empirical_live`,
+`execution_authority=manual_operator`,
+post-decision `predicted_root_cause` (for independent post-run RCA scoring),
 all nine timestamps, the pinned snapshot ID, raw evidence paths, pre/post
-baseline, and the required metrics. An operator declaration alone is not an
+baseline, explicit `rollback_needed` and rollback outcome, and the required
+metrics. Each `evidence_refs` path must have a matching `evidence_sha256` entry;
+the acceptance gate re-hashes the raw file before counting its row. This detects
+missing or changed evidence but does not authenticate its producer. Matched
+methods/repetitions must reference the same snapshot ID.
+The scorer accepts only the complete 15-scenario matrix plus its five-scenario
+ablation, and reports raw-trial timing, rollback opportunities, action/LLM
+counts and AWS cost without folding unmeasured rollback cases into the rate.
+An operator declaration alone is not an
 Independent Verifier result. The Python Manual SOP has been rebound to the
 current Moodle scripts but remains unexercised; the Ansible baseline still
 references the old demo architecture and must be replaced before a matched

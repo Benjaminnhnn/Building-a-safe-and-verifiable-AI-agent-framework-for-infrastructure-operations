@@ -18,12 +18,17 @@ from core.schema.diagnosis import DiagnosisResult, RootCauseHypothesis
 from core.schema.evidence import Evidence
 from core.schema.incident import Incident
 from core.schema.resource import Resource
-from core.schema.scenario import ScenarioGroundTruth
-from pydantic import BaseModel
+from core.evidence_store import evidence_content_hash
+from core.action_catalog import ActionCatalog
+from pydantic import BaseModel, ValidationError
 
 
 class AgentContractError(ValueError):
     pass
+
+
+class UnsupportedRemediationError(AgentContractError):
+    """The diagnosis is valid, but no reviewed catalog action supports it."""
 
 
 class EvidenceRequest(BaseModel):
@@ -53,8 +58,8 @@ class DiagnosisRule:
 # or allowed remediation fields while producing a diagnosis or action.
 DIAGNOSIS_RULES: tuple[DiagnosisRule, ...] = (
     DiagnosisRule("postgres_stopped", frozenset({"postgres_exporter_up_zero", "moodle_database_connection_error", "synthetic_read_write_failed"}), "PostgreSQL container stopped", ActionType.START_CONTAINER, "postgres-db"),
-    DiagnosisRule("postgres_connections_exhausted", frozenset({"postgres_connections_saturated", "moodle_database_wait_high", "synthetic_transaction_failed"}), "Available PostgreSQL connections are exhausted", ActionType.RESTART_CONTAINER, "postgres-db"),
-    DiagnosisRule("invalid_database_endpoint", frozenset({"moodle_database_resolution_failed", "database_exporter_still_healthy", "synthetic_transaction_failed"}), "Moodle points to an invalid database endpoint", ActionType.RUN_ANSIBLE_PLAYBOOK, "moodle-app"),
+    DiagnosisRule("postgres_connections_exhausted", frozenset({"postgres_connections_saturated", "moodle_database_wait_high", "synthetic_transaction_failed"}), "Available PostgreSQL connections are exhausted", ActionType.STOP_FAULT_INJECTOR, "postgres-db"),
+    DiagnosisRule("invalid_database_endpoint", frozenset({"moodle_database_resolution_failed", "database_exporter_still_healthy", "synthetic_transaction_failed"}), "Moodle points to an invalid database endpoint", ActionType.RUN_ANSIBLE_PLAYBOOK, "postgres-db"),
     DiagnosisRule("moodle_stopped", frozenset({"moodle_endpoint_down", "container_state_exited", "postgres_exporter_still_up"}), "Moodle container stopped", ActionType.START_CONTAINER, "moodle-app"),
     DiagnosisRule("moodle_apache_router_drift", frozenset({"node_deep_link_failed", "apache_router_config_missing", "moodle_internal_health_still_passes"}), "Moodle Apache router configuration drift on one application node", ActionType.RUN_ANSIBLE_PLAYBOOK, "moodle-app"),
     DiagnosisRule("moodle_crash_loop", frozenset({"container_restart_count_high", "moodle_health_failed", "database_exporter_still_healthy"}), "Controlled bad image configuration causes a crash loop", ActionType.RUN_ANSIBLE_PLAYBOOK, "moodle-app"),
@@ -63,13 +68,31 @@ DIAGNOSIS_RULES: tuple[DiagnosisRule, ...] = (
     DiagnosisRule("database_path_degraded", frozenset({"database_round_trip_high", "moodle_request_latency_high", "synthetic_transaction_timeout"}), "Scoped fixture degrades the Moodle database path", ActionType.STOP_FAULT_INJECTOR, "moodle-app"),
     DiagnosisRule("moodle_cpu_pressure", frozenset({"host_cpu_saturation", "moodle_latency_high", "synthetic_transaction_timeout"}), "Controlled CPU hog on Moodle host", ActionType.STOP_FAULT_INJECTOR, "moodle-app"),
     DiagnosisRule("moodle_memory_pressure", frozenset({"host_memory_available_low", "moodle_latency_high", "container_memory_pressure"}), "Bounded fixture causes host memory pressure", ActionType.STOP_FAULT_INJECTOR, "moodle-app"),
-    DiagnosisRule("moodle_disk_pressure", frozenset({"filesystem_free_space_low", "moodle_write_failed", "synthetic_transaction_failed"}), "Known bounded fixture consumes available disk space", ActionType.STOP_FAULT_INJECTOR, "moodledata-volume"),
-    DiagnosisRule("database_port_exposed", frozenset({"forbidden_database_probe_succeeded", "database_service_still_healthy", "network_policy_drift_detected"}), "Controlled network policy exposes the database port", ActionType.RUN_ANSIBLE_PLAYBOOK, "postgres-db"),
+    DiagnosisRule("moodle_disk_pressure", frozenset({"filesystem_free_space_low", "moodle_write_failed", "synthetic_transaction_failed"}), "Known bounded fixture consumes available disk space", ActionType.STOP_FAULT_INJECTOR, "moodle-app"),
+    DiagnosisRule("database_port_exposed", frozenset({"forbidden_database_probe_succeeded", "database_service_still_healthy", "network_policy_drift_detected"}), "Controlled network policy exposes the database port", ActionType.RUN_ANSIBLE_PLAYBOOK, "moodle-rds-security-group"),
     DiagnosisRule("moodledata_permission_drift", frozenset({"moodle_write_permission_denied", "synthetic_write_failed", "database_connection_still_healthy"}), "Moodle data directory ownership or mode is invalid", ActionType.RESTORE_MOODLEDATA_PERMISSION, "moodledata-volume"),
     DiagnosisRule("moodle_security_config_drift", frozenset({"moodle_redirect_contract_failed", "config_checksum_changed", "database_connection_still_healthy"}), "Moodle trusted proxy or site URL configuration drift", ActionType.RUN_ANSIBLE_PLAYBOOK, "moodle-app"),
 )
 
 DIAGNOSIS_RULES_BY_ID = {rule.rule_id: rule for rule in DIAGNOSIS_RULES}
+
+# These are reviewed catalog identifiers, not executable command strings.
+_RULE_CATALOG_ACTIONS = {
+    "postgres_connections_exhausted": "restore_database_connection_capacity",
+    "invalid_database_endpoint": "restore_approved_database_endpoint",
+    "moodle_stopped": "start_reviewed_compose_service",
+    "moodle_apache_router_drift": "restore_moodle_apache_router",
+    "moodle_crash_loop": "restore_previous_approved_release",
+    "database_dns_alias_loss": "restore_dns_alias",
+    "moodle_database_port_block": "remove_scoped_port_block",
+    "database_path_degraded": "remove_netem_rules",
+    "moodle_cpu_pressure": "remove_named_cpu_load_container",
+    "moodle_memory_pressure": "remove_named_memory_pressure_container",
+    "moodle_disk_pressure": "remove_disk_fill_fixture",
+    "database_port_exposed": "remove_tagged_database_ingress_rule",
+    "moodledata_permission_drift": "restore_moodledata_ownership",
+    "moodle_security_config_drift": "restore_moodle_security_config",
+}
 
 
 def _stable_id(prefix: str, *parts: str) -> str:
@@ -149,13 +172,36 @@ class DiagnosisAgent:
         incident: Incident,
         evidence_items: list[Evidence],
         graph: DependencyGraph,
-        scenarios: dict[str, ScenarioGroundTruth] | None = None,
     ) -> DiagnosisResult:
+        validated_evidence: list[Evidence] = []
+        for index, item in enumerate(evidence_items, start=1):
+            if not isinstance(item, Evidence):
+                raise AgentContractError(f"evidence record {index} is not an Evidence model")
+            try:
+                validated = Evidence.model_validate(item.model_dump(mode="python"))
+            except (TypeError, ValidationError) as exc:
+                raise AgentContractError(f"evidence record {index} is invalid") from exc
+            if validated.content_hash != evidence_content_hash(validated):
+                raise AgentContractError(
+                    f"evidence {validated.evidence_id} content digest does not match its contents"
+                )
+            validated_evidence.append(validated)
+        evidence_items = validated_evidence
         generated_at = (
             max(item.collected_at for item in evidence_items)
             if evidence_items
             else incident.updated_at
         )
+        unknown_affected = sorted(set(incident.affected_resources) - set(graph.resources))
+        if unknown_affected:
+            raise AgentContractError(
+                f"incident references unknown affected resources: {unknown_affected}"
+            )
+        incident_neighborhood = set(incident.affected_resources)
+        for resource_id in incident.affected_resources:
+            incident_neighborhood.update(graph.upstream(resource_id))
+            incident_neighborhood.update(graph.downstream(resource_id))
+
         for item in evidence_items:
             if item.incident_id != incident.incident_id:
                 raise AgentContractError(
@@ -164,6 +210,10 @@ class DiagnosisAgent:
             if item.resource_id not in graph.resources:
                 raise AgentContractError(
                     f"evidence {item.evidence_id} references unknown resource {item.resource_id}"
+                )
+            if item.resource_id not in incident_neighborhood:
+                raise AgentContractError(
+                    f"evidence {item.evidence_id} resource {item.resource_id} is outside the incident dependency neighborhood"
                 )
 
         evidence_refs = sorted({item.evidence_id for item in evidence_items})
@@ -211,17 +261,32 @@ class DiagnosisAgent:
             )
 
         confidence = 0.9 if not contradicting else 0.7
+        potentially_affected = sorted({
+            downstream
+            for resource_id in incident.affected_resources
+            for downstream in graph.downstream(resource_id)
+            if downstream not in incident.affected_resources
+        })
+        impact_note = (
+            " Dependency graph identifies potential downstream impact: "
+            + ", ".join(potentially_affected)
+            + "."
+            if potentially_affected
+            else " No downstream dependencies are present in the supplied graph."
+        )
         hypothesis = RootCauseHypothesis(
             hypothesis_id=_stable_id("hyp", incident.incident_id, rule.rule_id),
             cause_code=rule.rule_id,
             root_cause=rule.root_cause,
             confidence=confidence,
             affected_resources=incident.affected_resources,
+            potentially_affected_resources=potentially_affected,
             supporting_evidence_refs=supporting,
             contradicting_evidence_refs=contradicting,
             reasoning_summary=(
                 f"Operational rule {rule.rule_id} matched "
                 f"{len(supporting)} supporting evidence records."
+                + impact_note
             ),
         )
         return DiagnosisResult(
@@ -247,8 +312,9 @@ class PlannerAgent:
         self,
         incident: Incident,
         diagnosis: DiagnosisResult,
-        scenario: ScenarioGroundTruth,
         graph: DependencyGraph,
+        *,
+        evidence_items: list[Evidence],
     ) -> TypedAction:
         if diagnosis.incident_id != incident.incident_id:
             raise AgentContractError("diagnosis incident_id does not match incident")
@@ -256,6 +322,9 @@ class PlannerAgent:
             raise AgentContractError("diagnosis is not ready for planning")
         if not diagnosis.evidence_refs:
             raise AgentContractError("planner requires evidence")
+        recomputed = DiagnosisAgent().diagnose(incident, evidence_items, graph)
+        if recomputed != diagnosis:
+            raise AgentContractError("diagnosis does not match the validated incident evidence")
         cause_code = diagnosis.top_hypothesis.cause_code
         rule = DIAGNOSIS_RULES_BY_ID.get(cause_code or "")
         if rule is None:
@@ -264,15 +333,54 @@ class PlannerAgent:
         target = rule.target_resource_id
         if target not in graph.resources:
             raise AgentContractError(f"planner target does not exist: {target}")
+        if set(diagnosis.top_hypothesis.affected_resources) != set(incident.affected_resources):
+            raise AgentContractError("diagnosis affected resources do not match the incident")
+        related_resources = set(incident.affected_resources)
+        for resource_id in incident.affected_resources:
+            if resource_id not in graph.resources:
+                raise AgentContractError(
+                    f"incident resource does not exist in dependency graph: {resource_id}"
+                )
+            related_resources.update(graph.upstream(resource_id))
+            related_resources.update(graph.downstream(resource_id))
+        if target not in related_resources:
+            raise AgentContractError(
+                f"planner target is outside the incident dependency neighborhood: {target}"
+            )
 
+        catalog_action_id = _RULE_CATALOG_ACTIONS.get(rule.rule_id)
+        catalog = ActionCatalog.load_moodle_catalog()
+        entry = catalog.lookup(catalog_action_id or "")
+        if entry is None:
+            raise UnsupportedRemediationError(
+                f"no catalog action for policy rule: {rule.rule_id}"
+            )
+        if Environment.STAGING.value not in entry.permission.environment_scope:
+            raise AgentContractError(f"catalog denies staging planning for {entry.action_id}")
+        if entry.action_type != action_type:
+            raise AgentContractError(
+                f"catalog action type does not match diagnosis rule {rule.rule_id}"
+            )
+        target_type = graph.resources[target].type
+        if not catalog.target_type_allowed(entry.action_id, target_type):
+            raise AgentContractError(
+                f"catalog action {entry.action_id} does not allow target class {target_type.value}"
+            )
+        rollback_entry = catalog.lookup(entry.rollback_action or "")
+        rollback_available = bool(
+            entry.is_reversible
+            and rollback_entry is not None
+            and rollback_entry.rollback_action == entry.action_id
+            and rollback_entry.adapter == entry.adapter
+        )
         parameters = {
             "policy_rule": rule.rule_id,
-            "adapter": "dry_run",
+            "catalog_action_id": entry.action_id,
+            "adapter": entry.adapter,
         }
         if self.FORBIDDEN_PARAMETER_KEYS.intersection(parameters):
             raise AgentContractError("raw command parameters are forbidden")
 
-        rollback_available = True
         action = TypedAction(
             action_id=_stable_id("act", incident.incident_id, rule.rule_id, action_type.value),
             incident_id=incident.incident_id,
@@ -291,10 +399,18 @@ class PlannerAgent:
             reversible=rollback_available,
             rollback_plan=RollbackPlan(
                 available=rollback_available,
-                method="Run the typed inverse/reset operation and re-run independent probes.",
-                expected_duration_seconds=60,
+                rollback_action_id=entry.rollback_action if rollback_available else None,
+                method=(
+                    f"Run catalog rollback {entry.rollback_action} and re-run independent probes."
+                    if rollback_available
+                    else None
+                ),
+                expected_duration_seconds=60 if rollback_available else None,
             ),
-            requires_approval=False,
+            requires_approval=(
+                not rollback_available
+                or bool(entry.default_requires_approval)
+            ),
         )
         action.idempotency_key = _stable_id("idem", action.action_id)
         return action

@@ -1,4 +1,5 @@
 from unittest.mock import Mock, patch
+from datetime import datetime, timezone
 
 import log_watcher
 
@@ -16,3 +17,6 @@ def test_log_watcher_retries_temporary_webhook_error() -> None:
 
     assert post.call_count == 2
     sleep.assert_called_once_with(1.0)
+    payload = post.call_args.kwargs["json"]
+    starts_at = datetime.fromisoformat(payload["alerts"][0]["startsAt"].replace("Z", "+00:00"))
+    assert starts_at.tzinfo == timezone.utc

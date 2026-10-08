@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -12,17 +12,112 @@ from core.unified_core import (
     SQLiteEvidenceStore,
     SequentialOrchestrator,
     TypedAction,
+    resolve_verified,
     transition,
     transition_action,
 )
+from core.schema.verification import ProbeResult, StabilityObservation, VerificationResult
 
 
 def test_incident_transition_guard_and_verifier_authority() -> None:
     incident = Incident(incident_id="i1", fingerprint="f1", environment="staging", resource_ids=["moodle"])
-    with pytest.raises(ValueError, match="only the independent verifier"):
+    with pytest.raises(ValueError, match="resolve_verified"):
         transition(incident.model_copy(update={"state": IncidentState.VERIFYING}), IncidentState.RESOLVED, actor="orchestrator")
-    with pytest.raises(ValueError, match="invalid incident transition"):
-        transition(incident, IncidentState.RESOLVED, actor="verifier")
+    with pytest.raises(ValueError, match="resolve_verified"):
+        transition(incident.model_copy(update={"state": IncidentState.VERIFYING}), IncidentState.RESOLVED, actor="verifier")
+    checked = datetime.now(timezone.utc)
+    replay_result = resolve_verified(incident.model_copy(update={"state": IncidentState.VERIFYING}), VerificationResult(
+            verification_id="v1", incident_id="i1", health_passed=True,
+            communication_contract_passed=True, stability_seconds=120,
+            stability_observations=[
+                StabilityObservation(observed_at=checked - timedelta(seconds=120), healthy=True, simulated=False),
+                StabilityObservation(observed_at=checked - timedelta(seconds=60), healthy=True, simulated=False),
+                StabilityObservation(observed_at=checked, healthy=True, simulated=False),
+            ],
+            allowed_probes=[ProbeResult(name="moodle", passed=True, simulated=False, details="ok")],
+            verdict="resolved", resolution_eligible=True, simulated=True,
+        ))
+    assert replay_result.state == IncidentState.VERIFIED_DRY_RUN
+
+
+def test_incident_state_cannot_be_assigned_directly() -> None:
+    incident = Incident(
+        incident_id="i1",
+        fingerprint="f1",
+        environment="staging",
+        resource_ids=["moodle"],
+    )
+
+    with pytest.raises(ValueError):
+        incident.state = IncidentState.RESOLVED
+
+
+def test_verified_resolution_requires_probe_and_stability_evidence() -> None:
+    checked = datetime.now(timezone.utc)
+    incident = Incident(incident_id="i1", fingerprint="f1", environment="staging", resource_ids=["moodle"], state=IncidentState.VERIFYING)
+    verification = VerificationResult(
+        verification_id="v1", incident_id="i1", health_passed=True,
+        communication_contract_passed=True, stability_seconds=120,
+        stability_observations=[
+            StabilityObservation(observed_at=checked - timedelta(seconds=120), healthy=True, simulated=False),
+            StabilityObservation(observed_at=checked - timedelta(seconds=60), healthy=True, simulated=False),
+            StabilityObservation(observed_at=checked, healthy=True, simulated=False),
+        ],
+        allowed_probes=[ProbeResult(name="moodle", passed=True, simulated=False, details="ok")],
+        forbidden_probes=[ProbeResult(name="public_db", passed=True, simulated=False, details="blocked")],
+        related_probes=[ProbeResult(name="monitoring", passed=True, simulated=False, details="ok")],
+        verdict="resolved", resolution_eligible=True, simulated=False,
+    )
+    assert resolve_verified(incident, verification).state == IncidentState.RESOLVED
+
+
+def test_legacy_resolution_revalidates_verifier_model_copy() -> None:
+    incident = Incident(
+        incident_id="i-copy",
+        fingerprint="f-copy",
+        environment="staging",
+        resource_ids=["moodle"],
+        state=IncidentState.VERIFYING,
+    )
+    checked = datetime.now(timezone.utc)
+    verification = VerificationResult(
+        verification_id="v-copy",
+        incident_id="i-copy",
+        health_passed=True,
+        communication_contract_passed=True,
+        stability_seconds=120,
+        stability_observations=[
+            StabilityObservation(observed_at=checked - timedelta(seconds=120), healthy=True),
+            StabilityObservation(observed_at=checked, healthy=True),
+        ],
+        allowed_probes=[ProbeResult(name="moodle", passed=True, details="ok")],
+        verdict="resolved",
+        resolution_eligible=True,
+    ).model_copy(update={"health_passed": 1})
+
+    with pytest.raises(ValueError, match="schema validation"):
+        resolve_verified(incident, verification)
+    assert incident.state == IncidentState.VERIFYING
+
+
+def test_live_state_rejects_simulated_nested_probe_evidence() -> None:
+    checked = datetime.now(timezone.utc)
+    incident = Incident(incident_id="i1", fingerprint="f1", environment="staging", resource_ids=["moodle"], state=IncidentState.VERIFYING)
+    verification = VerificationResult(
+        verification_id="v1", incident_id="i1", health_passed=True,
+        communication_contract_passed=True, stability_seconds=120,
+        stability_observations=[
+            StabilityObservation(observed_at=checked - timedelta(seconds=120), healthy=True, simulated=False),
+            StabilityObservation(observed_at=checked - timedelta(seconds=60), healthy=True, simulated=False),
+            StabilityObservation(observed_at=checked, healthy=True, simulated=False),
+        ],
+        allowed_probes=[ProbeResult(name="moodle", passed=True, details="fixture")],
+        forbidden_probes=[ProbeResult(name="public_db", passed=True, simulated=False, details="blocked")],
+        related_probes=[ProbeResult(name="monitoring", passed=True, simulated=False, details="ok")],
+        verdict="resolved", resolution_eligible=True, simulated=False,
+    )
+    with pytest.raises(ValueError, match="verifier evidence"):
+        resolve_verified(incident, verification)
 
 
 def test_action_lifecycle_rejects_skipping_gate_and_terminal_reuse() -> None:
@@ -43,6 +138,21 @@ def test_evidence_is_queryable_hash_addressed_and_append_only(tmp_path) -> None:
     assert len(evidence.sha256) == 64
     with store._connect() as db, pytest.raises(Exception, match="append-only"):
         db.execute("UPDATE evidence SET kind='changed' WHERE evidence_id=?", (evidence.evidence_id,))
+
+
+def test_equal_timestamp_evidence_query_preserves_sqlite_append_order(tmp_path) -> None:
+    store = SQLiteEvidenceStore(tmp_path / "evidence.db")
+    timestamp = datetime(2026, 10, 5, tzinfo=timezone.utc).isoformat()
+    with store._connect() as db:
+        for evidence_id, marker in (("ev-z-first", "first"), ("ev-a-second", "second")):
+            db.execute(
+                "INSERT INTO evidence VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (evidence_id, "incident-1", "test", timestamp, "moodle", "transition", f'{{"marker":"{marker}"}}', "0" * 64),
+            )
+
+    rows = store.query(incident_id="incident-1")
+
+    assert [row.payload["marker"] for row in rows] == ["first", "second"]
 
 
 def test_dependency_graph_and_rag_provenance(tmp_path) -> None:

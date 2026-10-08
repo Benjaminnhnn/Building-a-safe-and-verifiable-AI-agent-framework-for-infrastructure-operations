@@ -57,6 +57,8 @@ class MoodleAuthVerificationAdapter:
             except Exception:
                 return False
 
+        health.simulated = False
+
         verifier = MoodleAuthVerifier(login, health)
         # A fixed synthetic non-existent username ensures the forbidden probe
         # checks denial. Its password is deliberately empty and never logged.

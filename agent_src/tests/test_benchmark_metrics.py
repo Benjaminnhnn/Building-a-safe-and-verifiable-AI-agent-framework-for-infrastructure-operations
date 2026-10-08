@@ -7,7 +7,9 @@ Run with:
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
+import multiprocessing
+import traceback
+from datetime import datetime, timezone, tzinfo
 from pathlib import Path
 
 # Make the evaluation/ package importable without installing it.
@@ -23,6 +25,7 @@ from benchmark.benchmark_config import (
 )
 from benchmark.ablation_config import (
     DEFAULT_ABLATION_SCENARIOS,
+    AblationConfig,
     AblationMode,
     NoSafetyGateConfig,
     NoVerifierConfig,
@@ -59,6 +62,21 @@ def _make_result(
         timestamps=timestamps,
         **kwargs,
     )
+
+
+def _record_same_run_id_in_child(output_dir: str, barrier, result_queue) -> None:
+    recorder = MetricsRecorder(Path(output_dir))
+    barrier.wait(timeout=10)
+    try:
+        recorder.record(_make_result(run_id="concurrent-run"))
+    except ValueError:
+        result_queue.put("duplicate")
+    except Exception as exc:  # pragma: no cover - reported by the parent process
+        result_queue.put(
+            f"error:{type(exc).__name__}:{exc}\n{traceback.format_exc()}"
+        )
+    else:
+        result_queue.put("recorded")
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +116,39 @@ def test_timestamps_timezone_aware_required() -> None:
         RunTimestamps(t_inject=naive)
 
 
+def test_timestamps_reject_chronologically_impossible_sequence() -> None:
+    late = datetime(2025, 1, 1, 10, 2, tzinfo=_TZ)
+    early = datetime(2025, 1, 1, 10, 1, tzinfo=_TZ)
+
+    with pytest.raises(ValueError, match="must not precede"):
+        RunTimestamps(t_inject=late, t_detect=early)
+
+
+def test_timestamps_reject_timezone_without_utc_offset() -> None:
+    class NoOffset(tzinfo):
+        def utcoffset(self, dt):
+            return None
+
+    with pytest.raises(ValueError, match="timezone-aware"):
+        RunTimestamps(t_inject=datetime(2025, 1, 1, tzinfo=NoOffset()))
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("repetition", 0),
+        ("repetition", True),
+        ("action_count", -1),
+        ("action_count", True),
+        ("llm_call_count", -1),
+        ("forbidden_execution_count", -1),
+    ],
+)
+def test_run_result_rejects_invalid_trial_counters(field: str, value: int) -> None:
+    with pytest.raises(ValueError):
+        _make_result(**{field: value})
+
+
 # ---------------------------------------------------------------------------
 # 2. MetricsRecorder: append and load
 # ---------------------------------------------------------------------------
@@ -126,6 +177,65 @@ def test_metrics_recorder_append_and_load(tmp_path: Path) -> None:
     assert [r.run_id for r in loaded] == ["run-1", "run-2", "run-3"]
 
 
+def test_metrics_recorder_rejects_duplicate_run_id(tmp_path: Path) -> None:
+    recorder = MetricsRecorder(tmp_path)
+    recorder.record(_make_result(run_id="same-run"))
+
+    with pytest.raises(ValueError, match="duplicate benchmark run_id"):
+        recorder.record(_make_result(run_id="same-run", scenario_id="DB-02"))
+
+    assert [result.run_id for result in recorder.load_all()] == ["same-run"]
+
+
+def test_metrics_recorder_revalidates_model_copy_before_append(tmp_path: Path) -> None:
+    recorder = MetricsRecorder(tmp_path)
+    tampered = _make_result().model_copy(
+        update={"data_classification": "empirical_live"}
+    )
+
+    with pytest.raises(ValueError):
+        recorder.record(tampered)
+
+    assert recorder.load_all() == []
+
+
+def test_metrics_recorder_serializes_duplicate_ids_across_processes(tmp_path: Path) -> None:
+    context = multiprocessing.get_context("spawn")
+    worker_count = 8
+    barrier = context.Barrier(worker_count)
+    result_queue = context.Queue()
+    processes = [
+        context.Process(
+            target=_record_same_run_id_in_child,
+            args=(str(tmp_path), barrier, result_queue),
+        )
+        for _ in range(worker_count)
+    ]
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(timeout=15)
+
+    for process in processes:
+        if process.is_alive():
+            process.terminate()
+            process.join()
+        assert process.exitcode == 0
+
+    outcomes = [result_queue.get(timeout=2) for _ in processes]
+    errors = [outcome for outcome in outcomes if outcome.startswith("error:")]
+    assert not errors, "\\n".join(errors)
+    assert outcomes.count("recorded") == 1
+    assert outcomes.count("duplicate") == worker_count - 1
+    assert len(MetricsRecorder(tmp_path).load_all()) == 1
+
+
+@pytest.mark.parametrize("field", ["run_id", "scenario_id"])
+def test_run_result_rejects_blank_identifiers(field: str) -> None:
+    with pytest.raises(ValueError, match="must not be blank"):
+        _make_result(**{field: "  "})
+
+
 def test_metrics_recorder_summary_counts(tmp_path: Path) -> None:
     """Summary total_runs / passed / failed counts are correct."""
     recorder = MetricsRecorder(tmp_path)
@@ -135,9 +245,88 @@ def test_metrics_recorder_summary_counts(tmp_path: Path) -> None:
     recorder.record(_make_result(run_id="c", recovery_success=False))
 
     s = recorder.summary()
+    assert s["data_classification"] == "synthetic_simulation_not_empirical"
     assert s["total_runs"] == 3
     assert s["passed"] == 2
     assert s["failed"] == 1
+
+
+def test_run_result_records_llm_latency_cost_and_provenance() -> None:
+    image_digest = "sha256:" + "a" * 64
+    result = _make_result(
+        commit_sha="A" * 40,
+        model_name="gemini-test",
+        model_configuration_sha256="sha256:" + "d" * 64,
+        model_configuration_ref="artifacts/model-config.json",
+        prompt_version="diagnosis-v2",
+        environment="staging",
+        image_digests={"ai-agent": image_digest},
+        llm_call_count=1,
+        llm_latency_seconds=1.25,
+        runtime_seconds=12,
+        aws_cost_usd=0.03,
+    )
+
+    assert result.commit_sha == "a" * 40
+    assert result.model_name == "gemini-test"
+    assert result.model_configuration_sha256 == "sha256:" + "d" * 64
+    assert result.model_configuration_ref == "artifacts/model-config.json"
+    assert result.prompt_version == "diagnosis-v2"
+    assert result.image_digests["ai-agent"] == image_digest
+    assert result.llm_latency_seconds == pytest.approx(1.25)
+    assert result.runtime_seconds == pytest.approx(12)
+    assert result.aws_cost_usd == pytest.approx(0.03)
+
+
+def test_run_result_and_exports_are_explicitly_synthetic() -> None:
+    result = _make_result()
+
+    assert result.data_classification == "synthetic_simulation_not_empirical"
+    assert result.model_dump(mode="json")["data_classification"] == (
+        "synthetic_simulation_not_empirical"
+    )
+    with pytest.raises(ValueError):
+        _make_result(data_classification="empirical_live")
+
+
+def test_metrics_recorder_summarizes_latency_runtime_and_cost(tmp_path: Path) -> None:
+    recorder = MetricsRecorder(tmp_path)
+    recorder.record(_make_result(run_id="measured-1", llm_call_count=1, llm_latency_seconds=1, runtime_seconds=10, aws_cost_usd=0.1))
+    recorder.record(_make_result(run_id="measured-2", llm_call_count=2, llm_latency_seconds=3, runtime_seconds=15, aws_cost_usd=0.2))
+    recorder.record(_make_result(run_id="unmeasured"))
+
+    summary = recorder.summary()
+    assert summary["avg_llm_latency_seconds"] == pytest.approx(2)
+    assert summary["total_runtime_seconds"] == pytest.approx(25)
+    assert summary["total_aws_cost_usd"] == pytest.approx(0.3)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("llm_latency_seconds", True),
+        ("llm_latency_seconds", float("inf")),
+        ("runtime_seconds", -1),
+        ("aws_cost_usd", float("nan")),
+        ("commit_sha", "short"),
+        ("model_configuration_sha256", "secret-bearing-config"),
+        ("model_name", "gemini-test"),
+        ("llm_latency_seconds", 1.0),
+        ("image_digests", {"ai-agent": "latest"}),
+    ],
+)
+def test_run_result_rejects_invalid_measurements_or_provenance(field: str, value) -> None:
+    with pytest.raises(ValueError):
+        _make_result(**{field: value})
+
+
+def test_empty_metrics_summary_includes_new_metrics_as_unavailable(tmp_path: Path) -> None:
+    summary = MetricsRecorder(tmp_path).summary()
+
+    assert summary["data_classification"] == "synthetic_simulation_not_empirical"
+    assert summary["avg_llm_latency_seconds"] is None
+    assert summary["total_runtime_seconds"] is None
+    assert summary["total_aws_cost_usd"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +399,25 @@ def test_ablation_config_no_verifier() -> None:
     assert cfg.counterfactual_only is True
     assert cfg.mode == AblationMode.NO_VERIFIER
     assert cfg.min_repetitions >= 5
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"shadow_only": False},
+        {"counterfactual_only": False},
+        {"scenarios": ["DB-01", "DB-01"]},
+        {"scenarios": [" "]},
+        {"min_repetitions": 4},
+    ],
+)
+def test_ablation_config_rejects_unsafe_or_invalid_overrides(overrides) -> None:
+    from pydantic import ValidationError
+
+    values = NoSafetyGateConfig().model_dump()
+    values.update(overrides)
+    with pytest.raises(ValidationError):
+        AblationConfig(**values)
 
 
 # ---------------------------------------------------------------------------

@@ -1,12 +1,14 @@
 # Quyết định Safety Gate
 
 from datetime import datetime, timezone
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from .common import ActionDecision
 
 
 class SafetyDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     # PLACEHOLDER LÀ GÌ:
     # decision_id là ID của quyết định Safety Gate.
     # LẤY Ở ĐÂU:
@@ -16,6 +18,7 @@ class SafetyDecision(BaseModel):
     decision_id: str
     # PLACEHOLDER: ID action thật đang được Safety Gate kiểm tra.
     action_id: str
+    action_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     # PLACEHOLDER: ID incident thật liên quan đến action.
     incident_id: str
 
@@ -27,6 +30,6 @@ class SafetyDecision(BaseModel):
     required_evidence_refs: list[str] = Field(default_factory=list)
     checked_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    approval_required: bool = False
+    approval_required: StrictBool = False
     # PLACEHOLDER: TTL thật cho approval nếu decision là REQUIRE_APPROVAL.
-    approval_ttl_seconds: int | None = None
+    approval_ttl_seconds: StrictInt | None = None

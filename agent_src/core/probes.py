@@ -40,6 +40,8 @@ class _LoginTokenParser(HTMLParser):
 class MoodleLoginProbe:
     """Perform one Moodle form login without retaining or logging credentials."""
 
+    simulated = False
+
     def __init__(
         self,
         base_url: str,
@@ -62,13 +64,38 @@ class MoodleLoginProbe:
         self.timeout_seconds = timeout_seconds
         self.session_factory = session_factory
 
+    def _same_origin(self, url: str) -> bool:
+        destination = urlparse(url)
+        origin = urlparse(self.base_url)
+        if destination.username or destination.password:
+            return False
+        try:
+            destination_port = destination.port or (
+                443 if destination.scheme == "https" else 80
+            )
+            origin_port = origin.port or (443 if origin.scheme == "https" else 80)
+        except ValueError:
+            return False
+        return (
+            destination.scheme == origin.scheme
+            and destination.hostname == origin.hostname
+            and destination_port == origin_port
+        )
+
     def login(self, username: str, password: str) -> LoginObservation:
         started = time.monotonic()
         session = self.session_factory()
         login_url = urljoin(self.base_url, "login/index.php")
         try:
-            page = session.get(login_url, timeout=self.timeout_seconds, verify=self.verify_tls)
+            page = session.get(
+                login_url,
+                timeout=self.timeout_seconds,
+                verify=self.verify_tls,
+                allow_redirects=False,
+            )
             page.raise_for_status()
+            if not self._same_origin(page.url) or 300 <= page.status_code < 400:
+                return LoginObservation(False, (time.monotonic() - started) * 1000, "error")
             parser = _LoginTokenParser()
             parser.feed(page.text)
             if not parser.token:
@@ -78,14 +105,30 @@ class MoodleLoginProbe:
                 data={"username": username, "password": password, "logintoken": parser.token},
                 timeout=self.timeout_seconds,
                 verify=self.verify_tls,
-                allow_redirects=True,
+                allow_redirects=False,
             )
             response.raise_for_status()
-            final = urlparse(response.url)
-            origin = urlparse(self.base_url)
+            final_url = response.url
+            redirects = 0
+            while 300 <= response.status_code < 400 and redirects < 5:
+                location = response.headers.get("Location", "")
+                final_url = urljoin(login_url, location)
+                if not location or not self._same_origin(final_url):
+                    return LoginObservation(False, (time.monotonic() - started) * 1000, "error")
+                response = session.get(
+                    final_url,
+                    timeout=self.timeout_seconds,
+                    verify=self.verify_tls,
+                    allow_redirects=False,
+                )
+                response.raise_for_status()
+                final_url = response.url
+                redirects += 1
+            if 300 <= response.status_code < 400:
+                return LoginObservation(False, (time.monotonic() - started) * 1000, "error")
+            final = urlparse(final_url)
             authenticated = (
-                final.scheme == origin.scheme
-                and final.netloc == origin.netloc
+                self._same_origin(final_url)
                 and not final.path.rstrip("/").endswith("/login/index.php")
                 and session.cookies.get("MoodleSession") is not None
             )
@@ -119,6 +162,10 @@ class MoodleAuthVerifier:
     ) -> None:
         self.login_probe = login_probe
         self.health_probe = health_probe
+        self.simulated = not (
+            getattr(login_probe, "simulated", True) is False
+            and getattr(health_probe, "simulated", True) is False
+        )
         self.monotonic = monotonic
         self.sleep = sleep
 
@@ -133,9 +180,17 @@ class MoodleAuthVerifier:
         sample_interval_seconds: int = 15,
         on_observation: Callable[[dict], None] | None = None,
     ) -> dict:
-        if stability_seconds < 120:
+        if (
+            isinstance(stability_seconds, bool)
+            or not isinstance(stability_seconds, int)
+            or stability_seconds < 120
+        ):
             raise ValueError("authentication recovery requires at least 120 seconds of stability")
-        if sample_interval_seconds < 1:
+        if (
+            isinstance(sample_interval_seconds, bool)
+            or not isinstance(sample_interval_seconds, int)
+            or sample_interval_seconds < 1
+        ):
             raise ValueError("sample interval must be positive")
 
         start = self.monotonic()
@@ -150,21 +205,50 @@ class MoodleAuthVerifier:
             check_login = first_sample or final_sample
             valid = denied = None
             if check_login:
-                valid = self.login_probe.login(valid_username, valid_password)
-                denied = self.login_probe.login(denied_username, denied_password)
+                try:
+                    valid = self.login_probe.login(valid_username, valid_password)
+                except Exception:
+                    valid = None
+                try:
+                    denied = self.login_probe.login(denied_username, denied_password)
+                except Exception:
+                    denied = None
+                valid = (
+                    valid
+                    if isinstance(valid, LoginObservation)
+                    and type(valid.authenticated) is bool
+                    and valid.outcome in {"authenticated", "denied", "error"}
+                    else None
+                )
+                denied = (
+                    denied
+                    if isinstance(denied, LoginObservation)
+                    and type(denied.authenticated) is bool
+                    and denied.outcome in {"authenticated", "denied", "error"}
+                    else None
+                )
             try:
-                healthy = bool(self.health_probe())
+                healthy = self.health_probe() is True
             except Exception:
                 healthy = False
             if check_login:
-                valid_login_passed &= bool(valid and valid.authenticated)
-                invalid_login_denied &= bool(denied and denied.outcome == "denied")
+                valid_login_passed &= bool(
+                    valid
+                    and valid.authenticated is True
+                    and valid.outcome == "authenticated"
+                )
+                invalid_login_denied &= bool(
+                    denied
+                    and denied.authenticated is False
+                    and denied.outcome == "denied"
+                )
             health_passed &= healthy
             observations.append({
                 "observed_at": datetime.now(timezone.utc).isoformat(),
                 "valid_login": valid.authenticated if valid else None,
                 "invalid_login_denied": denied.outcome == "denied" if denied else None,
                 "health": healthy,
+                "simulated": self.simulated,
             })
             if on_observation is not None:
                 on_observation(observations[-1].copy())
@@ -178,9 +262,10 @@ class MoodleAuthVerifier:
             self.sleep(min(sample_interval_seconds, stability_seconds - elapsed))
             first_sample = False
 
-        eligible = valid_login_passed and invalid_login_denied and health_passed
+        eligible = valid_login_passed and invalid_login_denied and health_passed and not self.simulated
         return {
             "authority": "independent_verifier",
+            "simulated": self.simulated,
             "valid_login_passed": valid_login_passed,
             "invalid_login_denied": invalid_login_denied,
             "health_passed": health_passed,

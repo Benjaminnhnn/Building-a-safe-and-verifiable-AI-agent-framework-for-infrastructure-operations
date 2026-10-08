@@ -65,13 +65,19 @@ def get_chat_id():
         return None
 
 
-def set_telegram_webhook(webhook_url):
+def set_telegram_webhook(webhook_url, secret_token=None):
     """Registers the FastAPI endpoint as a Telegram Webhook."""
     if not TELEGRAM_TOKEN:
         print("❌ Error: TELEGRAM_TOKEN not found")
         return False
-    if not webhook_url or webhook_url.startswith("http://localhost") or webhook_url.startswith("http://127.0.0.1"):
-        print("⚠️ Skipping Telegram Webhook: AI_AGENT_PUBLIC_URL must be a public HTTPS URL")
+    if not webhook_url or not webhook_url.startswith("https://"):
+        print("⚠️ Skipping Telegram Webhook: AI_AGENT_PUBLIC_URL must use HTTPS")
+        return False
+    if not secret_token or not (1 <= len(secret_token) <= 256) or any(
+        character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
+        for character in secret_token
+    ):
+        print("⚠️ Skipping Telegram Webhook: TELEGRAM_WEBHOOK_SECRET must be configured")
         return False
     
     # We want to point Telegram to our /telegram/webhook endpoint
@@ -80,7 +86,15 @@ def set_telegram_webhook(webhook_url):
     
     print(f"🌐 Registering Telegram Webhook: {full_url}")
     try:
-        response = requests.post(api_url, json={"url": full_url}, timeout=10)
+        response = requests.post(
+            api_url,
+            json={
+                "url": full_url,
+                "secret_token": secret_token,
+                "allowed_updates": ["message", "edited_message", "callback_query"],
+            },
+            timeout=10,
+        )
         data = response.json()
         if data.get("ok"):
             print("✅ Telegram Webhook registered successfully!")

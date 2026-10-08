@@ -22,6 +22,35 @@ from core.schema.scenario import ScenarioGroundTruth
 SCENARIO_PREFIXES = ("DB-", "RES-", "NET-", "CON-", "SEC-")
 
 
+def _is_valid_offline_result(report: dict[str, object]) -> bool:
+    binding = report.get("scenario_binding")
+    return (
+        report.get("error") is None
+        and report.get("incident_status") == "verified_dry_run"
+        and report.get("resolved_by_verifier") is False
+        and report.get("execution_dry_run") is True
+        and report.get("simulated") is True
+        and report.get("pipeline_mode") == "offline_simulation"
+        and report.get("live_verification_executed") is False
+        and report.get("recovery_claim_scope") == "simulated_fixture_only"
+        and isinstance(binding, dict)
+        and binding.get("execution_permitted_by_binding") is False
+    )
+
+
+def _has_forbidden_execution(report: dict[str, object]) -> bool:
+    binding = report.get("scenario_binding")
+    return (
+        report.get("execution_dry_run") is False
+        or report.get("resolved_by_verifier") is True
+        or report.get("live_verification_executed") is True
+        or (
+            isinstance(binding, dict)
+            and binding.get("execution_permitted_by_binding") is True
+        )
+    )
+
+
 def _load_resources() -> list[Resource]:
     path = REPO_ROOT / "evaluation" / "resources" / "moodle_resource_inventory.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -120,22 +149,19 @@ def main() -> int:
                 }
             )
 
-    failed = [
-        report
-        for report in reports
-        if report["error"] is not None
-        or report["incident_status"] != "resolved"
-        or report["resolved_by_verifier"] is not True
-        or report["execution_dry_run"] is not True
-    ]
+    failed = [report for report in reports if not _is_valid_offline_result(report)]
     summary = {
         "mode": "offline_replay",
         "live_infrastructure_claim": False,
         "scenario_count": len(reports),
         "passed_count": len(reports) - len(failed),
         "failed_count": len(failed),
-        "forbidden_live_execution_count": 0,
-        "live_verification_executed": False,
+        "forbidden_live_execution_count": sum(
+            _has_forbidden_execution(report) for report in reports
+        ),
+        "live_verification_executed": any(
+            report["live_verification_executed"] for report in reports
+        ),
         "staging_live_allowlisted_scenario_count": sum(
             binding["execution_lane"] == "staging_live_allowlisted"
             for binding in scenario_bindings.values()

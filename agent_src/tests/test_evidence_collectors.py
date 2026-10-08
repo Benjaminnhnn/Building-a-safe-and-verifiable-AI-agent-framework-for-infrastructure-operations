@@ -13,6 +13,7 @@ from core.evidence_collectors import (
     sanitize_log_excerpt,
     static_inventory_evidence,
 )
+from core.sanitization import sanitize_untrusted_data
 
 
 class _Response:
@@ -79,11 +80,86 @@ def test_prometheus_collector_rejects_unknown_alert_without_querying() -> None:
     assert client.calls == []
 
 
+def test_node_rds_alert_uses_fixed_node_local_probe_query():
+    client = _Client(_prometheus_body(labels={"job": "moodle_node", "instance": "moodle-app-a"}))
+    collector = PrometheusEvidenceCollector("http://prometheus:9090", client=client)
+
+    batch = collector.collect("MoodleNodeRdsTcpFailed", resource_id="moodle-app")
+
+    assert batch.errors == []
+    assert len(batch.evidence) == 1
+    assert batch.evidence[0].payload["query_id"] == "moodle_node_rds_tcp_success"
+    assert client.calls[0][1]["query"] == 'moodle_node_rds_tcp_success{job="moodle_node"}'
+
+
+@pytest.mark.parametrize(
+    ("alert_name", "query_id"),
+    [
+        ("MoodleScratchEnospc", "moodle_node_scratch_enospc"),
+        ("MoodleWebContainerRestarting", "moodle_node_web_restart_count_2m"),
+        ("MoodleNodeProbeStale", "moodle_node_probe_age_seconds"),
+        ("MoodleNodeRdsTcpLatencyHigh", "moodle_node_rds_tcp_duration_seconds"),
+        ("MoodleApacheRouterMissing", "moodle_node_apache_router_enabled"),
+        ("MoodleNodeRouterFallbackFailed", "moodle_node_router_fallback_success"),
+        ("MoodleTrustedProxyConfigDrift", "moodle_node_reverse_proxy_enabled"),
+    ],
+)
+def test_node_probe_alerts_use_reviewed_fixed_queries(alert_name: str, query_id: str):
+    client = _Client(_prometheus_body(labels={"job": "moodle_node", "instance": "moodle-app-a"}))
+    batch = PrometheusEvidenceCollector("http://prometheus:9090", client=client).collect(
+        alert_name, resource_id="moodle-app"
+    )
+
+    assert batch.errors == []
+    assert len(batch.evidence) == 1
+    assert batch.evidence[0].payload["query_id"] == query_id
+    assert client.calls[0][1]["query"] == METRIC_QUERIES_BY_ALERT[alert_name][0][1]
+
+
 def test_prometheus_collector_rejects_stale_samples() -> None:
     client = _Client(_prometheus_body(sample_time=time.time() - 600))
     collector = PrometheusEvidenceCollector("http://prometheus:9090", client=client)
 
     batch = collector.collect("MoodleNodeExporterDown", resource_id="moodle-app")
+
+    assert batch.evidence == []
+    assert batch.errors == ["moodle_node_up:ValueError"]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        [],
+        {"status": "success", "data": []},
+        {"status": "success", "data": {"result": [{"value": [time.time()]}]}},
+        {"status": "success", "data": {"result": [{"metric": [], "value": [time.time(), "0"]}]}},
+        {"status": "success", "data": {"result": [{"metric": {}, "value": ["NaN", "0"]}]}},
+        {"status": "success", "data": {"result": [{"metric": {}, "value": [time.time(), "Infinity"]}]}},
+    ],
+)
+def test_prometheus_collector_converts_malformed_samples_to_bounded_errors(body) -> None:
+    batch = PrometheusEvidenceCollector(
+        "http://prometheus:9090", client=_Client(body)
+    ).collect("MoodleNodeExporterDown", resource_id="moodle-app")
+
+    assert batch.evidence == []
+    assert batch.errors == ["moodle_node_up:ValueError"]
+
+
+def test_prometheus_collector_rejects_vectors_over_the_sample_bound() -> None:
+    now = time.time()
+    body = {
+        "status": "success",
+        "data": {
+            "result": [
+                {"metric": {"instance": str(index)}, "value": [now, "1"]}
+                for index in range(21)
+            ]
+        },
+    }
+    batch = PrometheusEvidenceCollector(
+        "http://prometheus:9090", client=_Client(body)
+    ).collect("MoodleNodeExporterDown", resource_id="moodle-app")
 
     assert batch.evidence == []
     assert batch.errors == ["moodle_node_up:ValueError"]
@@ -107,6 +183,38 @@ def test_log_excerpt_is_redacted_and_bounded() -> None:
     assert "hunter2" not in sanitized
     assert "abc.def" not in sanitized
     assert "AKIA1234567890ABCDEF" not in sanitized
+
+
+def test_log_excerpt_redacts_compound_secret_names() -> None:
+    sanitized = sanitize_log_excerpt(
+        "db_password=hunter2 client_secret=abc private_key=not-pem access_key=xyz"
+    )
+
+    for secret in ("hunter2", "abc", "not-pem", "xyz"):
+        assert secret not in sanitized
+    assert sanitized.count("[REDACTED]") == 4
+
+
+def test_sanitize_untrusted_data_redacts_nested_fields_and_bounds_shape() -> None:
+    result = sanitize_untrusted_data(
+        {
+            "annotations": [
+                {"summary": "service down", "db_password": "hunter2"},
+                "Bearer abc.def.ghi",
+            ],
+            "api_key": "key-value",
+            "count": 2,
+        }
+    )
+
+    assert result["annotations"][0]["db_password"] == "[REDACTED]"
+    assert result["annotations"][1] == "Bearer [REDACTED]"
+    assert result["api_key"] == "[REDACTED]"
+    assert result["count"] == 2
+    assert sanitize_untrusted_data(["one", "two"], max_items=1) == [
+        "one",
+        "[TRUNCATED]",
+    ]
 
 
 def test_log_watcher_annotation_becomes_redacted_log_evidence() -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
+import json
 
 from core.schema.resource import Resource
 
@@ -65,6 +66,22 @@ class DependencyGraph:
     def impact(self, resource_id: str) -> list[str]:
         self._require_resource(resource_id)
         return [resource_id, *self.downstream(resource_id)]
+
+    def to_mermaid(self) -> str:
+        """Render a deterministic Mermaid flowchart from this validated graph."""
+        node_ids = {
+            resource_id: f"r{index}"
+            for index, resource_id in enumerate(sorted(self.resources))
+        }
+        lines = ["graph TD"]
+        for resource_id in sorted(self.resources):
+            resource = self.resources[resource_id]
+            label = f"{resource.name} ({resource.type.value}) [{resource_id}]"
+            lines.append(f"    {node_ids[resource_id]}[{json.dumps(label, ensure_ascii=False)}]")
+        for resource_id in sorted(self.resources):
+            for dependency in self._upstream[resource_id]:
+                lines.append(f"    {node_ids[dependency]} --> {node_ids[resource_id]}")
+        return "\n".join(lines)
 
     def _traverse(self, resource_id: str, adjacency: dict[str, tuple[str, ...]]) -> list[str]:
         self._require_resource(resource_id)

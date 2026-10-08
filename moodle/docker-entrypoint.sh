@@ -64,6 +64,20 @@ case "${MOODLE_REVERSE_PROXY:-false}" in
         ;;
 esac
 
+case "${MOODLE_SESSION_HANDLER:-file}" in
+    file)
+        MOODLE_SESSION_SETTINGS=''
+        ;;
+    database)
+        MOODLE_SESSION_SETTINGS="\$CFG->session_handler_class = '\\core\\session\\database';
+\$CFG->session_database_acquire_lock_timeout = 120;"
+        ;;
+    *)
+        echo 'MOODLE_SESSION_HANDLER must be file or database' >&2
+        exit 64
+        ;;
+esac
+
 mkdir -p "$MOODLE_DATA_ROOT" "$MOODLE_DATA_ROOT/cache" "$MOODLE_DATA_ROOT/localcache" \
     "$MOODLE_DATA_ROOT/sessions" "$MOODLE_DATA_ROOT/temp" "$MOODLE_DATA_ROOT/trashdir"
 chmod 0770 "$MOODLE_DATA_ROOT" "$MOODLE_DATA_ROOT/cache" "$MOODLE_DATA_ROOT/localcache" \
@@ -100,6 +114,7 @@ global \$CFG;
 \$CFG->reverseproxy = ${MOODLE_REVERSE_PROXY:-false};
 \$CFG->sslproxy = ${MOODLE_SSL_PROXY};
 \$CFG->routerconfigured = true;
+${MOODLE_SESSION_SETTINGS}
 require_once(__DIR__ . '/lib/setup.php');
 EOF
 

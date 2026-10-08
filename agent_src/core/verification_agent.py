@@ -86,14 +86,42 @@ class VerificationAgent:
         max_stability_gap_seconds: int = 60,
     ) -> VerificationResult:
         """Run verification probes and determine verdict."""
-        if stability_window_seconds < 1:
-            raise ValueError("stability_window_seconds must be positive")
-        if max_stability_gap_seconds < 1:
-            raise ValueError("max_stability_gap_seconds must be positive")
+        if (
+            isinstance(stability_window_seconds, bool)
+            or not isinstance(stability_window_seconds, int)
+            or stability_window_seconds < 120
+        ):
+            raise ValueError("stability_window_seconds must be an integer of at least 120")
+        if (
+            isinstance(max_stability_gap_seconds, bool)
+            or not isinstance(max_stability_gap_seconds, int)
+            or not 1 <= max_stability_gap_seconds <= 60
+        ):
+            raise ValueError("max_stability_gap_seconds must be an integer from 1 to 60")
+
+        contract_specs: dict[str, list[str]] = {}
+        contract_valid = isinstance(communication_contract, dict)
+        for probe_type in ("allowed", "forbidden", "related"):
+            raw_names = (
+                communication_contract.get(probe_type)
+                if contract_valid
+                else None
+            )
+            if not isinstance(raw_names, list):
+                contract_specs[probe_type] = []
+                contract_valid = False
+                continue
+            names = [
+                name for name in raw_names
+                if isinstance(name, str) and name.strip()
+            ]
+            if len(names) != len(raw_names) or len(set(names)) != len(names):
+                contract_valid = False
+            contract_specs[probe_type] = names
 
         # Synthetic probes are allowed only for explicitly marked fixture replay.
         if probes is None:
-            probes = self._build_dry_run_probes(communication_contract) if dry_run else []
+            probes = self._build_dry_run_probes(contract_specs) if dry_run else []
 
         if stability_observations is None and dry_run:
             checked_at = datetime.now(timezone.utc)
@@ -109,34 +137,100 @@ class VerificationAgent:
                 )
                 for index in range(intervals + 1)
             ]
-        stability_observations = stability_observations or []
+        stability_valid = stability_observations is None or isinstance(
+            stability_observations, list
+        )
+        normalized_stability: list[StabilityObservation] = []
+        for observation in stability_observations or []:
+            try:
+                payload = (
+                    observation.__dict__
+                    if isinstance(observation, StabilityObservation)
+                    else observation
+                )
+                normalized_stability.append(StabilityObservation.model_validate(payload))
+            except Exception:
+                stability_valid = False
+        stability_observations = normalized_stability
         measured_stability_seconds = _stability_span(stability_observations)
         stability_gaps_ok = _stability_gaps_ok(
             stability_observations, max_stability_gap_seconds
+        )
+        stability_gaps_ok = stability_valid and stability_gaps_ok and _stability_observations_fresh(
+            stability_observations, max_staleness_seconds=max_stability_gap_seconds
         )
 
         # Run all probes
         allowed_results: list[ProbeResult] = []
         forbidden_results: list[ProbeResult] = []
         related_results: list[ProbeResult] = []
+        simulated = dry_run or any(item.simulated for item in stability_observations)
+        probes_valid = True
 
         for probe in probes:
-            result = probe.check()
-            if probe.probe_type == "allowed":
+            name = getattr(probe, "name", None)
+            probe_type = getattr(probe, "probe_type", None)
+            check = getattr(probe, "check", None)
+            if (
+                not isinstance(name, str)
+                or not name.strip()
+                or probe_type not in ("allowed", "forbidden", "related")
+                or not callable(check)
+            ):
+                probes_valid = False
+                continue
+            try:
+                result = check()
+            except Exception as exc:
+                result = ProbeResult(
+                    name=name,
+                    passed=False,
+                    details=f"probe execution failed ({type(exc).__name__})",
+                )
+            # A probe's result is evidence only for the probe that was asked to
+            # run. Do not let a misconfigured adapter relabel another check.
+            if isinstance(result, ProbeResult):
+                try:
+                    result = ProbeResult.model_validate(result.__dict__)
+                except Exception:
+                    probes_valid = False
+                    result = None
+            if not isinstance(result, ProbeResult) or result.name != name:
+                probes_valid = False
+                result = ProbeResult(
+                    name=name,
+                    passed=False,
+                    details="probe result identity did not match the requested probe",
+                )
+            simulated = simulated or result.simulated
+            if probe_type == "allowed":
                 allowed_results.append(result)
-            elif probe.probe_type == "forbidden":
+            elif probe_type == "forbidden":
                 forbidden_results.append(result)
-            elif probe.probe_type == "related":
+            else:
                 related_results.append(result)
 
         # Determine health
-        expected = {
-            (probe_type, name)
+        expected_by_type = {
+            probe_type: {(probe_type, name) for name in contract_specs[probe_type]}
             for probe_type in ("allowed", "forbidden", "related")
-            for name in communication_contract.get(probe_type, [])
         }
-        observed = [(probe.probe_type, probe.name) for probe in probes]
-        coverage_ok = len(observed) == len(set(observed)) and set(observed) == expected
+        expected = set().union(*expected_by_type.values())
+        observed = [
+            (probe.probe_type, probe.name)
+            for probe in probes
+            if getattr(probe, "probe_type", None)
+            in ("allowed", "forbidden", "related")
+            and isinstance(getattr(probe, "name", None), str)
+        ]
+        coverage_ok = (
+            contract_valid
+            and probes_valid
+            and
+            all(expected_by_type.values())
+            and len(observed) == len(set(observed))
+            and set(observed) == expected
+        )
 
         health_passed = bool(allowed_results) and all(r.passed for r in allowed_results)
         if stability_observations:
@@ -176,7 +270,7 @@ class VerificationAgent:
             forbidden_probes=forbidden_results,
             related_probes=related_results,
             verdict=verdict,
-            simulated=dry_run,
+            simulated=simulated,
         )
 
     def _determine_verdict(
@@ -242,7 +336,9 @@ def _stability_span(observations: list[StabilityObservation]) -> int:
     """Return observed healthy window; caller-supplied duration is never trusted."""
     if len(observations) < 2:
         return 0
-    timestamps = sorted(item.observed_at for item in observations)
+    timestamps = [item.observed_at for item in observations]
+    if timestamps != sorted(timestamps):
+        return 0
     return max(0, int((timestamps[-1] - timestamps[0]).total_seconds()))
 
 
@@ -251,8 +347,20 @@ def _stability_gaps_ok(
 ) -> bool:
     if max_gap_seconds < 1 or len(observations) < 2:
         return False
-    timestamps = sorted(item.observed_at for item in observations)
+    timestamps = [item.observed_at for item in observations]
+    if timestamps != sorted(timestamps):
+        return False
     return all(
         0 < (later - earlier).total_seconds() <= max_gap_seconds
         for earlier, later in zip(timestamps, timestamps[1:])
     )
+
+
+def _stability_observations_fresh(
+    observations: list[StabilityObservation], *, max_staleness_seconds: int
+) -> bool:
+    if not observations:
+        return False
+    latest = max(item.observed_at for item in observations).astimezone(timezone.utc)
+    age = (datetime.now(timezone.utc) - latest).total_seconds()
+    return -30 <= age <= max_staleness_seconds

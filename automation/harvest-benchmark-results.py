@@ -28,12 +28,21 @@ FIELDS = [
     "t_execute_start", "t_execute_end", "t_verify", "t_resolved",
     "recovery_success", "false_recovery", "rca_correct",
     "dangerous_action_blocked", "forbidden_execution_count", "rollback_success",
-    "action_count", "llm_call_count", "audit_complete", "verifier_resolved",
+    "action_count", "llm_call_count", "llm_latency_seconds", "runtime_seconds",
+    "aws_cost_usd", "commit_sha", "model_name", "model_configuration_sha256",
+    "model_configuration_ref",
+    "prompt_version", "environment", "image_digests", "audit_complete", "verifier_resolved",
     "ai_layer_mode", "ai_execution", "execution_authority",
     "ai_shadow_observed", "stability_seconds", "mttd_seconds",
     "recovery_seconds", "completed_at", "prometheus_alert", "observation",
     "pipeline_report", "action", "mutated", "notes",
 ]
+RUNTIME_EVIDENCE_CLASSES = {
+    "staging_runtime_observed",
+    "staging_runtime_shadow",
+    "staging_runtime_manual_trial",
+}
+HARVESTED_EVIDENCE_CLASSES = RUNTIME_EVIDENCE_CLASSES | {"simulated_fixture_benchmark"}
 
 
 class InputError(ValueError):
@@ -59,7 +68,7 @@ def _runtime_row(payload: dict[str, Any], source: Path, method: str) -> dict[str
     if any(not payload.get(key) for key in required):
         raise InputError(f"{source}: runtime result is missing one of {required}")
     evidence_class = payload.get("evidence_class")
-    if evidence_class not in {"staging_runtime_observed", "staging_runtime_shadow", "staging_runtime_manual_trial"}:
+    if evidence_class not in RUNTIME_EVIDENCE_CLASSES:
         raise InputError(f"{source}: missing a recognized runtime evidence_class from the trial producer")
     actual_method = payload.get("method")
     if actual_method not in {"ai_agent_shadow", "manual", "ansible"}:
@@ -77,7 +86,10 @@ def _runtime_row(payload: dict[str, Any], source: Path, method: str) -> dict[str
         recovery_success="",
         ai_execution=payload.get("ai_execution", False),
         execution_authority=payload.get("execution_authority", ""),
-        notes="Runtime observation only; does not imply AI executed remediation.",
+        notes=(
+            "Producer-declared runtime evidence; the harvester does not "
+            "authenticate artifact origin. Does not imply AI executed remediation."
+        ),
     )
     for field in ("t_inject", "t_detect", "t_ai_observed", "t_execute_start", "t_execute_end", "t_verify", "t_resolved"):
         if payload.get(field):
@@ -128,8 +140,13 @@ def merge_csv(inputs: list[Path]) -> list[dict[str, Any]]:
                 raise InputError(f"{path}: missing required identity/provenance columns")
             for line_number, row in enumerate(reader, 2):
                 identity = (row["method"], row["run_id"])
-                if not row["run_id"] or not row["scenario_id"] or not row["evidence_class"] or identity in seen:
+                if not row["run_id"] or not row["scenario_id"] or identity in seen:
                     raise InputError(f"{path}:{line_number}: empty or duplicate method/run_id {identity}")
+                if row["evidence_class"] not in HARVESTED_EVIDENCE_CLASSES:
+                    raise InputError(
+                        f"{path}:{line_number}: unrecognized evidence_class "
+                        f"{row['evidence_class']!r}; expected a class emitted by this collector"
+                    )
                 seen.add(identity)
                 rows.append({field: row.get(field, "") for field in FIELDS})
     return rows

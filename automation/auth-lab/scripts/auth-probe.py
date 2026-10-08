@@ -9,6 +9,7 @@ import socket
 import ssl
 import threading
 import time
+from datetime import datetime, timezone
 from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
@@ -105,37 +106,73 @@ def verify_recovery() -> dict:
     """Independent 120-second login, denial, health, and stability check."""
     username = secret(os.environ["AUTH_USER_FILE"])
     password = secret(os.environ["AUTH_PASSWORD_FILE"])
-    start = time.monotonic()
     valid_passed = True
     invalid_denied = True
     health_passed = True
     ldaps_passed = True
-    first_sample = True
     observations = 0
+    stability_observations = []
+    first_observation_monotonic = None
     while True:
-        elapsed = time.monotonic() - start
-        check_identity = first_sample or elapsed >= 120
-        if check_identity:
-            valid_passed &= login_outcome(username, password) == "authenticated"
-            invalid_denied &= login_outcome(
-                "aiops-invalid-probe-user", "invalid-probe-no-secret"
-            ) == "denied"
+        valid_sample_passed = login_outcome(username, password) == "authenticated"
+        invalid_sample_denied = login_outcome(
+            "aiops-invalid-probe-user", "invalid-probe-no-secret"
+        ) == "denied"
+        valid_passed &= valid_sample_passed
+        invalid_denied &= invalid_sample_denied
         healthy = endpoint_reachable()
+        ldaps_healthy = ldaps_certificate_valid()
         health_passed &= healthy
-        ldaps_passed &= ldaps_certificate_valid()
+        ldaps_passed &= ldaps_healthy
+        observed_at = datetime.now(timezone.utc)
+        observed_monotonic = time.monotonic()
+        if first_observation_monotonic is None:
+            first_observation_monotonic = observed_monotonic
+        stability_observations.append({
+            "observed_at": observed_at.isoformat(),
+            "healthy": healthy and ldaps_healthy and valid_sample_passed and invalid_sample_denied,
+            "simulated": False,
+        })
         observations += 1
-        if time.monotonic() - start >= 120 and check_identity:
+        if observed_monotonic - first_observation_monotonic >= 120:
             break
-        time.sleep(min(15, max(0, 120 - (time.monotonic() - start))))
-        first_sample = False
+        time.sleep(15)
+    stability_seconds = int(
+        (
+            datetime.fromisoformat(stability_observations[-1]["observed_at"])
+            - datetime.fromisoformat(stability_observations[0]["observed_at"])
+        ).total_seconds()
+    )
     return {
         "authority": "independent_verifier",
+        "simulated": False,
         "valid_login_passed": valid_passed,
         "invalid_login_denied": invalid_denied,
         "health_passed": health_passed,
         "ldaps_passed": ldaps_passed,
-        "stability_seconds": int(time.monotonic() - start),
+        "stability_seconds": stability_seconds,
         "observations": observations,
+        "stability_observations": stability_observations,
+        "related_probes": [
+            {
+                "name": "synthetic-valid-login-passes",
+                "passed": valid_passed,
+                "simulated": False,
+                "details": "Independent synthetic valid-account login probe",
+            },
+            {
+                "name": "synthetic-invalid-login-is-denied",
+                "passed": invalid_denied,
+                "simulated": False,
+                "details": "Independent synthetic invalid-account denial probe",
+            },
+            {
+                "name": "moodle-health-passes",
+                "passed": health_passed,
+                "simulated": False,
+                "details": "Independent Moodle health endpoint probe",
+            },
+        ],
         "resolution_eligible": valid_passed and invalid_denied and health_passed and ldaps_passed,
     }
 

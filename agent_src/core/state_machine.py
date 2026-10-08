@@ -6,6 +6,8 @@ import hashlib
 from datetime import datetime, timezone
 from typing import ClassVar
 
+from pydantic import ValidationError
+
 from core.schema.action import TypedAction
 from core.schema.audit import AuditEvent
 from core.schema.common import ActionDecision, ActionStatus, IncidentStatus
@@ -33,10 +35,10 @@ class IncidentStateMachine:
     ALLOWED_TRANSITIONS: ClassVar[dict[IncidentStatus, frozenset[IncidentStatus]]] = {
         IncidentStatus.OPEN: frozenset({IncidentStatus.TRIAGED, IncidentStatus.FAILED}),
         IncidentStatus.TRIAGED: frozenset(
-            {IncidentStatus.PLANNED, IncidentStatus.FAILED}
+            {IncidentStatus.PLANNED, IncidentStatus.ESCALATED, IncidentStatus.FAILED}
         ),
         IncidentStatus.PLANNED: frozenset(
-            {IncidentStatus.GATED, IncidentStatus.FAILED}
+            {IncidentStatus.GATED, IncidentStatus.ESCALATED, IncidentStatus.FAILED}
         ),
         IncidentStatus.GATED: frozenset(
             {IncidentStatus.EXECUTED, IncidentStatus.ESCALATED, IncidentStatus.FAILED}
@@ -48,8 +50,9 @@ class IncidentStateMachine:
             {IncidentStatus.VERIFYING, IncidentStatus.FAILED}
         ),
         IncidentStatus.VERIFYING: frozenset(
-            {IncidentStatus.RESOLVED, IncidentStatus.FAILED}
+            {IncidentStatus.RESOLVED, IncidentStatus.VERIFIED_DRY_RUN, IncidentStatus.FAILED}
         ),
+        IncidentStatus.VERIFIED_DRY_RUN: frozenset(),
         IncidentStatus.RESOLVED: frozenset(),
         IncidentStatus.FAILED: frozenset(),
     }
@@ -63,11 +66,11 @@ class IncidentStateMachine:
         reason: str,
         evidence_refs: list[str] | None = None,
     ) -> AuditEvent:
-        if requested_state == IncidentStatus.RESOLVED:
+        if requested_state in {IncidentStatus.RESOLVED, IncidentStatus.VERIFIED_DRY_RUN}:
             raise StateTransitionError(
                 incident.status,
                 requested_state,
-                "RESOLVED requires resolve_verified with an eligible VerificationResult",
+                "verifier terminal states require resolve_verified with an eligible VerificationResult",
             )
         return self._apply_transition(
             incident,
@@ -86,28 +89,53 @@ class IncidentStateMachine:
         evidence_refs: list[str] | None = None,
     ) -> AuditEvent:
         """Resolve only from a complete, eligible verifier result for this incident."""
+        try:
+            verification = VerificationResult.model_validate(
+                verification.model_dump(mode="python", warnings=False)
+            )
+        except (ValidationError, TypeError, ValueError) as exc:
+            raise StateTransitionError(
+                incident.status,
+                IncidentStatus.RESOLVED,
+                "independent verifier result failed schema validation",
+            ) from exc
         if (
             verification.incident_id != incident.incident_id
             or verification.verdict != "resolved"
             or not verification.resolution_eligible
             or not verification.health_passed
             or not verification.communication_contract_passed
+            or (not verification.simulated and any(
+                item.simulated
+                for item in (
+                    *verification.stability_observations,
+                    *verification.allowed_probes,
+                    *verification.forbidden_probes,
+                    *verification.related_probes,
+                )
+            ))
             or not _has_stable_window(verification)
-            or not verification.allowed_probes
-            or not all(probe.passed for probe in verification.allowed_probes)
-            or not all(probe.passed for probe in verification.forbidden_probes)
-            or not all(probe.passed for probe in verification.related_probes)
+            or not _has_complete_probe_sets(verification)
         ):
             raise StateTransitionError(
                 incident.status,
                 IncidentStatus.RESOLVED,
                 "independent verifier result is missing, ineligible, or failed",
             )
+        terminal_state = (
+            IncidentStatus.VERIFIED_DRY_RUN
+            if verification.simulated
+            else IncidentStatus.RESOLVED
+        )
         return self._apply_transition(
             incident,
-            IncidentStatus.RESOLVED,
+            terminal_state,
             actor="independent_verifier",
-            reason=reason,
+            reason=(
+                f"Simulated verification only: {reason}"
+                if verification.simulated
+                else reason
+            ),
             evidence_refs=evidence_refs,
         )
 
@@ -146,10 +174,12 @@ class IncidentStateMachine:
             evidence_refs=refs,
             occurred_at=occurred_at,
         )
-        incident.status = requested_state
-        incident.updated_at = occurred_at
         if requested_state == IncidentStatus.RESOLVED:
             incident.resolved_by_verifier = True
+        # Incident.__setattr__ blocks all direct status mutation; only this
+        # validated, audited state-machine path may apply a transition.
+        object.__setattr__(incident, "status", requested_state)
+        incident.updated_at = occurred_at
         return event
 
 
@@ -157,13 +187,32 @@ def _has_stable_window(verification: VerificationResult) -> bool:
     observations = verification.stability_observations
     if len(observations) < 2 or not all(item.healthy for item in observations):
         return False
-    timestamps = sorted(item.observed_at for item in observations)
+    timestamps = [item.observed_at for item in observations]
+    if timestamps != sorted(timestamps):
+        return False
     measured_window = int((timestamps[-1] - timestamps[0]).total_seconds())
     if measured_window < 120 or verification.stability_seconds != measured_window:
+        return False
+    latest_age = (datetime.now(timezone.utc) - timestamps[-1].astimezone(timezone.utc)).total_seconds()
+    if latest_age > 60 or latest_age < -30:
         return False
     return all(
         0 < (later - earlier).total_seconds() <= 60
         for earlier, later in zip(timestamps, timestamps[1:])
+    )
+
+
+def _has_complete_probe_sets(verification: VerificationResult) -> bool:
+    groups = (
+        verification.allowed_probes,
+        verification.forbidden_probes,
+        verification.related_probes,
+    )
+    return all(
+        probes
+        and all(probe.passed and probe.name.strip() for probe in probes)
+        and len({probe.name for probe in probes}) == len(probes)
+        for probes in groups
     )
 
 

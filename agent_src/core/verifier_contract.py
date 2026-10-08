@@ -80,7 +80,7 @@ def _not_run_probe(probe_type: Literal["allowed", "forbidden", "related"], index
 
 
 class ContractProbeRunner:
-    """Runs contract probes against a deployed environment (or offline fixtures)."""
+    """Build offline contract verdicts; deployed probe execution is not implemented."""
 
     # ------------------------------------------------------------------
     # Offline / replay
