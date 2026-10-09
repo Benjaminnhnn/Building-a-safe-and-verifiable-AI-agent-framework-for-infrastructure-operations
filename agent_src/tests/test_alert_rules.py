@@ -2,6 +2,9 @@ from pathlib import Path
 
 
 ALERT_RULES = Path(__file__).resolve().parents[2] / "ansible" / "config" / "alert_rules.yml"
+MOODLE_ALERT_RULES = (
+    Path(__file__).resolve().parents[2] / "ansible" / "config" / "moodle_alert_rules.yml"
+)
 
 
 def test_frontend_api_proxy_alert_requires_direct_payment_api_to_be_healthy() -> None:
@@ -52,3 +55,14 @@ def test_docker_container_alerts_use_latest_cadvisor_series() -> None:
     assert len(docker_rules) == 5
     for rule in docker_rules:
         assert "max by (instance) (container_last_seen" in rule
+
+
+def test_moodle_web_missing_alert_uses_node_probe_even_when_cadvisor_series_disappears() -> None:
+    rules = MOODLE_ALERT_RULES.read_text(encoding="utf-8")
+    web_rule = rules.split("- alert: MoodleWebContainerMissing", 1)[1].split(
+        "- alert: MoodleNodeRdsTcpFailed", 1
+    )[0]
+
+    assert 'moodle_node_web_running{job="moodle_node"} == 0' in web_rule
+    assert "moodle_fault_scenario_active" in web_rule
+    assert "container_last_seen" not in web_rule

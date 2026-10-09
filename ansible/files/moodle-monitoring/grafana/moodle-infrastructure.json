@@ -65,8 +65,8 @@
       "gridPos": {"h": 5, "w": 4, "x": 16, "y": 0},
       "id": 5,
       "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
-      "targets": [{"editorMode": "code", "expr": "count(container_last_seen{job=\"moodle_cadvisor\",name=\"release-moodle-web-1\"})", "instant": true, "legendFormat": "Web containers", "range": false, "refId": "A"}],
-      "title": "Moodle Web Containers",
+      "targets": [{"editorMode": "code", "expr": "sum(moodle_node_web_running{job=\"moodle_node\"}) or vector(0)", "instant": true, "legendFormat": "Running web containers", "range": false, "refId": "A"}],
+      "title": "Running Moodle Web Containers",
       "type": "stat"
     },
     {
