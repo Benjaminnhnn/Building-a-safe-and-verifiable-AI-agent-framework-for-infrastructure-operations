@@ -58,8 +58,8 @@ jobs:
             automation/configure-moodle-safe-executor-api.sh \
             automation/moodle-safe-executor-drill.sh \
             automation/moodle-scenario-verify.sh
-          if bash automation/moodle-scenario-verify.sh DB-02 >/dev/null 2>&1; then
-            echo "offline-only scenario was unexpectedly accepted" >&2
+          if bash automation/moodle-scenario-verify.sh SEC-01 >/dev/null 2>&1; then
+            echo "HUMAN_ONLY scenario was unexpectedly accepted for live verification" >&2
             exit 1
           else
             status=$?
