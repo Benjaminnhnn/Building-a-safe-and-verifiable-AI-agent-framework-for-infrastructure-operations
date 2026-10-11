@@ -45,7 +45,14 @@ docker_command="${MOODLE_DOCKER_COMMAND:-docker}"
 docker_connect_host="127.0.0.1"
 tunnel_bind_host="127.0.0.1"
 docker_run_args=(run --rm --network host --env MOODLE_DB_PASSWORD)
-if [[ "$docker_command" == "docker.exe" ]] || ! docker info >/dev/null 2>&1; then
+# psql runs in a postgres container by default. Without a usable Docker CLI
+# (for example macOS without Docker Desktop), a local psql >= 15 is used
+# instead; it still connects only through the SSH tunnel with verify-full TLS.
+psql_mode="docker"
+if [[ "$docker_command" != "docker.exe" ]] && ! docker info >/dev/null 2>&1 &&
+  ! command -v docker.exe >/dev/null 2>&1 && command -v psql >/dev/null 2>&1; then
+  psql_mode="native"
+elif [[ "$docker_command" == "docker.exe" ]] || ! docker info >/dev/null 2>&1; then
   command -v docker.exe >/dev/null 2>&1 || {
     echo "Docker CLI is unavailable. Enable Docker Desktop WSL integration or install Docker in WSL." >&2
     exit 127
@@ -62,7 +69,7 @@ if [[ "$docker_command" == "docker.exe" ]] || ! docker info >/dev/null 2>&1; the
   docker_run_args=(run --rm --add-host="moodle-wsl-host:${docker_connect_host}" --env MOODLE_DB_PASSWORD)
 fi
 
-for required_command in aws curl jq openssl ss ssh terraform; do
+for required_command in aws curl jq openssl ssh terraform; do
   command -v "$required_command" >/dev/null 2>&1 || {
     echo "Required command not found: $required_command" >&2
     exit 127
@@ -76,9 +83,23 @@ for required_file in "$ssh_config_path" "$compose_source" "$db_password_file" "$
   }
 done
 
+# Linux has ss; macOS has lsof. Either answers "is this local port listening?".
+command -v ss >/dev/null 2>&1 || command -v lsof >/dev/null 2>&1 || {
+  echo "Required command not found: ss or lsof" >&2
+  exit 127
+}
+port_is_listening() {
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltn "sport = :$1" | grep -q LISTEN
+  else
+    lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+  fi
+}
+
 secret_file_is_private() {
   local path="$1" mode
-  mode="$(stat -c '%a' "$path")"
+  # GNU stat (-c) on Linux, BSD stat (-f) on macOS.
+  mode="$(stat -c '%a' "$path" 2>/dev/null || stat -f '%Lp' "$path")"
   if (( (8#$mode & 0077) != 0 )); then
     echo "Secret file must not be readable by group/other: $path (mode $mode)" >&2
     exit 77
@@ -141,7 +162,7 @@ master_password="$(jq -r '.password' <<<"$master_secret_json")"
   exit 65
 }
 
-if ss -ltn "sport = :$tunnel_port" | grep -q LISTEN; then
+if port_is_listening "$tunnel_port"; then
   echo "Local tunnel port $tunnel_port is already in use. Set MOODLE_RDS_TUNNEL_PORT." >&2
   exit 69
 fi
@@ -210,18 +231,25 @@ ssh -F "$ssh_config_path" -N \
   -L "${tunnel_bind_host}:${tunnel_port}:${db_endpoint}:${db_port}" moodle-app-a &
 ssh_pid=$!
 for _ in {1..25}; do
-  if ss -ltn "sport = :$tunnel_port" | grep -q LISTEN; then
+  if port_is_listening "$tunnel_port"; then
     break
   fi
   sleep 0.2
 done
-ss -ltn "sport = :$tunnel_port" | grep -q LISTEN || {
+port_is_listening "$tunnel_port" || {
   echo "SSH tunnel did not become ready." >&2
   exit 69
 }
 
 echo "Creating or rotating the least-privilege Moodle database role..."
-if [[ "$docker_command" == "docker.exe" ]]; then
+if [[ "$psql_mode" == "native" ]]; then
+  PGPASSFILE="$master_pgpass" psql \
+    "host=${db_endpoint} hostaddr=127.0.0.1 port=${tunnel_port} dbname=${db_name} user=${master_user} sslmode=verify-full sslrootcert=${ca_bundle_path}" \
+    -v ON_ERROR_STOP=1 \
+    -v app_user="$app_user" \
+    -v db_name="$db_name" \
+    -f "$work_dir/provision-role.sql"
+elif [[ "$docker_command" == "docker.exe" ]]; then
   $docker_command "${docker_run_args[@]}" --entrypoint sh \
     -v "$docker_work_dir:/run/moodle-stage:ro" \
     postgres:16.10-alpine \
@@ -252,7 +280,11 @@ printf '%s:%s:%s:%s:%s\n' "$db_endpoint" "$tunnel_port" "$db_name" "$app_user" "
 printf '%s:%s:%s:%s:%s\n' "127.0.0.1" "$tunnel_port" "$db_name" "$app_user" "$escaped_app_password" >> "$app_pgpass"
 unset app_password
 chmod 0600 "$app_pgpass"
-if [[ "$docker_command" == "docker.exe" ]]; then
+if [[ "$psql_mode" == "native" ]]; then
+  PGPASSFILE="$app_pgpass" psql \
+    "host=${db_endpoint} hostaddr=127.0.0.1 port=${tunnel_port} dbname=${db_name} user=${app_user} sslmode=verify-full sslrootcert=${ca_bundle_path}" \
+    -v ON_ERROR_STOP=1 -Atqc 'SELECT current_user' | grep -qx "$app_user"
+elif [[ "$docker_command" == "docker.exe" ]]; then
   $docker_command "${docker_run_args[@]}" --entrypoint sh \
     -v "$docker_work_dir:/run/moodle-stage:ro" \
     postgres:16.10-alpine \

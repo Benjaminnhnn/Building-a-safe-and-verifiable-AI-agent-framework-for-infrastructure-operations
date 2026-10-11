@@ -59,7 +59,7 @@ done
 [[ -f "$TF_VARS" ]] || die "tfvars file not found: $TF_VARS"
 [[ ! -L "$TF_VARS" ]] || die "Refusing to update a symbolic link: $TF_VARS"
 
-for required_command in awk chmod curl mktemp mv rm tr; do
+for required_command in awk chmod curl mktemp mv rm stat tr; do
     command -v "$required_command" >/dev/null 2>&1 ||
         die "Required command not found: $required_command"
 done
@@ -142,7 +142,9 @@ awk -v cidr="$new_cidr" '
     { print }
 ' "$TF_VARS" > "$temporary_file"
 
-chmod --reference="$TF_VARS" "$temporary_file"
+# GNU stat (-c) on Linux, BSD stat (-f) on macOS; chmod --reference is GNU-only.
+tf_vars_mode="$(stat -c '%a' "$TF_VARS" 2>/dev/null || stat -f '%Lp' "$TF_VARS")"
+chmod "$tf_vars_mode" "$temporary_file"
 mv -- "$temporary_file" "$TF_VARS"
 temporary_file=""
 
