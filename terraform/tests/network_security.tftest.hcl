@@ -51,8 +51,8 @@ run "network_and_security_contract" {
     error_message = "Data subnets must use isolated route tables without an Internet/NAT default route."
   }
   assert {
-    condition     = alltrue([for r in aws_security_group.monitor_sg.ingress : !contains(coalesce(r.cidr_blocks, []), "0.0.0.0/0") && !contains([9090, 9093, 8000, 18000, 19121], r.from_port)]) && alltrue([for r in concat(tolist(aws_security_group.web_sg.ingress), tolist(aws_security_group.core_sg.ingress)) : !contains(coalesce(r.cidr_blocks, []), "0.0.0.0/0")])
-    error_message = "Legacy hosts must not expose app/admin/monitoring services to the entire Internet."
+    condition     = alltrue([for r in aws_security_group.monitor_sg.ingress : !contains(coalesce(r.cidr_blocks, []), "0.0.0.0/0") && !contains([9090, 9093, 8000, 18000, 19121], r.from_port)])
+    error_message = "The monitor host must not expose app/admin/monitoring services to the entire Internet."
   }
   assert {
     condition     = aws_vpc_security_group_ingress_rule.alb_to_moodle.referenced_security_group_id == aws_security_group.alb_sg.id && aws_vpc_security_group_ingress_rule.alb_to_moodle.from_port == 8080 && aws_vpc_security_group_egress_rule.alb_to_moodle.referenced_security_group_id == aws_security_group.moodle_sg.id
@@ -67,8 +67,8 @@ run "network_and_security_contract" {
     error_message = "Moodle SSH and exporter ports must be reachable only from the monitor SG."
   }
   assert {
-    condition     = aws_instance.monitor.subnet_id == aws_subnet.public_a.id && aws_instance.web[0].subnet_id == aws_subnet.public_a.id && aws_instance.core[0].subnet_id == aws_subnet.public_a.id
-    error_message = "Network expansion must preserve legacy EC2 placement to avoid subnet-triggered replacement."
+    condition     = aws_instance.monitor.subnet_id == aws_subnet.public_a.id
+    error_message = "By default the monitor stays in public subnet A to avoid subnet-triggered replacement."
   }
 }
 

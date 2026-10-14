@@ -109,7 +109,6 @@ ai_engineer_monitor_ssh_cidr_blocks = [] # Optional; monitor SSH only.
 public_key_path               = "~/.ssh/moodle-aiops.pub"
 private_key_path              = "~/.ssh/moodle-aiops"
 ec2_ami_id                    = "ami-REPLACE_WITH_PINNED_AL2023_AMI"
-enable_legacy_demo            = false
 monitor_use_management_subnet = true
 
 monitor_instance_type         = "t3.small"

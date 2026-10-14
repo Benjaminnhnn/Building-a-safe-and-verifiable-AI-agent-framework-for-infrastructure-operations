@@ -27,7 +27,6 @@ variables {
   public_key_path               = "tests/fixtures/mock-public-key.txt"
   private_key_path              = "/unused/mock-private-key"
   moodle_allow_http             = true
-  enable_legacy_demo            = false
   monitor_use_management_subnet = true
   monitor_root_volume_size      = 30
 }
@@ -41,8 +40,8 @@ run "fresh_moodle_infrastructure" {
   }
 
   assert {
-    condition     = length(aws_instance.web) == 0 && length(aws_instance.core) == 0 && length(aws_eip.web) == 0 && length(aws_eip.core) == 0 && aws_instance.monitor.subnet_id == aws_subnet.management.id
-    error_message = "Fresh deployment must omit legacy EC2/EIPs and place monitor in management."
+    condition     = aws_instance.monitor.subnet_id == aws_subnet.management.id
+    error_message = "Fresh deployment must place the monitor in the management subnet."
   }
   assert {
     condition     = aws_instance.moodle_a.subnet_id == aws_subnet.app_a.id && aws_instance.moodle_b.subnet_id == aws_subnet.app_b.id && !aws_instance.moodle_a.associate_public_ip_address && !aws_instance.moodle_b.associate_public_ip_address && aws_instance.moodle_a.vpc_security_group_ids == toset([aws_security_group.moodle_sg.id]) && aws_instance.moodle_b.vpc_security_group_ids == toset([aws_security_group.moodle_sg.id])
