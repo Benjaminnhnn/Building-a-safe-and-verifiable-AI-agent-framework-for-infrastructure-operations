@@ -246,6 +246,11 @@ User `<ai-user>` → **Permissions → Add permissions → Create inline policy 
                  "iam:ResyncMFADevice", "iam:DeactivateMFADevice", "iam:DeleteVirtualMFADevice"],
       "Resource": ["arn:aws:iam::<ACCOUNT_ID>:user/${aws:username}",
                    "arn:aws:iam::<ACCOUNT_ID>:mfa/*"] },
+    { "Sid": "ManageOwnAccessKeysWithMFA", "Effect": "Allow",
+      "Action": ["iam:CreateAccessKey", "iam:ListAccessKeys", "iam:UpdateAccessKey",
+                 "iam:DeleteAccessKey", "iam:GetAccessKeyLastUsed"],
+      "Resource": "arn:aws:iam::<ACCOUNT_ID>:user/${aws:username}",
+      "Condition": { "Bool": { "aws:MultiFactorAuthPresent": "true" } } },
     { "Sid": "AssumeAIEngineerWithMFA", "Effect": "Allow",
       "Action": "sts:AssumeRole",
       "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/AIEngineer",
@@ -258,6 +263,7 @@ User `<ai-user>` → **Permissions → Add permissions → Create inline policy 
 |---|---|
 | `ViewOwnIdentity` | Xem thông tin của mình, danh sách thiết bị MFA, chính sách mật khẩu của account |
 | `ManageOwnPasswordAndMFA` | `${aws:username}` thay bằng **chính tên người đang đăng nhập**, nên user **chỉ quản lý được tài khoản của mình** |
+| `ManageOwnAccessKeysWithMFA` | Tự tạo, xoay vòng, xóa **access key của chính mình** (cho CLI/Terraform), chỉ khi phiên có MFA |
 | `AssumeAIEngineerWithMFA` | Chỉ được vào role `AIEngineer`, và chỉ khi **phiên đăng nhập có MFA** |
 
 ### 5.3. Tạo role `AIEngineer`
@@ -303,7 +309,7 @@ Lý do: lộ một kênh thì kẻ xấu vẫn thiếu mảnh còn lại. Mật 
 
 ### 5.6. (Tùy chọn) AI Engineer dùng AWS CLI hoặc Terraform
 
-1. AI Engineer tự tạo **access key** cho `<ai-user>` (use case CLI) và lưu trên máy của họ.
+1. AI Engineer đăng nhập Console **bằng user, có MFA, chưa Switch role** (nếu đang ở role thì **Switch back**: role không có quyền IAM). Vào **Security credentials → Access keys → Create access key** (use case CLI) và nhập ngay vào `aws configure`; không lưu CSV, không chụp màn hình. Quyền này đến từ statement `ManageOwnAccessKeysWithMFA` ở mục 5.2.
 2. Thêm profile:
 
 ```ini
