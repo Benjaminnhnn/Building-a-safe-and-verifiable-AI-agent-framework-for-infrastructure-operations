@@ -15,7 +15,9 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+from core.schema.verification import VerificationResult
 
 
 class IncidentState(str, Enum):
@@ -41,7 +43,7 @@ TRANSITIONS: dict[IncidentState, set[IncidentState]] = {
     IncidentState.GATED: {IncidentState.AWAITING_APPROVAL, IncidentState.EXECUTING, IncidentState.VERIFIED_DRY_RUN, IncidentState.ESCALATED, IncidentState.FAILED},
     IncidentState.AWAITING_APPROVAL: {IncidentState.EXECUTING, IncidentState.ESCALATED, IncidentState.FAILED},
     IncidentState.EXECUTING: {IncidentState.VERIFYING, IncidentState.FAILED, IncidentState.ESCALATED},
-    IncidentState.VERIFYING: {IncidentState.RESOLVED, IncidentState.FAILED, IncidentState.ESCALATED},
+    IncidentState.VERIFYING: {IncidentState.RESOLVED, IncidentState.VERIFIED_DRY_RUN, IncidentState.FAILED, IncidentState.ESCALATED},
     IncidentState.VERIFIED_DRY_RUN: set(),
     IncidentState.RESOLVED: set(),
     IncidentState.ESCALATED: set(),
@@ -81,6 +83,8 @@ class Evidence(Contract):
 
 
 class Incident(Contract):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     incident_id: str = Field(min_length=1)
     fingerprint: str = Field(min_length=1)
     environment: str = Field(min_length=1)
@@ -132,11 +136,76 @@ class AgentMessage(Contract):
 def transition(incident: Incident, new_state: IncidentState, *, actor: str) -> Incident:
     if actor == "verifier" and new_state != IncidentState.RESOLVED:
         raise ValueError("verifier authority is reserved for the RESOLVED transition")
-    if new_state == IncidentState.RESOLVED and actor != "verifier":
-        raise ValueError("only the independent verifier may set RESOLVED")
+    if new_state in {IncidentState.RESOLVED, IncidentState.VERIFIED_DRY_RUN}:
+        raise ValueError("verifier terminal states require resolve_verified with verifier evidence")
     if new_state not in TRANSITIONS[incident.state]:
         raise ValueError(f"invalid incident transition: {incident.state.value} -> {new_state.value}")
     return incident.model_copy(update={"state": new_state})
+
+
+def resolve_verified(incident: Incident, verification: VerificationResult) -> Incident:
+    """Resolve only from non-simulated, eligible verifier evidence for this incident."""
+    try:
+        verification = VerificationResult.model_validate(
+            verification.model_dump(mode="python", warnings=False)
+        )
+    except (ValidationError, TypeError, ValueError) as exc:
+        raise ValueError("verifier evidence failed schema validation") from exc
+    observations = verification.stability_observations
+    timestamps = [item.observed_at for item in observations]
+    latest_age = (
+        datetime.now(timezone.utc)
+        - observations[-1].observed_at.astimezone(timezone.utc)
+    ).total_seconds() if observations else float("inf")
+    stable_window = (
+        len(observations) >= 2
+        and timestamps == sorted(timestamps)
+        and all(item.healthy for item in observations)
+        and (observations[-1].observed_at - observations[0].observed_at).total_seconds() >= 120
+        and int((observations[-1].observed_at - observations[0].observed_at).total_seconds()) == verification.stability_seconds
+        and -30 <= latest_age <= 60
+        and all(
+            0 < (later.observed_at - earlier.observed_at).total_seconds() <= 60
+            for earlier, later in zip(observations, observations[1:])
+        )
+    )
+    probe_sets = (
+        verification.allowed_probes,
+        verification.forbidden_probes,
+        verification.related_probes,
+    )
+    complete_probe_sets = all(
+        probes
+        and all(probe.passed and probe.name.strip() for probe in probes)
+        and len({probe.name for probe in probes}) == len(probes)
+        for probes in probe_sets
+    )
+    if (
+        incident.state != IncidentState.VERIFYING
+        or verification.incident_id != incident.incident_id
+        or verification.verdict != "resolved"
+        or not verification.resolution_eligible
+        or not verification.health_passed
+        or not verification.communication_contract_passed
+        or not complete_probe_sets
+        or (not verification.simulated and any(
+            item.simulated
+            for item in (
+                *verification.stability_observations,
+                *verification.allowed_probes,
+                *verification.forbidden_probes,
+                *verification.related_probes,
+            )
+        ))
+        or not stable_window
+    ):
+        raise ValueError("verifier evidence is missing, ineligible, or failed")
+    final_state = (
+        IncidentState.VERIFIED_DRY_RUN
+        if verification.simulated
+        else IncidentState.RESOLVED
+    )
+    return incident.model_copy(update={"state": final_state})
 
 
 def _canonical(data: Any) -> str:
@@ -194,7 +263,7 @@ class SQLiteEvidenceStore:
             if value is not None:
                 clauses.append(f"{column} = ?")
                 params.append(value)
-        sql = "SELECT * FROM evidence" + (" WHERE " + " AND ".join(clauses) if clauses else "") + " ORDER BY observed_at, evidence_id LIMIT ?"
+        sql = "SELECT * FROM evidence" + (" WHERE " + " AND ".join(clauses) if clauses else "") + " ORDER BY observed_at, rowid LIMIT ?"
         params.append(max(1, min(limit, 1000)))
         with self._connect() as db:
             rows = db.execute(sql, params).fetchall()

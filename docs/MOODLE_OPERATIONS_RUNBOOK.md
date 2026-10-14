@@ -346,8 +346,20 @@ bash automation/configure-moodle-monitoring.sh \
 
 The wrapper derives the active Moodle ALB URL, RDS endpoint, generated
 inventory, and synthetic password from the local Terraform state/artifacts.
-It configures Alertmanager's internal webhook to the Agent. Do not use a
+It creates a 256-bit Alertmanager-to-Agent bearer token on the monitor host if
+one does not already exist, configures Alertmanager to read it from a
+credentials file, and mounts the same root-protected token read-only into
+Alertmanager and the Agent. The Agent requires this token before it queues any
+webhook event. Do not copy the token into inventory, CLI arguments, source
+control, or logs. To rotate it, coordinate a new token file with a redeploy of
+both services; changing only one side will stop alert delivery. Do not use a
 mutable image tag or build a production image directly on EC2.
+
+The playbook validates the generated Compose definition before starting the
+stack, then checks the running Alertmanager configuration with `amtool
+check-config`. The application-level bearer check is covered by local route
+tests; confirm Alertmanager delivery after an authorized rollout before
+claiming deployed authentication.
 
 If monitoring services or timers need to be restored after a manual stop:
 

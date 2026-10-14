@@ -74,9 +74,25 @@ def load_moodle_ground_truth(root: Path | None = None) -> dict[str, dict[str, An
     for path in sorted(scenario_root.glob("*.json")):
         scenario = _load_json(path)
         scenario_id = scenario.get("scenario_id")
-        if isinstance(scenario_id, str):
-            scenarios[scenario_id] = scenario
+        if not isinstance(scenario_id, str) or not scenario_id.strip():
+            raise MoodleContractError(f"scenario_id must be a non-empty string: {path}")
+        if path.stem != scenario_id:
+            raise MoodleContractError(
+                f"scenario_id {scenario_id} does not match filename {path.name}"
+            )
+        if scenario_id in scenarios:
+            raise MoodleContractError(f"duplicate scenario_id {scenario_id}: {path}")
+        scenarios[scenario_id] = scenario
     return scenarios
+
+
+def _string_set(value: Any, label: str, errors: list[str]) -> set[str]:
+    if not isinstance(value, list) or not value or any(
+        not isinstance(item, str) or not item.strip() for item in value
+    ):
+        errors.append(f"{label} must be a non-empty string list")
+        return set()
+    return set(value)
 
 
 def validate_moodle_capability_contract(
@@ -87,16 +103,31 @@ def validate_moodle_capability_contract(
 ) -> list[str]:
     """Return all contract errors rather than failing at the first mismatch."""
     errors: list[str] = []
+    if not isinstance(contract, dict):
+        return ["capability contract must be an object"]
+    if not isinstance(inventory, dict):
+        return ["resource inventory must be an object"]
+    if not isinstance(scenarios, dict):
+        return ["ground truth must be an object keyed by scenario ID"]
     if contract.get("schema_version") != "1.0":
         errors.append("contract schema_version must be 1.0")
     if contract.get("environment") != "staging":
         errors.append("contract is staging-only")
 
-    resource_ids = {
-        item.get("resource_id")
-        for item in inventory.get("resources", [])
-        if isinstance(item, dict) and isinstance(item.get("resource_id"), str)
-    }
+    resource_items = inventory.get("resources")
+    if not isinstance(resource_items, list):
+        errors.append("resource inventory resources must be a list")
+        resource_items = []
+    resource_ids: set[str] = set()
+    for index, item in enumerate(resource_items):
+        resource_id = item.get("resource_id") if isinstance(item, dict) else None
+        if not isinstance(resource_id, str) or not resource_id.strip():
+            errors.append(f"resource inventory item {index} requires a non-empty resource_id")
+            continue
+        resource_id = resource_id.strip()
+        if resource_id in resource_ids:
+            errors.append(f"duplicate resource_id: {resource_id}")
+        resource_ids.add(resource_id)
     if not resource_ids:
         errors.append("resource inventory is empty")
 
@@ -104,14 +135,17 @@ def validate_moodle_capability_contract(
     if not isinstance(evidence, dict):
         errors.append("evidence_contract is missing")
     else:
-        fields = set(evidence.get("required_fields", []))
+        fields = _string_set(evidence.get("required_fields"), "evidence_contract.required_fields", errors)
         missing = sorted(REQUIRED_EVIDENCE_FIELDS - fields)
         if missing:
             errors.append(f"evidence_contract missing required fields: {missing}")
         sources = evidence.get("allowed_sources", [])
-        if not isinstance(sources, list) or not sources:
-            errors.append("evidence_contract must define allowed_sources")
-        forbidden_metadata = set(evidence.get("prohibited_metadata_keys", []))
+        _string_set(sources, "evidence_contract.allowed_sources", errors)
+        forbidden_metadata = _string_set(
+            evidence.get("prohibited_metadata_keys"),
+            "evidence_contract.prohibited_metadata_keys",
+            errors,
+        )
         if not {"password", "secret", "token", "private_key"}.issubset(forbidden_metadata):
             errors.append("evidence_contract must prohibit credential metadata")
 
@@ -121,16 +155,23 @@ def validate_moodle_capability_contract(
         capabilities = []
     capability_ids: set[str] = set()
     for item in capabilities:
-        if not isinstance(item, dict) or not isinstance(item.get("capability_id"), str):
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get("capability_id"), str)
+            or not item["capability_id"].strip()
+        ):
             errors.append("capability is missing capability_id")
             continue
-        capability_id = item["capability_id"]
+        capability_id = item["capability_id"].strip()
         if capability_id in capability_ids:
             errors.append(f"duplicate capability_id: {capability_id}")
         capability_ids.add(capability_id)
-        if item.get("access") not in {"read", "scoped_write"}:
+        if not isinstance(item.get("access"), str) or item["access"] not in {"read", "scoped_write"}:
             errors.append(f"capability {capability_id} has invalid access")
-        unknown = sorted(set(item.get("resource_ids", [])) - resource_ids)
+        capability_resources = _string_set(
+            item.get("resource_ids"), f"capability {capability_id} resource_ids", errors
+        )
+        unknown = sorted(capability_resources - resource_ids)
         if unknown:
             errors.append(f"capability {capability_id} references unknown resources: {unknown}")
 
@@ -139,13 +180,15 @@ def validate_moodle_capability_contract(
         errors.append("target_scopes must be an object")
         scopes = {}
     for scope, definition in scopes.items():
+        if not isinstance(scope, str) or not scope.strip():
+            errors.append("target scope names must be non-empty strings")
         if not isinstance(definition, dict):
             errors.append(f"target scope {scope} must be an object")
             continue
-        scoped_resources = definition.get("resource_ids", [])
-        if not scoped_resources:
-            errors.append(f"target scope {scope} has no resources")
-        unknown = sorted(set(scoped_resources) - resource_ids)
+        scoped_resources = _string_set(
+            definition.get("resource_ids"), f"target scope {scope} resource_ids", errors
+        )
+        unknown = sorted(scoped_resources - resource_ids)
         if unknown:
             errors.append(f"target scope {scope} references unknown resources: {unknown}")
 
@@ -163,10 +206,91 @@ def validate_moodle_capability_contract(
 
     action_catalog = catalog or ActionCatalog.load_moodle_catalog()
     for scenario_id, scenario in scenarios.items():
+        if not isinstance(scenario, dict):
+            errors.append(f"scenario {scenario_id} must be an object")
+            continue
+        if scenario.get("scenario_id") != scenario_id:
+            errors.append(f"scenario mapping key does not match scenario_id: {scenario_id}")
+        for field in ("scenario_name", "description"):
+            if not isinstance(scenario.get(field), str) or not scenario[field].strip():
+                errors.append(f"scenario {scenario_id} requires non-empty {field}")
+        for field in ("initial_state", "fault_trigger", "expected_root_cause", "expected_impact", "rollback_plan"):
+            if not isinstance(scenario.get(field), dict) or not scenario[field]:
+                errors.append(f"scenario {scenario_id} requires non-empty {field} object")
+        initial_state = scenario.get("initial_state")
+        if (
+            not isinstance(initial_state, dict)
+            or initial_state.get("environment") != "staging"
+        ):
+            errors.append(f"scenario {scenario_id} initial_state environment must be staging")
+        fault_trigger = scenario.get("fault_trigger")
+        if not isinstance(fault_trigger, dict) or any(
+            not isinstance(fault_trigger.get(field), str) or not fault_trigger[field].strip()
+            for field in ("type", "target")
+        ):
+            errors.append(f"scenario {scenario_id} fault_trigger requires type and target")
+        root_cause = scenario.get("expected_root_cause")
+        if not isinstance(root_cause, dict):
+            root_cause = {}
+        for field in ("category", "service", "component"):
+            if not isinstance(root_cause.get(field), str) or not root_cause[field].strip():
+                errors.append(f"scenario {scenario_id} expected_root_cause requires {field}")
+        expected_impact = scenario.get("expected_impact")
+        impact_services = expected_impact.get("services") if isinstance(expected_impact, dict) else None
+        if not isinstance(impact_services, list) or not impact_services or any(
+            not isinstance(item, str) or not item.strip() for item in impact_services
+        ):
+            errors.append(f"scenario {scenario_id} expected_impact.services must be non-empty strings")
+        rollback = scenario.get("rollback_plan")
+        if not isinstance(rollback, dict):
+            rollback = {}
+        if not isinstance(rollback.get("action"), str) or not rollback["action"].strip():
+            errors.append(f"scenario {scenario_id} rollback_plan requires an action")
+        if not isinstance(rollback.get("idempotent"), bool):
+            errors.append(f"scenario {scenario_id} rollback_plan requires a boolean idempotent field")
+        for field in ("observed_signals", "causal_order", "recovery_criteria", "forbidden_actions"):
+            values = scenario.get(field)
+            if not isinstance(values, list) or not values or any(
+                not isinstance(item, str) or not item.strip() for item in values
+            ):
+                errors.append(f"scenario {scenario_id} {field} must be a non-empty string list")
+        remediation = scenario.get("allowed_remediation")
+        if not isinstance(remediation, list) or not remediation or any(
+            not isinstance(item, dict)
+            or not isinstance(item.get("action"), str) or not item["action"].strip()
+            or not isinstance(item.get("target"), str) or not item["target"].strip()
+            for item in remediation
+        ):
+            errors.append(f"scenario {scenario_id} allowed_remediation requires action and target")
+        communication = scenario.get("communication_contract")
+        if not isinstance(communication, dict):
+            errors.append(f"scenario {scenario_id} communication_contract must be an object")
+        else:
+            for field in ("allowed", "forbidden", "related"):
+                values = communication.get(field)
+                if not isinstance(values, list) or not values or any(
+                    not isinstance(item, str) or not item.strip() for item in values
+                ):
+                    errors.append(
+                        f"scenario {scenario_id} communication_contract.{field} must be a non-empty string list"
+                    )
+            allowed = communication.get("allowed", [])
+            forbidden = communication.get("forbidden", [])
+            if (
+                isinstance(allowed, list)
+                and isinstance(forbidden, list)
+                and all(isinstance(item, str) for item in allowed + forbidden)
+            ):
+                overlap = set(allowed) & set(forbidden)
+                if overlap:
+                    errors.append(
+                        f"scenario {scenario_id} communication contract overlaps: {sorted(overlap)}"
+                    )
         required = scenario_capabilities.get(scenario_id, [])
-        if not required:
-            errors.append(f"scenario {scenario_id} has no declared capabilities")
-        unknown_capabilities = sorted(set(required) - capability_ids)
+        required_ids = _string_set(
+            required, f"scenario {scenario_id} capabilities", errors
+        )
+        unknown_capabilities = sorted(required_ids - capability_ids)
         if unknown_capabilities:
             errors.append(f"scenario {scenario_id} has unknown capabilities: {unknown_capabilities}")
         for remediation in scenario.get("allowed_remediation", []):

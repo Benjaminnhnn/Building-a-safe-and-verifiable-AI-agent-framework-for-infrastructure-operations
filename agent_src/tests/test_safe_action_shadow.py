@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from core.action_catalog import ActionCatalog, ActionPermission, CatalogEntry
 from core.adapters import (
     SafeActionRequest, SafeAnsibleDryRunAdapter, SafeDockerDryRunAdapter,
     SafeNetworkDryRunAdapter, SafeProbeDryRunAdapter,
@@ -23,8 +24,32 @@ _SCENARIOS = [
 
 def _workflow(tmp_path):
     audit = SafeActionAuditStore(tmp_path / "audit.db")
+    rollback_catalog = ActionCatalog([
+        CatalogEntry(
+            action_id="restore_scoped_db_reject",
+            description="Test-only inverse entry for shadow gate-flow coverage.",
+            adapter="docker",
+            permission=ActionPermission(required_role="executor", environment_scope=["staging"]),
+            blast_radius="LOW",
+            is_reversible=True,
+            rollback_action="remove_scoped_db_reject",
+            idempotent=True,
+        ),
+        CatalogEntry(
+            action_id="stop_reviewed_compose_service",
+            description="Test-only inverse entry for shadow gate-flow coverage.",
+            adapter="docker",
+            permission=ActionPermission(required_role="executor", environment_scope=["staging"]),
+            blast_radius="LOW",
+            is_reversible=True,
+            rollback_action="start_reviewed_compose_service",
+            idempotent=True,
+        ),
+    ])
     return audit, SafeActionShadowWorkflow(
-        gate=SafeExecutionGate(approval_signing_key="key", approved_actors={"alice"}),
+        gate=SafeExecutionGate(
+            approval_signing_key="key", approved_actors={"alice"}, rollback_catalog=rollback_catalog
+        ),
         audit=audit,
         adapters={"docker": SafeDockerDryRunAdapter(), "network": SafeNetworkDryRunAdapter(),
                   "ansible": SafeAnsibleDryRunAdapter(), "probe": SafeProbeDryRunAdapter()},
@@ -44,9 +69,17 @@ def _request(scenario: str, action_id: str, target: str) -> SafeActionRequest:
         scenario_id=scenario, target_scope=target,
         action=TypedAction(
             action_id=f"act-{scenario}", incident_id=f"inc-{scenario}", action_type=action_type,
-            target_resource_id="moodle-app", environment=Environment.STAGING, reason="three evidence records",
+            target_resource_id=("moodledata-volume" if action_id == "restore_fixture_directory_mode" else "moodle-app"),
+            environment=Environment.STAGING, reason="three evidence records",
             evidence_refs=["ev-1", "ev-2", "ev-3"], expected_outcome="recovered", reversible=True,
-            rollback_plan=RollbackPlan(available=True),
+            rollback_plan=RollbackPlan(
+                available=True,
+                rollback_action_id={
+                    "remove_scoped_db_reject": "restore_scoped_db_reject",
+                    "start_reviewed_compose_service": "stop_reviewed_compose_service",
+                }.get(action_id),
+                method="Restore the prior fixture state.",
+            ),
         ),
     )
 
@@ -57,10 +90,15 @@ def test_shadow_workflow_replays_all_reviewed_remediations_without_mutation(tmp_
     try:
         report = workflow.run(_request(scenario, action_id, target), actor_role="executor", confidence=0.9,
                               pre_snapshot={"status": "fault_present", "token": "redact"})
-        assert report["status"] == ("awaiting_approval" if scenario == "NET-01" else "shadow_complete")
+        denied_for_missing_rollback = action_id in {
+            "remove_named_cpu_load_container",
+            "recreate_moodle_web_from_reviewed_compose",
+            "restore_fixture_directory_mode",
+        }
+        assert report["status"] == ("denied" if denied_for_missing_rollback else "shadow_complete")
         assert report["execution_permitted"] is False and report["mutated"] is False
-        if scenario == "NET-01":
-            assert report["gate"]["approval_required"] is True
+        if denied_for_missing_rollback:
+            assert "catalogued reversible rollback plan" in report["gate"]["reason"]
         else:
             assert report["adapter"] == adapter and report["result"]["executed"] is False
         assert audit.verify_chain(f"inc-{scenario}") is True

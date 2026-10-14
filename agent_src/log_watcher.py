@@ -3,7 +3,7 @@ import time
 import requests
 import json
 import socket
-from datetime import datetime
+from datetime import datetime, timezone
 
 # --- CẤU HÌNH ---
 # Danh sách các file log cần giám sát.
@@ -38,7 +38,7 @@ HOSTNAME = socket.gethostname()
 def send_alert_to_ai_agent(log_line, file_path):
     """Gửi nội dung log lỗi sang AI Agent dưới định dạng Alertmanager Payload"""
     
-    timestamp = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     
     payload = {
         "receiver": "log-watcher",

@@ -1,0 +1,32 @@
+groups:
+  - name: moodle-auth-lab
+    rules:
+      - alert: AuthLabOpenLdapUnavailable
+        expr: probe_success{job="openldap_ldaps"} == 0
+        for: 20s
+        labels:
+          severity: critical
+          service: openldap
+          scenario: AUTH-01
+        annotations:
+          summary: Local OpenLDAP LDAPS endpoint is unavailable
+          description: The independent TCP/TLS endpoint probe cannot connect to openldap:636 in the isolated auth lab.
+      - alert: AuthLabMoodleHealthFailed
+        expr: probe_success{job="moodle"} == 0
+        for: 20s
+        labels:
+          severity: warning
+          service: moodle
+        annotations:
+          summary: Local Moodle health endpoint failed
+          description: Moodle health failed; this does not establish whether LDAP user login works.
+      - alert: AuthLabSyntheticLdapLoginFailed
+        expr: auth_lab_valid_login_success == 0
+        for: 20s
+        labels:
+          severity: critical
+          service: moodle-auth
+          scenario: AUTH-01
+        annotations:
+          summary: Synthetic LDAP-backed Moodle login failed
+          description: The dedicated local test account cannot complete Moodle authentication; check the independent LDAPS and Moodle probes before assigning cause.

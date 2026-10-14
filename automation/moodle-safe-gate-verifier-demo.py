@@ -39,21 +39,21 @@ def main() -> int:
     # Synthetic incident and evidence IDs: no production alert or evidence is read.
     incident_id = "offline-demo-db01"
     action = TypedAction(
-        action_id="offline-demo-action-db01",
+        action_id="offline-demo-probe-db01",
         incident_id=incident_id,
-        action_type=ActionType.REMOVE_SCOPED_PORT_BLOCK,
-        target_resource_id="moodle-staging-db-path",
+        action_type=ActionType.READ_HEALTH,
+        target_resource_id="postgres-db",
         environment=Environment.STAGING,
-        reason="Offline fixture: reviewed DB-01 action candidate",
+        reason="Offline fixture: reviewed DB-01 database-connectivity probe",
         evidence_refs=["fixture:prometheus", "fixture:db-probe", "fixture:network-rule"],
-        expected_outcome="staging Moodle DB connectivity restored",
+        expected_outcome="staging Moodle-to-database TLS connectivity is healthy",
         reversible=True,
-        rollback_plan=RollbackPlan(available=True, method="fixture-only"),
+        rollback_plan=RollbackPlan(available=False),
     )
     request = SafeActionRequest(
         request_id="offline-demo-request-db01",
         idempotency_key="offline-demo-idem-db01",
-        catalog_action_id="remove_scoped_db_reject",
+        catalog_action_id="verify_tls_database_connection",
         scenario_id="DB-01",
         target_scope="staging_moodle_nodes",
         action=action,
@@ -68,7 +68,7 @@ def main() -> int:
         approved_actors={"demo-human-operator"},
     )
     awaiting_approval = gate.evaluate(
-        request, actor_role="executor", confidence=0.72
+        request, actor_role="verifier", confidence=0.72
     )
     approval = ApprovalRecord.create(
         action_sha256=gate.action_hash(request),
@@ -78,7 +78,7 @@ def main() -> int:
     )
     after_approval = gate.evaluate(
         request,
-        actor_role="executor",
+        actor_role="verifier",
         confidence=0.72,
         approval=approval,
     )
@@ -145,6 +145,7 @@ def main() -> int:
         "proposal": {
             "source": "fixed demonstration fixture; not an Agent/Gemini proposal",
             "candidate_action": request.catalog_action_id,
+            "candidate_role": "verifier",
             "scenario_id": request.scenario_id,
             "evidence_refs": action.evidence_refs,
         },

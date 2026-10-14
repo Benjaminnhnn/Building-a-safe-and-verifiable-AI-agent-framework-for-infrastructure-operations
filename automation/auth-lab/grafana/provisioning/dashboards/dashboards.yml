@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: Local Moodle AIOps
+    orgId: 1
+    folder: Moodle AIOps
+    type: file
+    disableDeletion: true
+    editable: false
+    options:
+      path: /var/lib/grafana/dashboards

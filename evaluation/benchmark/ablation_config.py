@@ -4,14 +4,21 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
-# Default ablation scenario set (representative subset of Moodle scenarios)
+# Default ablation scenario set (representative subset with enough independent
+# clusters for the planned exact sign test and three-comparison Holm family).
 # ---------------------------------------------------------------------------
 
-DEFAULT_ABLATION_SCENARIOS: list[str] = ["DB-01", "RES-01", "NET-01", "CON-01", "SEC-02"]
+DEFAULT_ABLATION_SCENARIOS: list[str] = [
+    "DB-01", "DB-02", "DB-03",
+    "RES-01", "RES-02",
+    "NET-01", "NET-02",
+    "CON-01", "CON-02",
+    "SEC-02",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -45,8 +52,20 @@ class AblationConfig(BaseModel):
     counterfactual_only: bool = True
     """For NO_VERIFIER: record what health-only verdict would be, but do not
     change the canonical RESOLVED authority."""
-    scenarios: list[str]
-    min_repetitions: int = 5
+    scenarios: list[str] = Field(min_length=1)
+    min_repetitions: int = Field(default=5, ge=5)
+
+    @model_validator(mode="after")
+    def enforce_counterfactual_safety(self) -> "AblationConfig":
+        if self.mode != AblationMode.NONE and (
+            not self.shadow_only or not self.counterfactual_only
+        ):
+            raise ValueError("ablations must remain shadow-only and counterfactual-only")
+        if any(not scenario.strip() for scenario in self.scenarios):
+            raise ValueError("ablation scenario IDs must be nonblank")
+        if len(set(self.scenarios)) != len(self.scenarios):
+            raise ValueError("ablation scenario IDs must be unique")
+        return self
 
 
 # ---------------------------------------------------------------------------

@@ -62,6 +62,43 @@ def test_moodle_ground_truth_v2_matches_scenario_schema() -> None:
         assert scenario.rollback_plan["available"] is True
 
 
+def test_scenario_ground_truth_rejects_duplicate_or_blank_observed_signals() -> None:
+    source = json.loads(Path("evaluation/ground_truth/moodle/DB-02.json").read_text(encoding="utf-8"))
+    source["observed_signals"] = ["same", "same"]
+    with pytest.raises(ValidationError, match="observed_signals must be unique"):
+        ScenarioGroundTruth(**source)
+    source["observed_signals"] = [" "]
+    with pytest.raises(ValidationError, match="observed_signals must not contain blank values"):
+        ScenarioGroundTruth(**source)
+
+
+def test_verifier_contract_booleans_reject_integer_coercion() -> None:
+    from datetime import datetime, timezone
+    from core.schema.verification import ProbeResult, StabilityObservation, VerificationResult
+
+    with pytest.raises(ValidationError):
+        ProbeResult(name="probe", passed=1, details="invalid coercion")
+    with pytest.raises(ValidationError):
+        StabilityObservation(observed_at=datetime.now(timezone.utc), healthy=1)
+    with pytest.raises(ValidationError):
+        VerificationResult(
+            verification_id="verify-1",
+            incident_id="incident-1",
+            health_passed=1,
+            communication_contract_passed=True,
+            stability_seconds=0,
+            verdict="not_resolved",
+        )
+    with pytest.raises(ValidationError):
+        VerificationResult(
+            verification_id="verify-1",
+            incident_id="incident-1",
+            health_passed=True,
+            communication_contract_passed=True,
+            stability_seconds=True,
+            verdict="not_resolved",
+        )
+
 def test_core_schema_accepts_valid_minimal_pipeline_objects() -> None:
     evidence = Evidence(
         evidence_id="ev-db-01-prometheus-up",
@@ -122,6 +159,7 @@ def test_core_schema_accepts_valid_minimal_pipeline_objects() -> None:
     safety = SafetyDecision(
         decision_id="gate-act-db-01",
         action_id=action.action_id,
+        action_hash=action.action_hash,
         incident_id=incident.incident_id,
         decision="allow",
         reasons=["staging environment", "single reversible target"],
@@ -156,7 +194,71 @@ def test_action_without_evidence_is_rejected() -> None:
             evidence_refs=[],
             expected_outcome="Should not be accepted.",
             reversible=True,
-            rollback_plan=RollbackPlan(available=True),
+            rollback_plan=RollbackPlan(available=True, method="Restore the prior service state."),
+        )
+
+
+def test_typed_action_and_rollback_plan_reject_unknown_fields() -> None:
+    action = TypedAction(
+        action_id="act-strict",
+        incident_id="inc-strict",
+        action_type=ActionType.START_CONTAINER,
+        target_resource_id="postgres-db",
+        environment=Environment.STAGING,
+        reason="Evidence-backed test action.",
+        evidence_refs=["ev-strict"],
+        expected_outcome="Service probe succeeds.",
+        reversible=True,
+        rollback_plan=RollbackPlan(available=True, method="Stop the started container."),
+    )
+    action_payload = action.model_dump()
+    action_payload["unreviewed_executor"] = "shell"
+    with pytest.raises(ValidationError):
+        TypedAction.model_validate(action_payload)
+
+    rollback_payload = action.model_dump()
+    rollback_payload["rollback_plan"]["unreviewed_command"] = "rm -rf /data"
+    with pytest.raises(ValidationError):
+        TypedAction.model_validate(rollback_payload)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("available", "false"),
+        ("available", 1),
+        ("expected_duration_seconds", True),
+        ("expected_duration_seconds", 0),
+        ("expected_duration_seconds", -1),
+    ],
+)
+def test_rollback_plan_rejects_coerced_or_impossible_values(field: str, value: object) -> None:
+    payload = {"available": True, "method": "Restore the pre-action service state."}
+    payload[field] = value
+    with pytest.raises(ValidationError):
+        RollbackPlan(**payload)
+
+
+def test_available_rollback_plan_requires_a_nonblank_method() -> None:
+    for method in (None, "", "   "):
+        with pytest.raises(ValidationError, match="nonblank method"):
+            RollbackPlan(available=True, method=method)
+
+
+@pytest.mark.parametrize("value", ["false", 0, 1])
+def test_action_safety_flags_require_boolean_values(value: object) -> None:
+    with pytest.raises(ValidationError):
+        TypedAction(
+            action_id="act-strict-flag",
+            incident_id="inc-strict-flag",
+            action_type=ActionType.READ_HEALTH,
+            target_resource_id="moodle-app",
+            environment=Environment.STAGING,
+            reason="Read-only probe proposal.",
+            evidence_refs=["ev-strict-flag"],
+            expected_outcome="Collect health evidence.",
+            reversible=value,
+            rollback_plan=RollbackPlan(available=False),
         )
 
 

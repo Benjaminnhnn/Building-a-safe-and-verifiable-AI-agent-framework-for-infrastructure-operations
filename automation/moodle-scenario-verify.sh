@@ -96,7 +96,7 @@ check_scenario_alert_resolved() {
   fi
   remote monitor-ai-01 "
     curl --fail --silent --get \
-      --data-urlencode 'query=ALERTS{alertname=\"$alert_name\",alertstate=\"firing\",scenario_id=\"$scenario\"}' \
+      --data-urlencode 'query=ALERTS{alertname=\"$alert_name\",alertstate=\"firing\"}' \
       http://127.0.0.1:9090/api/v1/query | jq -e '.data.result | length == 0' >/dev/null
   "
 }
@@ -113,7 +113,7 @@ check_two_healthy_alb_targets() {
 record_check common_synthetic_transaction \
   'Prometheus has a successful authenticated Moodle transaction newer than 180 seconds' \
   "$(if check_prometheus_synthetic; then printf passed; else printf failed; fi)"
-alert_resolution_description="$alert_name is not firing with scenario_id=$scenario"
+alert_resolution_description="$alert_name is not firing"
 [[ "$scenario" != CON-02 && "$scenario" != CON-03 && "$scenario" != NET-02 && "$scenario" != NET-03 && "$scenario" != DB-03 && "$scenario" != SEC-03 && "$scenario" != RES-02 && "$scenario" != RES-03 ]] || alert_resolution_description="$alert_name is not firing on moodle-app-b"
 [[ "$scenario" != DB-02 ]] || alert_resolution_description="$alert_name is not firing on monitor-ai-01"
 record_check scenario_alert_resolved \

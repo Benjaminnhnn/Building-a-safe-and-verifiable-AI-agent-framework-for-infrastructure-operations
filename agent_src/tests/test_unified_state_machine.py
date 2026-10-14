@@ -42,6 +42,18 @@ def _incident() -> Incident:
     )
 
 
+def _advance_to_verifying(incident: Incident) -> None:
+    machine = IncidentStateMachine()
+    for state in (
+        IncidentStatus.TRIAGED,
+        IncidentStatus.PLANNED,
+        IncidentStatus.GATED,
+        IncidentStatus.EXECUTED,
+        IncidentStatus.VERIFYING,
+    ):
+        machine.transition(incident, state, actor="test", reason="setup")
+
+
 def _evidence(incident_id: str = "inc-db-01") -> Evidence:
     return Evidence(
         evidence_id="ev-db-01",
@@ -88,20 +100,21 @@ def _verification(incident_id: str = "inc-db-01", **overrides: object) -> Verifi
         "health_passed": True,
         "communication_contract_passed": True,
         "stability_seconds": 120,
-        "allowed_probes": [ProbeResult(name="moodle", passed=True, details="ok")],
-        "forbidden_probes": [ProbeResult(name="public_db", passed=True, details="blocked")],
-        "related_probes": [ProbeResult(name="monitoring", passed=True, details="ok")],
+        "allowed_probes": [ProbeResult(name="moodle", passed=True, simulated=False, details="ok")],
+        "forbidden_probes": [ProbeResult(name="public_db", passed=True, simulated=False, details="blocked")],
+        "related_probes": [ProbeResult(name="monitoring", passed=True, simulated=False, details="ok")],
         "stability_observations": [
             StabilityObservation(
-                observed_at=checked_at - timedelta(seconds=120), healthy=True
+                observed_at=checked_at - timedelta(seconds=120), healthy=True, simulated=False
             ),
             StabilityObservation(
-                observed_at=checked_at - timedelta(seconds=60), healthy=True
+                observed_at=checked_at - timedelta(seconds=60), healthy=True, simulated=False
             ),
-            StabilityObservation(observed_at=checked_at, healthy=True),
+            StabilityObservation(observed_at=checked_at, healthy=True, simulated=False),
         ],
         "verdict": "resolved",
         "resolution_eligible": True,
+        "simulated": False,
     }
     values.update(overrides)
     return VerificationResult(**values)
@@ -152,10 +165,23 @@ def test_full_valid_transition_path_requires_independent_verifier() -> None:
 )
 def test_invalid_transitions_are_rejected(current: IncidentStatus, requested: IncidentStatus) -> None:
     incident = _incident()
-    incident.status = current
+    machine = IncidentStateMachine()
+    if current == IncidentStatus.RESOLVED:
+        _advance_to_verifying(incident)
+        machine.resolve_verified(incident, _verification(), reason="setup")
+    elif current == IncidentStatus.FAILED:
+        machine.transition(incident, current, actor="test", reason="setup")
+    elif current != IncidentStatus.OPEN:
+        path = {
+            IncidentStatus.TRIAGED: [IncidentStatus.TRIAGED],
+            IncidentStatus.PLANNED: [IncidentStatus.TRIAGED, IncidentStatus.PLANNED],
+            IncidentStatus.GATED: [IncidentStatus.TRIAGED, IncidentStatus.PLANNED, IncidentStatus.GATED],
+        }[current]
+        for state in path:
+            machine.transition(incident, state, actor="test", reason="setup")
 
     with pytest.raises(StateTransitionError) as exc_info:
-        IncidentStateMachine().transition(incident, requested, actor="planner", reason="invalid")
+        machine.transition(incident, requested, actor="planner", reason="invalid")
 
     assert exc_info.value.current_state == current
     assert exc_info.value.requested_state == requested
@@ -168,7 +194,7 @@ def test_invalid_transitions_are_rejected(current: IncidentStatus, requested: In
 @pytest.mark.parametrize("actor", ["planner", "executor", "orchestrator", "independent_verifier"])
 def test_only_verifier_can_resolve(actor: str) -> None:
     incident = _incident()
-    incident.status = IncidentStatus.VERIFYING
+    _advance_to_verifying(incident)
     with pytest.raises(StateTransitionError, match="resolve_verified"):
         IncidentStateMachine().transition(
             incident,
@@ -189,6 +215,22 @@ def test_only_verifier_can_resolve(actor: str) -> None:
         _verification(
             stability_observations=[
                 StabilityObservation(
+                    observed_at=datetime.now(timezone.utc) - timedelta(seconds=300),
+                    healthy=True,
+                ),
+                StabilityObservation(
+                    observed_at=datetime.now(timezone.utc) - timedelta(seconds=240),
+                    healthy=True,
+                ),
+                StabilityObservation(
+                    observed_at=datetime.now(timezone.utc) - timedelta(seconds=180),
+                    healthy=True,
+                ),
+            ]
+        ),
+        _verification(
+            stability_observations=[
+                StabilityObservation(
                     observed_at=datetime.now(timezone.utc) - timedelta(seconds=120),
                     healthy=True,
                 ),
@@ -196,6 +238,20 @@ def test_only_verifier_can_resolve(actor: str) -> None:
             ]
         ),
         _verification(allowed_probes=[ProbeResult(name="moodle", passed=False, details="down")]),
+        _verification(forbidden_probes=[]),
+        _verification(related_probes=[]),
+        _verification(related_probes=[
+            ProbeResult(name="monitoring", passed=True, simulated=False, details="ok"),
+            ProbeResult(name="monitoring", passed=True, simulated=False, details="duplicate"),
+        ]),
+        _verification(allowed_probes=[ProbeResult(name="moodle", passed=True, simulated=True, details="fixture")]),
+        _verification(stability_observations=[StabilityObservation(
+            observed_at=datetime.now(timezone.utc) - timedelta(seconds=120),
+            healthy=True,
+            simulated=True,
+        ), StabilityObservation(
+            observed_at=datetime.now(timezone.utc), healthy=True, simulated=False
+        )]),
         _verification(incident_id="another-incident"),
     ],
 )
@@ -203,11 +259,46 @@ def test_resolution_requires_eligible_matching_verifier_evidence(
     verification: VerificationResult,
 ) -> None:
     incident = _incident()
-    incident.status = IncidentStatus.VERIFYING
+    _advance_to_verifying(incident)
     with pytest.raises(StateTransitionError):
         IncidentStateMachine().resolve_verified(
             incident, verification, reason="must fail closed"
         )
+
+
+def test_simulated_verifier_result_ends_as_verified_dry_run_not_resolved() -> None:
+    incident = _incident()
+    _advance_to_verifying(incident)
+
+    IncidentStateMachine().resolve_verified(
+        incident,
+        _verification(simulated=True),
+        reason="fixture replay passed",
+    )
+
+    assert incident.status == IncidentStatus.VERIFIED_DRY_RUN
+    assert incident.resolved_by_verifier is False
+
+
+def test_resolution_revalidates_verifier_model_copy_before_transition() -> None:
+    incident = _incident()
+    _advance_to_verifying(incident)
+    bypassed = _verification().model_copy(update={"health_passed": 1})
+
+    with pytest.raises(StateTransitionError, match="schema validation"):
+        IncidentStateMachine().resolve_verified(
+            incident, bypassed, reason="copy bypass must be rejected"
+        )
+
+    assert incident.status == IncidentStatus.VERIFYING
+
+
+@pytest.mark.parametrize("requested_state", list(IncidentStatus))
+def test_state_cannot_be_assigned_without_state_machine(requested_state) -> None:
+    incident = _incident()
+
+    with pytest.raises(ValueError, match="through IncidentStateMachine"):
+        incident.status = requested_state
 
 
 def test_gate_decision_updates_action_lifecycle_without_incident_transition() -> None:

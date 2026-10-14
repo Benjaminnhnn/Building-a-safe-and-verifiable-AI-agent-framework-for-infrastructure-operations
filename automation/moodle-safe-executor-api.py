@@ -114,10 +114,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def respond(self, status: int, payload: dict[str, Any]) -> None:
         raw = canonical(payload)
+        signed = b"RESPONSE\n" + str(status).encode() + b"\n" + hashlib.sha256(raw).hexdigest().encode()
+        signature = hmac.new(AGENT_KEY, signed, hashlib.sha256).hexdigest()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Executor-Response-Signature", signature)
         self.end_headers()
         self.wfile.write(raw)
 

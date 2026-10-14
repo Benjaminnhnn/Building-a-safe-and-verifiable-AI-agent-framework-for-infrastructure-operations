@@ -1,6 +1,8 @@
 from unittest.mock import Mock
 
-from core.rag_engine import RAGEngine, _chunk_markdown
+import pytest
+
+from core.rag_engine import RAGEngine, RUNBOOK_ALERT_NAMES, _chunk_markdown
 
 
 def test_chunk_markdown_splits_by_heading_and_size() -> None:
@@ -34,6 +36,25 @@ def test_save_admin_solution_writes_to_incident_memory() -> None:
     assert kwargs["metadatas"][0]["indexed_at"]
     assert len(kwargs["metadatas"][0]["source_sha256"]) == 64
     assert "check logs, then restart" in kwargs["documents"][0]
+
+
+def test_save_admin_solution_redacts_secrets_at_storage_boundary() -> None:
+    engine = RAGEngine.__new__(RAGEngine)
+    engine.incident_memory = Mock()
+
+    engine.save_admin_solution(
+        incident_id="abc12345",
+        alert_name="WebEndpointDown",
+        incident_details="Alert context db_password=context-secret",
+        admin_feedback="Use token=feedback-secret",
+        reviewed_solution="Restart with api_key=solution-secret",
+        review_status="accepted",
+    )
+
+    stored_document = engine.incident_memory.upsert.call_args.kwargs["documents"][0]
+    for secret in ("context-secret", "feedback-secret", "solution-secret"):
+        assert secret not in stored_document
+    assert stored_document.count("[REDACTED]") == 3
 
 
 def test_query_knowledge_keeps_standard_and_dynamic_sources_separate() -> None:
@@ -97,6 +118,31 @@ def test_query_knowledge_filters_by_alert_name() -> None:
     }
 
 
+def test_standard_runbook_query_excludes_incident_memory() -> None:
+    engine = RAGEngine.__new__(RAGEngine)
+    engine.standard_runbooks = Mock()
+    engine.standard_runbooks.count.return_value = 1
+    engine.standard_runbooks.query.return_value = {
+        "documents": [["authored Moodle guidance"]],
+        "metadatas": [[{
+            "source_file": "moodle/runbook_moodle_connectivity.md",
+            "source_observed_at": "2026-10-05T00:00:00+00:00",
+            "source_sha256": "a" * 64,
+        }]],
+        "distances": [[0.0]],
+    }
+    engine.incident_memory = Mock()
+
+    result = engine.query_standard_runbooks(
+        "Moodle synthetic transaction failed",
+        alert_name="MoodleSyntheticTransactionFailed",
+    )
+
+    assert "authored Moodle guidance" in result
+    assert f"SHA-256: {'a' * 64}" in result
+    assert engine.incident_memory.query.call_count == 0
+
+
 def test_retrieve_drops_documents_above_distance_threshold() -> None:
     engine = RAGEngine.__new__(RAGEngine)
     collection = Mock()
@@ -110,3 +156,63 @@ def test_retrieve_drops_documents_above_distance_threshold() -> None:
     result = engine._retrieve(collection, "critical cpu usage", alert_name="CriticalCPUUsage")
 
     assert result == ""
+
+
+def test_moodle_runbooks_are_ingested_recursively_with_alert_provenance() -> None:
+    engine = RAGEngine.__new__(RAGEngine)
+    engine.standard_runbooks = Mock()
+
+    engine._ingest_initial_data()
+
+    indexed = [
+        metadata
+        for call in engine.standard_runbooks.upsert.call_args_list
+        for metadata in call.kwargs["metadatas"]
+    ]
+    moodle_rows = [row for row in indexed if str(row["source_file"]).startswith("moodle/")]
+    assert {row["source_file"] for row in moodle_rows} == {
+        "moodle/runbook_moodle_connectivity.md",
+        "moodle/runbook_moodle_service.md",
+        "moodle/runbook_moodle_storage_resources.md",
+        "moodle/runbook_moodle_monitoring.md",
+        "moodle/runbook_moodle_security.md",
+    }
+    assert {row["alert_name"] for row in moodle_rows} >= {
+        "MoodleDatabaseEndpointInvalid",
+        "MoodleDatabasePortExposure",
+        "MoodlePublicProbeFailed",
+        "MoodleEfsMountMissing",
+        "MoodleNodeExporterDown",
+    }
+    assert all(len(row["source_sha256"]) == 64 for row in moodle_rows)
+    assert all(row["source_observed_at"] and row["indexed_at"] for row in moodle_rows)
+    assert all("ground_truth" not in row["source_file"] for row in indexed)
+
+
+def test_initial_runbook_ingestion_fails_closed_when_old_revision_cannot_be_removed() -> None:
+    engine = RAGEngine.__new__(RAGEngine)
+    engine.standard_runbooks = Mock()
+    engine.standard_runbooks.delete.side_effect = OSError("vector store unavailable")
+
+    with pytest.raises(RuntimeError, match="Unable to replace indexed runbook"):
+        engine._ingest_initial_data()
+
+    engine.standard_runbooks.upsert.assert_not_called()
+
+
+def test_moodle_alert_mapping_has_no_unmapped_configured_alerts() -> None:
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[2]
+    rule_files = [
+        repo / "ansible/config/moodle_alert_rules.yml",
+        repo / "ansible/config/alert_rules.yml",
+    ]
+    configured = {
+        line.strip().split(":", 1)[1].strip()
+        for path in rule_files
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip().startswith("- alert:") and "Moodle" in line
+    }
+    mapped = {name for source, names in RUNBOOK_ALERT_NAMES.items() if source.startswith("moodle/") for name in names}
+    assert configured <= mapped

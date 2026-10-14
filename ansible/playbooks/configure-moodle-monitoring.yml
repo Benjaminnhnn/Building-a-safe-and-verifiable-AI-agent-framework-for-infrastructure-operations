@@ -354,6 +354,37 @@
         - "{{ moodle_observability_root }}/secrets"
         - /var/lib/moodle-synthetic/continuous
 
+    - name: Generate the Alertmanager to agent bearer token once
+      ansible.builtin.shell:
+        cmd: "umask 077; token=$(openssl rand -hex 32) && printf '%s' \"$token\" > {{ moodle_observability_root }}/secrets/alertmanager-webhook-token"
+        creates: "{{ moodle_observability_root }}/secrets/alertmanager-webhook-token"
+      when: moodle_agent_enabled | bool
+      no_log: true
+
+    - name: Set Alertmanager webhook token permissions for the monitoring containers
+      ansible.builtin.file:
+        path: "{{ moodle_observability_root }}/secrets/alertmanager-webhook-token"
+        state: file
+        owner: root
+        group: '65534'
+        mode: '0640'
+      when: moodle_agent_enabled | bool
+
+    - name: Inspect the generated Alertmanager webhook token
+      ansible.builtin.stat:
+        path: "{{ moodle_observability_root }}/secrets/alertmanager-webhook-token"
+      register: moodle_alertmanager_webhook_token
+      when: moodle_agent_enabled | bool
+
+    - name: Require a non-empty 256-bit Alertmanager webhook token
+      ansible.builtin.assert:
+        that:
+          - moodle_alertmanager_webhook_token.stat.isreg
+          - moodle_alertmanager_webhook_token.stat.size == 64
+          - moodle_alertmanager_webhook_token.stat.mode == '0640'
+        fail_msg: Alertmanager webhook bearer-token file is invalid; regenerate it securely.
+      when: moodle_agent_enabled | bool
+
     - name: Allow the monitor textfile exporter to traverse its metric directory
       ansible.builtin.file:
         path: /var/lib/moodle-synthetic
@@ -618,6 +649,9 @@
             - name: ai-agent
               webhook_configs:
                 - url: http://ai-agent:8000/webhook
+                  http_config:
+                    authorization:
+                      credentials_file: /run/secrets/alertmanager_webhook_token
                   send_resolved: true
                   max_alerts: 20
           {% else %}
@@ -681,6 +715,8 @@
                 PROMETHEUS_URL: http://prometheus:9090
                 VECTOR_DB_PATH: /app/vector_db
                 AIOPS_UNIFIED_CORE_MODE: shadow
+                ALERTMANAGER_WEBHOOK_AUTH_REQUIRED: "true"
+                ALERTMANAGER_WEBHOOK_TOKEN_FILE: /run/secrets/alertmanager_webhook_token
                 AIOPS_EVIDENCE_DB: /app/data/evidence.sqlite3
                 AIOPS_EVIDENCE_DB_PATH: /app/data/evidence.db
                 GEMINI_MAX_ATTEMPTS: "1"
@@ -690,6 +726,7 @@
               volumes:
                 - agent-vector-db:/app/vector_db
                 - agent-evidence:/app/data
+                - ./secrets/alertmanager-webhook-token:/run/secrets/alertmanager_webhook_token:ro
               healthcheck:
                 test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
                 interval: 15s
@@ -773,6 +810,9 @@
               volumes:
                 - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
                 - ./alertmanager/data:/alertmanager
+          {% if moodle_agent_enabled | bool %}
+                - ./secrets/alertmanager-webhook-token:/run/secrets/alertmanager_webhook_token:ro
+          {% endif %}
               command:
                 - --config.file=/etc/alertmanager/alertmanager.yml
                 - --storage.path=/alertmanager

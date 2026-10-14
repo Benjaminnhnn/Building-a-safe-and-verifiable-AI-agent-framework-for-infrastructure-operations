@@ -60,6 +60,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   echo "  - GEMINI_API_KEY (Google Gemini API key)"
   echo "  - TELEGRAM_TOKEN (optional)"
   echo "  - TELEGRAM_CHAT_ID (optional)"
+  echo "  - TELEGRAM_WEBHOOK_SECRET and TELEGRAM_ADMIN_USER_IDS (if using Telegram webhook)"
 fi
 
 if [[ -n "${GHCR_USERNAME:-}" && -n "${GHCR_TOKEN:-}" ]]; then

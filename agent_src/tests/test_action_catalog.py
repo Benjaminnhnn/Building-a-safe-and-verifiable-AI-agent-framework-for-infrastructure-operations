@@ -127,6 +127,21 @@ def test_valid_adapter_types(catalog: ActionCatalog) -> None:
             f"Entry '{entry.action_id}' has unknown adapter='{entry.adapter}'"
         )
 
+
+def test_full_catalog_owns_typed_action_approval_and_parameter_contracts() -> None:
+    catalog = ActionCatalog.load_full_catalog()
+    assert catalog._entries
+    for entry in catalog._entries.values():
+        assert entry.action_type is not None, entry.action_id
+        assert entry.default_requires_approval is not None, entry.action_id
+        assert entry.default_requires_approval is (
+            entry.permission.required_role == "operator"
+            or entry.blast_radius in {"MEDIUM", "HIGH"}
+        ), entry.action_id
+        assert entry.valid_target_resource_types, entry.action_id
+        # Fixed staging adapters accept no caller-supplied action parameters.
+        assert entry.parameter_schema == {}, entry.action_id
+
 # ---------------------------------------------------------------------------
 # ERPNext and full catalog
 # ---------------------------------------------------------------------------

@@ -4,8 +4,10 @@ The module intentionally keeps the decision path deterministic:
 
 ``alert -> incident -> evidence -> diagnosis -> plan -> gate -> execute -> verify``
 
-This module is evaluation-only. Live staging drills use unified-core shadow
-observation and a separately allowlisted test harness for fault reset.
+This module is fixture replay only. Its catalog contains ground-truth answers,
+so it may not execute actions or accept live events. Live staging currently
+uses unified-core shadow observation and a separately allowlisted test harness
+for operator-run fault reset.
 """
 
 from __future__ import annotations
@@ -24,6 +26,13 @@ from typing import Any
 
 from core.ground_truth import load_ground_truth, validate_ground_truth
 from core.event_schema import normalize_alert, validate_normalized_event
+from core.moodle_contract import (
+    MoodleContractError,
+    load_moodle_capability_contract,
+    load_moodle_ground_truth,
+    load_moodle_resource_inventory,
+    validate_moodle_capability_contract,
+)
 
 SCENARIOS = (
     "DB-01", "DB-02", "DB-03",
@@ -111,6 +120,16 @@ def load_moodle_catalog(ground_truth_root: Path | None = None) -> dict[str, dict
         if errors:
             raise PipelineError(f"invalid ground truth for {scenario_id}: {errors}")
         catalog[scenario_id] = data
+    try:
+        capability_errors = validate_moodle_capability_contract(
+            load_moodle_capability_contract(),
+            load_moodle_resource_inventory(),
+            load_moodle_ground_truth(root),
+        )
+    except MoodleContractError as exc:
+        raise PipelineError(f"invalid Moodle capability contract: {exc}") from exc
+    if capability_errors:
+        raise PipelineError(f"invalid Moodle capability contract: {capability_errors}")
     return catalog
 
 
@@ -555,6 +574,10 @@ class MoodleIncidentPipeline:
         live_verify: bool = False,
         stability_window_seconds: int = 120,
     ) -> dict[str, Any]:
+        if mode != "dry-run":
+            raise PipelineError(
+                "ground-truth-backed fixture replay cannot execute live actions; use evidence-derived planning"
+            )
         if scenario_id not in self.catalog:
             raise PipelineError(f"unknown scenario: {scenario_id}")
         if event.get("status") != "firing" or event.get("event_type") != "service_health_failed":

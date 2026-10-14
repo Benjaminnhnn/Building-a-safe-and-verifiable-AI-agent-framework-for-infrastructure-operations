@@ -6,10 +6,11 @@
 !report.md
 !docs/WEEK1_BASELINE.md
 !docs/WEEK1_SCENARIOS.md
-!AGENTS.md
 !docs/
 !docs/*.md
 !evaluation/benchmark/**/*.md
+!agent_src/config/knowledge_base/moodle/
+!agent_src/config/knowledge_base/moodle/*.md
 
 # Terraform (NEVER commit state files)
 *.tfstate
@@ -56,6 +57,7 @@ build/
 venv/
 env/
 .venv/
+
 
 # Runtime vector database (recreated at startup)
 agent_src/vector_db/

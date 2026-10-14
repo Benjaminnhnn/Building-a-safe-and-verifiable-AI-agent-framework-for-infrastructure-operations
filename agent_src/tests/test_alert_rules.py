@@ -64,5 +64,6 @@ def test_moodle_web_missing_alert_uses_node_probe_even_when_cadvisor_series_disa
     )[0]
 
     assert 'moodle_node_web_running{job="moodle_node"} == 0' in web_rule
-    assert "moodle_fault_scenario_active" in web_rule
+    # Runtime alerts must not carry evaluation scenario labels.
+    assert "moodle_fault_scenario_active" not in web_rule
     assert "container_last_seen" not in web_rule

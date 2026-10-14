@@ -29,6 +29,16 @@ required_var MOODLE_DB_NAME
 required_var MOODLE_DB_USER
 required_var MOODLE_DATA_ROOT
 required_file MOODLE_DB_PASSWORD_FILE
+MOODLE_DB_SSLMODE="${MOODLE_DB_SSLMODE:-verify-full}"
+export MOODLE_DB_SSLMODE
+
+case "$MOODLE_DB_SSLMODE" in
+    disable|prefer|require|verify-full) ;;
+    *)
+        echo 'MOODLE_DB_SSLMODE must be disable, prefer, require or verify-full' >&2
+        exit 64
+        ;;
+esac
 
 case "$MOODLE_WWWROOT" in
     http://*|https://*) ;;
@@ -50,6 +60,20 @@ case "${MOODLE_REVERSE_PROXY:-false}" in
     true|false) ;;
     *)
         echo 'MOODLE_REVERSE_PROXY must be true or false' >&2
+        exit 64
+        ;;
+esac
+
+case "${MOODLE_SESSION_HANDLER:-file}" in
+    file)
+        MOODLE_SESSION_SETTINGS=''
+        ;;
+    database)
+        MOODLE_SESSION_SETTINGS="\$CFG->session_handler_class = '\\core\\session\\database';
+\$CFG->session_database_acquire_lock_timeout = 120;"
+        ;;
+    *)
+        echo 'MOODLE_SESSION_HANDLER must be file or database' >&2
         exit 64
         ;;
 esac
@@ -82,7 +106,7 @@ global \$CFG;
     'dbpersist' => false,
     'dbsocket' => false,
     'dbport' => $(php_env_literal MOODLE_DB_PORT),
-    'ssl' => 'verify-full',
+    'ssl' => $(php_env_literal MOODLE_DB_SSLMODE),
 ];
 \$CFG->wwwroot = $(php_env_literal MOODLE_WWWROOT);
 \$CFG->dataroot = $(php_env_literal MOODLE_DATA_ROOT);
@@ -90,6 +114,7 @@ global \$CFG;
 \$CFG->reverseproxy = ${MOODLE_REVERSE_PROXY:-false};
 \$CFG->sslproxy = ${MOODLE_SSL_PROXY};
 \$CFG->routerconfigured = true;
+${MOODLE_SESSION_SETTINGS}
 require_once(__DIR__ . '/lib/setup.php');
 EOF
 

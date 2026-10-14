@@ -22,6 +22,24 @@ def _canonical(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
 
 
+def _response_signature(status: int, body: bytes, key: bytes) -> str:
+    message = b"RESPONSE\n" + str(status).encode() + b"\n" + hashlib.sha256(body).hexdigest().encode()
+    return hmac.new(key, message, hashlib.sha256).hexdigest()
+
+
+def _read_signed_response(response: Any, key: bytes) -> dict[str, Any]:
+    body = response.read()
+    status = response.status if hasattr(response, "status") else response.code
+    signature = response.headers.get("X-Executor-Response-Signature", "")
+    expected = _response_signature(status, body, key)
+    if not isinstance(signature, str) or not hmac.compare_digest(expected, signature):
+        raise RuntimeError("safe executor response authentication failed")
+    value = json.loads(body)
+    if not isinstance(value, dict):
+        raise RuntimeError("safe executor response must be a JSON object")
+    return value
+
+
 def action_digest(scenario_id: str, catalog_action_id: str, target_scope: str, idempotency_key: str) -> str:
     immutable_action = {
         "environment": "staging",
@@ -90,9 +108,6 @@ def execute_approved_staging_action(
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            return json.loads(response.read())
+            return _read_signed_response(response, key)
     except urllib.error.HTTPError as exc:
-        try:
-            return json.loads(exc.read())
-        except (json.JSONDecodeError, OSError):
-            return {"status": "error", "http_status": exc.code}
+        return _read_signed_response(exc, key)

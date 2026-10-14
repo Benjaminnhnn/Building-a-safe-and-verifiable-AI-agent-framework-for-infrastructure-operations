@@ -1,175 +1,31 @@
-# 🤖 AIOps Intelligent Agent System
+# AI Agent implementation
 
-Hệ thống AI Agent chuyên dụng để tự động phát hiện, chẩn đoán và đề xuất xử lý sự cố hạ tầng mạng và hệ thống dựa trên mô hình RAG (Retrieval-Augmented Generation) và Gemini LLM.
+The agent is a component of the Moodle-on-AWS thesis system. The current research path is the typed, evidence-backed incident pipeline in `core/`, exercised against Moodle scenario contracts and, where configured, deployed in shadow or safety-gated staging mode.
 
-## 🏗️ Kiến trúc hệ thống
+## Runtime and code map
 
-Hệ thống bao gồm 3 lớp chính:
+- `core/main.py`: FastAPI health and Alertmanager webhook endpoints.
+- `core/moodle_alert_integration.py`, `core/shadow_pipeline.py`: Moodle alert binding and non-mutating shadow processing.
+- `core/schema/`, `core/evidence_store.py`: typed incident/action/evidence contracts and SQLite evidence/checkpoint persistence.
+- `core/dependency_graph.py`: validated upstream/downstream impact traversal and deterministic Mermaid export from caller-supplied Resource contracts.
+- `core/agents.py`, `core/orchestrator.py`: Observer, Diagnosis, Planner, and ordered incident stages.
+- `core/safety_policy_engine.py`, `core/safe_execution_gate.py`, `core/action_catalog.py`: fail-closed policy and allowlisted action decisions.
+- `core/safe_action_live.py`, `core/safe_executor_client.py`, `core/live_adapters.py`: bounded live execution boundary; deployment/configuration is required before this is a live capability.
+- `core/verification_agent.py`, `core/verifier_contract.py`, `core/probes.py`: independent recovery probes and resolution contract.
+- `core/rag_engine.py`, `core/runbook_registry.py`: reviewed runbooks and retrieval support for the legacy alert-assistant path.
+- `tests/`: unit and contract coverage; passing tests do not prove AWS deployment or live recovery.
 
-### 1. Lớp Giám sát (Monitoring Layer)
-*   **`monitoring/log_watcher.py`**: Theo dõi các file log hệ thống/ứng dụng thời gian thực. Phát hiện các từ khóa lỗi (ERROR, CRITICAL...) và gửi cảnh báo về Webhook.
-*   **`monitoring/service_monitor.py`**: Kiểm tra trạng thái các Port dịch vụ (Nginx, DB, Redis...) và các chỉ số mạng (Packet loss, TCP connections).
+## Evidence modes
 
-### 2. Lớp Xử lý Trung tâm (Core AI Layer)
-*   **`core/main.py`**: Server FastAPI tiếp nhận Alertmanager webhook tại `/webhook`, validate payload và enqueue task vào Redis/Celery.
-*   **`core/tasks.py`**: Celery worker xử lý alert bất đồng bộ, gọi RAG/Gemini khi cần, gửi Telegram, lưu incident context và lên lịch verify sau sự cố.
-*   **`core/rag_engine.py`**: Sử dụng **ChromaDB** để lưu trữ và truy vấn tri thức từ các Runbook (.md) và lịch sử các sự cố đã xử lý trước đó.
-*   **`tools/diag_tools.py`**: Tập hợp các công cụ "cánh tay" để AI tự thực hiện các lệnh kiểm tra (ping, check metrics, read logs).
+| Mode | What it establishes |
+|---|---|
+| Unit/contract tests | Local logic and interface behavior. |
+| Offline replay | Fixture-driven stage and policy behavior; no live infrastructure evidence. |
+| Shadow | Deployed alert/evidence processing without remediation. |
+| Live drill | A bounded Moodle fault, allowed action, independent probes, stability, and reset backed by timestamped artifacts. |
 
-### 3. Lớp Tương tác (Integration Layer)
-*   **Telegram Bot**: Gửi báo cáo phân tích, fallback message khi AI quota lỗi, thông báo resolved và kết quả verify cho quản trị viên.
+Only the Independent Verifier may transition an incident to `RESOLVED`. Simulated or dry-run outcomes must remain labeled as such. Ground-truth fixtures are scoring inputs and must never authorize execution.
 
-## 🔄 Quy trình vận hành (Workflow)
+The generic `ExecutionAgent` is dry-run only and checks that its safety decision is bound to the unchanged action and incident. Incident status changes must pass through the state machine. Evidence objects and metadata are immutable after validation, retain observation and collection times, reject unredacted secrets, and support type filtering through `EvidenceStore.query()`. Shadow processing uses a SQLite lease claim and checkpoint per fingerprint/`startsAt` episode to suppress concurrent and repeated collection. Safe-action audit snapshots redact nested credential fields and embedded secrets. The live Safe Action workflow has conditional rollback orchestration for audited partial mutations, but the production catalog has no qualifying reciprocal action pair, the remote executor has no rollback operation, and the alert route is not wired; live mutations remain fail-closed.
 
-1.  **Detect**: Các bộ Monitor phát hiện bất thường -> Gửi Alert qua Webhook `/webhook`.
-2.  **Queue**: FastAPI enqueue `process_alerts_task` vào Redis để Celery worker xử lý, tránh webhook bị treo lâu.
-3.  **Dedup/Cooldown**: Worker dùng fingerprint từ Alertmanager hoặc hash labels để bỏ qua alert lặp trong thời gian cooldown.
-4.  **Retrieve**: AI Agent truy vấn RAG DB để tìm quy trình xử lý (Runbook) tương ứng.
-5.  **Analyze**: Gemini LLM sử dụng dữ liệu RAG và có thể gọi `diag_tools`, nhưng số lần gọi được giới hạn để tránh vượt quota.
-6.  **Notify & Verify**: Agent gửi hướng dẫn xử lý qua Telegram, lưu incident context vào Redis, sau đó lên lịch verify và lưu kết quả vào ChromaDB.
-
-### Các loại sự cố có runbook xác định
-
-Agent có hướng chẩn đoán và verify trực tiếp cho:
-
-*   `WebEndpointDown`: frontend `/health` không truy cập được.
-*   `FrontendAPIProxyDown`: frontend vẫn sống nhưng proxy `/api/ready` không truy cập được Payment API.
-*   `PaymentAPIEndpointDown`: Payment API `/api/ready` không sẵn sàng do ứng dụng, database hoặc network.
-*   `PostgreSQLDown`, `RedisDown`, `DockerContainerDown`.
-*   `HighCPUUsage`, `CriticalCPUUsage`, `HighMemoryUsage`, `CriticalMemoryUsage`, `HighDiskUsage`, `CriticalDiskUsage`.
-
-Payment API tách hai endpoint:
-
-```text
-/api/health  liveness của API process
-/api/ready   readiness, bao gồm kiểm tra kết nối PostgreSQL
-```
-
-Việc tách liveness/readiness cho phép phân biệt container vẫn chạy với dependency thực tế đang lỗi.
-
-## 📝 Thay đổi gần đây & lý do
-
-### Giảm số lần gọi Gemini cho mỗi alert
-
-Thay đổi trong **`core/tasks.py`**:
-
-*   `GEMINI_MAX_ATTEMPTS` mặc định giảm từ `3` xuống `1`.
-*   `GEMINI_FALLBACK_MODELS` mặc định để rỗng, không tự động fallback sang model khác nếu không cấu hình rõ.
-*   Thêm `GEMINI_MAX_REMOTE_CALLS`, mặc định `1`, để giới hạn số tool/function calls mà Gemini có thể kích hoạt trong một lần phân tích.
-*   Rút gọn nội dung fallback analysis khi Gemini lỗi để tránh Telegram message quá dài.
-
-Lý do:
-
-*   Khi test kịch bản Nginx down, worker gọi Gemini nhiều lần liên tiếp và gặp `503 high demand` hoặc `429 RESOURCE_EXHAUSTED`.
-*   Mỗi alert trước đây có thể gọi model chính nhiều lần, rồi fallback model nhiều lần, cộng thêm nhiều tool calls.
-*   Giới hạn mặc định giúp giảm nguy cơ chạm quota free tier, giảm độ trễ và giữ pipeline alert ổn định hơn.
-
-### Thêm cooldown/dedup cho alert lặp
-
-Thay đổi trong **`core/tasks.py`** và **`core/main.py`**:
-
-*   `core/main.py` nhận thêm field `fingerprint` optional từ Alertmanager.
-*   Worker tạo identity theo `fingerprint`; nếu không có thì hash các labels quan trọng như `alertname`, `instance`, `job`, `service`, `target`.
-*   Thêm Redis key dạng `alert-ai-cooldown:<identity>` với TTL `ALERT_AI_COOLDOWN_SECONDS`, mặc định `900` giây.
-*   Nếu Redis không khả dụng, worker dùng in-memory cooldown fallback.
-*   Alert `resolved` sẽ clear cooldown để lần firing mới sau recovery vẫn được xử lý.
-*   Metric `aiops_alerts_processed_total` có thêm trạng thái `deduped`.
-
-Lý do:
-
-*   Alertmanager có thể gửi repeat notification, resolved notification hoặc webhook retry.
-*   Không nên gọi Gemini lại cho cùng một alert đang firing trong thời gian ngắn.
-*   Dedup giúp giảm spam Telegram, giảm queue backlog và giảm chi phí/quota Gemini.
-
-### Cấu hình runtime liên quan
-
-Các biến có thể cấu hình qua `.env`/GitHub Secrets nếu cần override default:
-
-```env
-GEMINI_MODEL=gemini-2.5-flash
-GEMINI_FALLBACK_MODELS=
-GEMINI_MAX_ATTEMPTS=1
-GEMINI_MAX_REMOTE_CALLS=1
-ALERT_AI_COOLDOWN_SECONDS=900
-ALERT_DEDUP_ENABLED=true
-```
-
-### Góp ý giải pháp qua Telegram
-
-Khi Agent gửi báo cáo sự cố, tin nhắn sẽ có `ID` của incident và hướng dẫn:
-
-```text
-/feedback <incident_id> <giải pháp hoặc góp ý của admin>
-```
-
-Admin cũng có thể reply vào tin báo có dòng `ID: ...`; Agent sẽ lấy ID từ tin được reply và dùng nội dung reply làm góp ý.
-
-Luồng xử lý:
-
-*   FastAPI nhận tin tại `/telegram/webhook`.
-*   Chỉ chat có `TELEGRAM_CHAT_ID` mới được gửi góp ý.
-*   Agent lấy context incident từ Redis, đánh giá góp ý bằng Gemini nếu có API key.
-*   Nếu góp ý đúng hoặc cần chỉnh nhẹ, Agent lưu bản đã duyệt/chỉnh vào ChromaDB để RAG dùng cho incident tương tự.
-*   Nếu góp ý chưa phù hợp, Agent nhắn lại lý do và giải pháp thay thế an toàn hơn cho admin.
-
-Để Telegram gọi được webhook, cần cấu hình `AI_AGENT_PUBLIC_URL` là URL HTTPS public của agent; startup sẽ đăng ký webhook tới:
-
-```text
-<AI_AGENT_PUBLIC_URL>/telegram/webhook
-```
-
-Default hiện tại ưu tiên an toàn khi demo/production có quota Gemini thấp. Nếu dùng API key có billing/quota cao hơn, có thể tăng `GEMINI_MAX_ATTEMPTS` hoặc thêm fallback model một cách chủ động.
-
-### Kiểm thử
-
-Thêm **`tests/test_alert_dedup.py`** để kiểm tra:
-
-*   Ưu tiên dùng Alertmanager `fingerprint` làm identity.
-*   Cooldown bỏ qua alert trùng khi Redis unavailable.
-*   Clear cooldown cho phép xử lý lại alert sau khi resolved/re-fire.
-
-## 🛠️ Công nghệ sử dụng
-*   **Language**: Python 3.11
-*   **AI**: Google Gemini (LLM), ChromaDB (Vector DB)
-*   **Framework**: FastAPI, Uvicorn
-*   **Data Store**: Redis (Celery queue, incident context, alert cooldown)
-*   **Async Worker**: Celery
-*   **System**: Docker, Psutil
-
-## 🚀 Cách khởi động nhanh
-Hệ thống được đóng gói qua Docker:
-```bash
-docker build -t aiops-agent .
-docker run --env-file .env aiops-agent
-```
-Hoặc chạy trực tiếp qua entrypoint:
-```bash
-./docker-entrypoint.sh
-```
-
-## RAG data storage
-
-RAG uses two separate ChromaDB collections:
-
-* `standard_runbooks`: Markdown runbooks from `config/knowledge_base/*.md`, split into heading-aware chunks during startup.
-* `incident_memory`: resolved incident history and accepted/revised admin feedback.
-
-The source runbooks are Git-tracked files and can be viewed directly:
-
-```bash
-find config/knowledge_base -maxdepth 1 -type f -name '*.md'
-sed -n '1,200p' config/knowledge_base/<runbook-file>.md
-```
-
-Dynamic incident and feedback memory is not written back into Markdown files. It is stored in the ChromaDB directory configured by `VECTOR_DB_PATH`. In release deployments, `ai-agent` and `celery-worker` share the same persistent Docker volume mounted at `/app/vector_db`.
-
-Inspect the collections from a running release container:
-
-```bash
-docker exec celery-worker-staging python tools/inspect_rag_db.py
-docker exec celery-worker-staging python tools/inspect_rag_db.py --collection standard_runbooks
-docker exec celery-worker-staging python tools/inspect_rag_db.py --collection incident_memory
-docker exec celery-worker-staging python tools/inspect_rag_db.py --collection incident_memory --source admin_feedback
-```
-
-Do not commit the ChromaDB database files to Git. The Markdown runbooks are the reviewed source of truth; `incident_memory` is runtime learning data.
+For setup and CI commands, use the root `AGENTS.md`. For operational acceptance and Moodle live workflows, see `docs/MOODLE_OPERATIONS_RUNBOOK.md` and `docs/AI_ENGINEER_MOODLE_TEST_RUNBOOK.md`.

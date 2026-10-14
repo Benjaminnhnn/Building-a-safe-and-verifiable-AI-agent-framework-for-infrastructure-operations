@@ -2,6 +2,7 @@
 import os
 import logging
 import hashlib
+import hmac
 import json
 import redis
 import re
@@ -9,6 +10,7 @@ import requests
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
+from pathlib import Path
 from pydantic import BaseModel
 from typing import List, Optional
 from dotenv import load_dotenv
@@ -55,6 +57,12 @@ def valid_env_value(value: str | None) -> str | None:
 AI_AGENT_PORT       = int(os.getenv("AI_AGENT_PORT", "8000"))
 AI_AGENT_PUBLIC_URL = valid_env_value(os.getenv("AI_AGENT_PUBLIC_URL"))
 GITHUB_WEBHOOK_SECRET = valid_env_value(os.getenv("GITHUB_WEBHOOK_SECRET"))
+TELEGRAM_WEBHOOK_SECRET = valid_env_value(os.getenv("TELEGRAM_WEBHOOK_SECRET"))
+TELEGRAM_ADMIN_USER_IDS = {
+    value.strip()
+    for value in os.getenv("TELEGRAM_ADMIN_USER_IDS", "").split(",")
+    if value.strip().isdecimal() and int(value.strip()) > 0
+}
 
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
@@ -96,7 +104,7 @@ async def lifespan(app: FastAPI):
 
     if AI_AGENT_PUBLIC_URL:
         try:
-            set_telegram_webhook(AI_AGENT_PUBLIC_URL)
+            set_telegram_webhook(AI_AGENT_PUBLIC_URL, TELEGRAM_WEBHOOK_SECRET)
         except Exception as e:
             logger.error(f"Failed to set Telegram webhook: {e}")
     yield
@@ -242,12 +250,41 @@ def _extract_feedback_payload(message: dict) -> tuple[str | None, str | None]:
 # ─────────────────────────────────────────────
 
 @app.post("/webhook")
-async def prometheus_webhook(payload: AlertmanagerPayload):
+async def prometheus_webhook(payload: AlertmanagerPayload, request: Request):
     """
     PHASE 3: Tiếp nhận Alert và đẩy ngay vào Celery để xử lý bất đồng bộ.
     
     AlertManager gửi webhook POST → FastAPI nhận → enqueue to Celery
     """
+    token_file = os.getenv("ALERTMANAGER_WEBHOOK_TOKEN_FILE", "").strip()
+    auth_required = os.getenv("ALERTMANAGER_WEBHOOK_AUTH_REQUIRED", "false").strip().lower() in {"1", "true", "yes"}
+    if not token_file:
+        if auth_required:
+            logger.error("Alertmanager webhook authentication is required but no token file is configured")
+            raise HTTPException(status_code=503, detail="Alertmanager webhook authentication is unavailable")
+    else:
+        try:
+            expected_token = Path(token_file).read_text(encoding="utf-8").strip()
+        except OSError:
+            logger.error("Alertmanager webhook token file is unavailable")
+            raise HTTPException(status_code=503, detail="Alertmanager webhook authentication is unavailable") from None
+        if not expected_token:
+            logger.error("Alertmanager webhook token file is empty")
+            raise HTTPException(status_code=503, detail="Alertmanager webhook authentication is unavailable")
+        scheme, separator, supplied_token = request.headers.get("authorization", "").partition(" ")
+        if (
+            scheme.lower() != "bearer"
+            or not separator
+            or not hmac.compare_digest(
+                supplied_token.encode("utf-8"), expected_token.encode("utf-8")
+            )
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid Alertmanager webhook authorization",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
     try:
         depth = _queue_depth()
         payload_dict = normalize_alertmanager_payload(payload.model_dump())
@@ -426,7 +463,15 @@ def _publish_draft_from_callback(draft_id: str, actor: str) -> dict:
 
 
 @app.post("/telegram/webhook")
-async def telegram_webhook(payload: TelegramWebhookPayload):
+async def telegram_webhook(
+    payload: TelegramWebhookPayload,
+    secret_token: str | None = Header(default=None, alias="X-Telegram-Bot-Api-Secret-Token"),
+):
+    if not TELEGRAM_WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Telegram webhook authentication is not configured")
+    if not secret_token or not hmac.compare_digest(secret_token, TELEGRAM_WEBHOOK_SECRET):
+        raise HTTPException(status_code=403, detail="Invalid Telegram webhook secret")
+
     callback_query = payload.callback_query
     if not callback_query:
         message = payload.message or payload.edited_message or {}
@@ -437,6 +482,11 @@ async def telegram_webhook(payload: TelegramWebhookPayload):
         if not expected_chat_ids or str(chat_id) not in expected_chat_ids:
             logger.warning("Ignored Telegram message from unauthorized chat_id=%s", chat_id)
             return {"status": "ignored"}
+
+        user_id = str((message.get("from") or {}).get("id", ""))
+        if not user_id or user_id not in TELEGRAM_ADMIN_USER_IDS:
+            logger.warning("Ignored Telegram feedback from unauthorized user_id=%s", user_id)
+            return {"status": "ignored", "reason": "unauthorized_user"}
 
         incident_id, feedback = _extract_feedback_payload(message)
         if not incident_id or not feedback:
@@ -470,7 +520,12 @@ async def telegram_webhook(payload: TelegramWebhookPayload):
     action = parts[1]
     draft_id = parts[2]
     user = callback_query.get("from", {})
-    actor = user.get("username") or user.get("first_name") or "telegram-admin"
+    user_id = str(user.get("id", ""))
+    if not user_id or user_id not in TELEGRAM_ADMIN_USER_IDS:
+        if callback_id:
+            _answer_telegram_callback(callback_id, "Unauthorized approver")
+        raise HTTPException(status_code=403, detail="Unauthorized Telegram approver")
+    actor = f"telegram:{user_id}"
 
     try:
         if action == "approve":

@@ -1,0 +1,45 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "AUTH-02",
+  "scenario_name": "Moodle cannot reach directory service",
+  "description": "A narrowly scoped staging-only network interruption prevents Moodle from reaching the directory endpoint.",
+  "expected_root_cause": {
+    "category": "directory_path_unavailable",
+    "service": "moodle-network",
+    "component": "moodle-to-directory-path"
+  },
+  "expected_impact": {
+    "services": ["moodle-login", "openldap"],
+    "description": "Directory-backed logins fail while the directory service itself may remain healthy."
+  },
+  "causal_order": ["scoped_path_fault", "moodle_directory_connection_fails", "valid_login_fails", "alert_observed"],
+  "initial_state": {
+    "environment": "staging",
+    "directory_service": "healthy",
+    "moodle_to_directory_path": "allowed",
+    "synthetic_valid_login": "passing"
+  },
+  "preconditions": ["isolated test host or disposable local bridge network", "exact staging target allowlisted", "automatic expiry and symmetric reset verified before trigger", "no live security-group mutation"],
+  "fault_trigger": {
+    "type": "not_implemented_pending_scoped_harness",
+    "target": "staging-moodle-to-directory-path",
+    "execution_status": "blocked"
+  },
+  "observed_signals": ["directory host health remains available", "Moodle-side LDAPS probe fails", "synthetic valid-user login fails", "Moodle HTTP health can remain healthy"],
+  "allowed_remediation": [],
+  "allowed_actions": ["collect_redacted_path_evidence", "run_independent_login_verifier", "escalate_to_infrastructure_owner"],
+  "forbidden_actions": ["change_live_security_group", "broad_firewall_rule", "unbounded_network_fault", "create_account", "change_account_password", "change_group_or_role", "grant_agent_directory_credentials"],
+  "recovery_criteria": ["Moodle-to-directory LDAPS path restored", "synthetic valid login succeeds", "synthetic invalid login remains denied", "Moodle health succeeds", "all checks remain stable for at least 120 seconds"],
+  "communication_contract": {
+    "allowed": ["moodle-staging-to-directory-ldaps"],
+    "forbidden": ["internet-to-directory", "agent-to-directory-admin", "moodle-to-directory-ldap-plaintext"],
+    "related": ["directory-host-health-passes", "synthetic-valid-login-passes", "synthetic-invalid-login-is-denied"]
+  },
+  "rollback_plan": {
+    "action": "symmetric_reset_required_before_any_future_fault_trigger",
+    "idempotent": true,
+    "timeout_seconds": 300,
+    "stop_if": ["allowlist check fails", "automatic timeout is unavailable", "reset cannot be demonstrated on an isolated host"]
+  },
+  "metrics_required": ["t_fault", "t_alert", "t_path_restored", "t_first_valid_login_pass", "t_verifier_eligible", "t_reset"]
+}

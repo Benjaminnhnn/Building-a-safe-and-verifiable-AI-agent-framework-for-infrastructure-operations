@@ -22,6 +22,8 @@ class RootCauseHypothesis(BaseModel):
 
     # PLACEHOLDER: Danh sách resource_id thật bị ảnh hưởng bởi giả thuyết này.
     affected_resources: list[str]
+    # Graph-derived downstream candidates are potential impact, not confirmed failures.
+    potentially_affected_resources: list[str] = Field(default_factory=list)
     # PLACEHOLDER: Danh sách evidence_id thật ủng hộ giả thuyết.
     supporting_evidence_refs: list[str] = Field(min_length=1)
     # PLACEHOLDER: Danh sách evidence_id thật phản bác hoặc làm yếu giả thuyết.

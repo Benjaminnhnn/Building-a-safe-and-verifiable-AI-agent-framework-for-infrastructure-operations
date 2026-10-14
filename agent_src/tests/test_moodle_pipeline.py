@@ -54,11 +54,22 @@ def test_each_ground_truth_has_one_replayable_dry_run_incident(tmp_path: Path, s
     assert set(report["verification"]) >= {"allowed_probes", "forbidden_probes", "related_probes"}
     assert len(report["evidence_refs"]) >= 5
     assert len(report["audit_refs"]) >= 5
-
     replay = pipeline.process(_event(scenario_id), scenario_id=scenario_id)
     assert replay["replayed"] is True
     assert len(pipeline.incidents) == 1
     assert pipeline.evidence.refs(report["incident_id"]) == report["evidence_refs"]
+
+
+def test_pipeline_catalog_rejects_scenario_missing_fault_trigger(tmp_path: Path) -> None:
+    source = Path(__file__).resolve().parents[2] / "evaluation" / "ground_truth" / "moodle"
+    for path in source.glob("*.json"):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if path.stem == "DB-01":
+            del data["fault_trigger"]
+        (tmp_path / path.name).write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(PipelineError, match="fault_trigger"):
+        load_moodle_catalog(tmp_path)
 
 
 def test_malformed_or_out_of_scope_action_is_rejected() -> None:
@@ -194,7 +205,7 @@ def test_pipeline_never_accepts_sensitive_evidence(tmp_path: Path) -> None:
 
 def test_evaluation_pipeline_cannot_execute_live_remediation(tmp_path: Path) -> None:
     pipeline = MoodleIncidentPipeline(tmp_path)
-    with pytest.raises(PipelineError, match="live execution is disabled by adapter configuration"):
+    with pytest.raises(PipelineError, match="ground-truth-backed fixture replay cannot execute"):
         pipeline.process(
             _event("DB-01"),
             scenario_id="DB-01",

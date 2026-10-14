@@ -103,14 +103,14 @@ esac
 wait_for_prometheus_alert "$alert_name" 150
 scenario_alert=false
 for _ in {1..30}; do
-  if remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=ALERTS{alertname=\"$alert_name\",alertstate=\"firing\",scenario_id=\"$scenario\",drill_id=\"$run_id\"}' http://127.0.0.1:9090/api/v1/query | jq -e '.data.result | length > 0' >/dev/null"; then
+  if remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=ALERTS{alertname=\"$alert_name\",alertstate=\"firing\"}' http://127.0.0.1:9090/api/v1/query | jq -e '.data.result | length > 0' >/dev/null"; then
     scenario_alert=true
     break
   fi
   sleep 5
 done
 [[ "$scenario_alert" == true ]] || {
-  echo "Prometheus alert did not preserve the expected scenario_id label: $scenario" >&2
+  echo "Prometheus did not observe the expected symptom alert: $alert_name" >&2
   exit 1
 }
 

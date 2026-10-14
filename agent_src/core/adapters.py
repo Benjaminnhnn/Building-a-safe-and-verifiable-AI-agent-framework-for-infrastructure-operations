@@ -8,10 +8,12 @@ from typing import Literal, Protocol
 from core.action_catalog import ActionCatalog
 from core.schema.action import TypedAction
 from core.schema.common import ActionType, Environment
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 
 class AdapterCapability(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     adapter_name: str
     action_types: list[ActionType]
     environments: list[Environment]
@@ -19,20 +21,24 @@ class AdapterCapability(BaseModel):
 
 
 class ActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     request_id: str
     idempotency_key: str
     action: TypedAction
-    dry_run: bool = True
-    timeout_seconds: int = Field(default=30, gt=0, le=300)
+    dry_run: StrictBool = True
+    timeout_seconds: StrictInt = Field(default=30, gt=0, le=300)
 
 
 class SafeActionRequest(BaseModel):
-    """A typed, staging-only request for the S3.3 dry-run adapter boundary.
+    """A typed, staging-only request for the safe dry-run adapter boundary.
 
     There is intentionally no command, host, shell fragment, or AWS argument
-    field.  Later live execution must reuse this shape and add gate-approved
-    authority rather than widening the input surface.
+    field. Live execution uses SafeLiveActionRequest with the same bounded
+    catalog fields and a separate approval path.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     request_id: str
     idempotency_key: str
@@ -41,11 +47,13 @@ class SafeActionRequest(BaseModel):
     target_scope: str
     action: TypedAction
     dry_run: Literal[True] = True
-    timeout_seconds: int = Field(default=30, gt=0, le=120)
+    timeout_seconds: StrictInt = Field(default=30, gt=0, le=120)
 
 
 class SafeLiveActionRequest(BaseModel):
     """Typed intent for one separately approved controlled-live action."""
+
+    model_config = ConfigDict(extra="forbid")
 
     request_id: str
     idempotency_key: str
@@ -54,16 +62,18 @@ class SafeLiveActionRequest(BaseModel):
     target_scope: str
     action: TypedAction
     dry_run: Literal[False] = False
-    timeout_seconds: int = Field(default=30, gt=0, le=120)
+    timeout_seconds: StrictInt = Field(default=30, gt=0, le=120)
 
 
 class ActionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     request_id: str
     idempotency_key: str
     adapter_name: str
-    success: bool
-    executed: bool
-    duplicate: bool = False
+    success: StrictBool
+    executed: StrictBool
+    duplicate: StrictBool = False
     sanitized_output: str
     error_code: str | None = None
 

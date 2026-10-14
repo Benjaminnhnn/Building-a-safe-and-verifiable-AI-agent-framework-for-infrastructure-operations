@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +14,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from core.evidence_store import evidence_content_hash
+from core.sanitization import sanitize_log_excerpt
 from core.schema.evidence import Evidence
 
 @dataclass(frozen=True)
@@ -30,31 +30,6 @@ class EvidenceDraft:
 class CollectionBatch:
     evidence: list[EvidenceDraft]
     errors: list[str]
-
-
-_SECRET_ASSIGNMENT = re.compile(
-    r"(?i)\b(password|passwd|pwd|secret|token|api[_-]?key|authorization|"
-    r"aws_secret_access_key)\b(\s*[:=]\s*)((?:Bearer\s+)?[^\s,;]+)"
-)
-_BEARER = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
-_AWS_ACCESS_KEY = re.compile(r"\bAKIA[0-9A-Z]{16}\b")
-_PRIVATE_KEY = re.compile(
-    r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----.*?"
-    r"-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
-    re.DOTALL,
-)
-_URL_CREDENTIALS = re.compile(r"(://)[^/@\s]+:[^/@\s]+@")
-
-
-def sanitize_log_excerpt(value: Any, *, max_chars: int = 1024) -> str:
-    """Redact common credentials and bound the copied log context."""
-    text = str(value or "")
-    text = _PRIVATE_KEY.sub("[REDACTED_PRIVATE_KEY]", text)
-    text = _SECRET_ASSIGNMENT.sub(r"\1\2[REDACTED]", text)
-    text = _BEARER.sub("Bearer [REDACTED]", text)
-    text = _AWS_ACCESS_KEY.sub("[REDACTED_AWS_ACCESS_KEY]", text)
-    text = _URL_CREDENTIALS.sub(r"\1[REDACTED]@", text)
-    return text[:max_chars]
 
 
 def alert_context_evidence(
@@ -96,6 +71,39 @@ METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
     "MoodleRdsTcpProbeFailed": (
         ("moodle_rds_tcp_probe", 'probe_success{job="blackbox_moodle_rds"}'),
     ),
+    "MoodleNodeRdsTcpFailed": (
+        ("moodle_node_rds_tcp_success", 'moodle_node_rds_tcp_success{job="moodle_node"}'),
+    ),
+    "MoodleNodeRdsTcpLatencyHigh": (
+        (
+            "moodle_node_rds_tcp_duration_seconds",
+            '(moodle_node_rds_tcp_duration_seconds{job="moodle_node"} > 0.2) and on(instance) (moodle_node_rds_tcp_success{job="moodle_node"} == 1)',
+        ),
+    ),
+    "MoodleApacheRouterMissing": (
+        (
+            "moodle_node_apache_router_enabled",
+            '(moodle_node_apache_router_enabled{job="moodle_node"} == 0) and on(instance) (moodle_node_web_running{job="moodle_node"} == 1)',
+        ),
+    ),
+    "MoodleNodeRouterFallbackFailed": (
+        (
+            "moodle_node_router_fallback_success",
+            '(moodle_node_router_fallback_success{job="moodle_node"} == 0) and on(instance) (moodle_node_web_running{job="moodle_node"} == 1)',
+        ),
+    ),
+    "MoodleTrustedProxyConfigDrift": (
+        (
+            "moodle_node_reverse_proxy_enabled",
+            '(moodle_node_reverse_proxy_enabled{job="moodle_node"} == 1) and on(instance) (moodle_node_web_running{job="moodle_node"} == 1)',
+        ),
+    ),
+    "MoodleNodeMemoryPressure": (
+        (
+            "moodle_node_memory_available_drop_bytes",
+            '-delta(node_memory_MemAvailable_bytes{job="moodle_node"}[1m])',
+        ),
+    ),
     "MoodleEfsMountMissing": (
         ("moodle_efs_mount", 'moodle_efs_mount_available{job="moodle_node"}'),
     ),
@@ -125,6 +133,15 @@ METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
             "moodle_web_container_last_seen_age_seconds",
             'time() - max by (instance) (container_last_seen{job="moodle_cadvisor",name="release-moodle-web-1"})',
         ),
+    ),
+    "MoodleScratchEnospc": (
+        ("moodle_node_scratch_enospc", 'moodle_node_scratch_enospc{job="moodle_node"}'),
+    ),
+    "MoodleWebContainerRestarting": (
+        ("moodle_node_web_restart_count_2m", 'changes(moodle_node_web_restart_count{job="moodle_node"}[2m])'),
+    ),
+    "MoodleNodeProbeStale": (
+        ("moodle_node_probe_age_seconds", 'time() - moodle_node_probe_timestamp_seconds{job="moodle_node"}'),
     ),
 }
 
@@ -183,11 +200,16 @@ class PrometheusEvidenceCollector:
             )
         response.raise_for_status()
         body = response.json()
-        if body.get("status") != "success":
+        if not isinstance(body, dict) or body.get("status") != "success":
             raise ValueError("prometheus_query_failed")
-        results = body.get("data", {}).get("result", [])
+        data = body.get("data")
+        if not isinstance(data, dict):
+            raise ValueError("prometheus_data_malformed")
+        results = data.get("result")
         if not isinstance(results, list):
             raise ValueError("prometheus_result_malformed")
+        if len(results) > 20:
+            raise ValueError("prometheus_result_exceeds_sample_limit")
 
         now = datetime.now(timezone.utc)
         evidence: list[EvidenceDraft] = []
@@ -203,12 +225,27 @@ class PrometheusEvidenceCollector:
             )
             return evidence
 
-        for item in results[:20]:
-            timestamp, raw_value = item["value"]
-            sample_time = float(timestamp)
-            value = float(raw_value)
+        for item in results:
+            if not isinstance(item, dict) or not isinstance(item.get("metric", {}), dict):
+                raise ValueError("prometheus_sample_malformed")
+            sample = item.get("value")
+            if not isinstance(sample, list) or len(sample) != 2:
+                raise ValueError("prometheus_sample_malformed")
+            timestamp, raw_value = sample
+            if isinstance(timestamp, bool) or isinstance(raw_value, bool):
+                raise ValueError("prometheus_sample_invalid_or_stale")
+            try:
+                sample_time = float(timestamp)
+                value = float(raw_value)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("prometheus_sample_malformed") from exc
             age = now.timestamp() - sample_time
-            if not math.isfinite(value) or age < -30 or age > self.max_sample_age_seconds:
+            if (
+                not math.isfinite(sample_time)
+                or not math.isfinite(value)
+                or age < -30
+                or age > self.max_sample_age_seconds
+            ):
                 raise ValueError("prometheus_sample_invalid_or_stale")
             raw_labels = item.get("metric", {})
             labels = {
@@ -349,6 +386,7 @@ def collect_shadow_evidence(
                 incident_id=incident_id,
                 resource_id=draft.resource_id,
                 source=draft.source,
+                observed_at=draft.observed_at,
                 collected_at=draft.observed_at,
                 summary=payload_json[:4096],
                 raw_ref=f"{draft.source}:{draft.kind}",
@@ -356,7 +394,9 @@ def collect_shadow_evidence(
                 metadata={"kind": draft.kind, "payload_json": payload_json[:4096]},
                 redacted=True,
             )
-            evidence.content_hash = evidence_content_hash(evidence)
+            evidence = evidence.model_copy(
+                update={"content_hash": evidence_content_hash(evidence)}
+            )
             evidence_store.append(evidence)
             evidence_refs.append(evidence.evidence_id)
             sources.add(draft.source)

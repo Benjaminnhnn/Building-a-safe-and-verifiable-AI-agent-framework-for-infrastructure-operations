@@ -1,0 +1,11 @@
+route:
+  receiver: local-ai-agent
+  group_by: [alertname, scenario]
+  group_wait: 3s
+  group_interval: 10s
+  repeat_interval: 1h
+receivers:
+  - name: local-ai-agent
+    webhook_configs:
+      - url: http://ai-agent:8000/webhook
+        send_resolved: true

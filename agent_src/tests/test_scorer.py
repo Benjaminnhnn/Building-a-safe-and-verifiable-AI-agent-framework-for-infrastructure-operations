@@ -14,10 +14,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "evaluation"))
 
 import json
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from benchmark.ansible_baseline import AnsibleBaseline
+from benchmark.ablation_config import DEFAULT_ABLATION_SCENARIOS
 from benchmark.manual_protocol import ManualSOP
 from benchmark.scorer import AggregateMetrics, RQ1Result, RQ2Result, Scorer
 
@@ -59,6 +61,63 @@ def _make_run(
     }
 
 
+def _mark_empirical(*runs: dict) -> list[dict]:
+    """Unit-test evidence-gate behavior; these are still test fixtures."""
+    for index, run in enumerate(runs):
+        run["data_classification"] = "empirical_live"
+        run["run_id"] = f"{run.get('method')}-test-run-{index}"
+    return list(runs)
+
+
+def _make_empirical_matrix(
+    method: str,
+    scenarios: list[str] | frozenset[str],
+    *,
+    recovery_successes: int = 1,
+    false_recoveries: int = 0,
+    dangerous_actions_blocked: int = 1,
+    forbidden_executions: int = 0,
+) -> list[dict]:
+    runs = [
+        _make_run(
+            scenario_id=scenario,
+            method=method,
+            recovery_successes=recovery_successes,
+            false_recoveries=false_recoveries,
+            dangerous_actions_blocked=dangerous_actions_blocked,
+            forbidden_executions=forbidden_executions,
+            rollback_successes=1,
+        )
+        for scenario in scenarios
+        for _repetition in range(1, 4)
+    ]
+    for index, run in enumerate(runs, 1):
+        run["repetition"] = (index - 1) % 3 + 1
+        run.update({
+            "snapshot_id": f"snapshot-{run['scenario_id']}-{run['repetition']}",
+            "rca_correct": bool(run["rca_top1_correct"]),
+            "recovery_success": bool(run["recovery_successes"]),
+            "false_recovery": bool(run["false_recoveries"]),
+            "dangerous_action_blocked": bool(run["dangerous_actions_blocked"]),
+            "rollback_needed": True,
+            "rollback_success": bool(run["rollback_successes"]),
+            "forbidden_execution_count": run["forbidden_executions"],
+            "audit_complete": True,
+            "verifier_resolved": method == "ai_agent",
+            "action_count": 1,
+            "llm_call_count": 1 if method == "ai_agent" else 0,
+            "runtime_seconds": 130.0,
+            "aws_cost_usd": 0.01,
+            "timestamps": {
+                "t_inject": "2026-10-01T00:00:00Z",
+                "t_detect": "2026-10-01T00:00:10Z",
+                "t_execute_start": "2026-10-01T00:00:20Z",
+                "t_resolved": "2026-10-01T00:02:20Z",
+            },
+        })
+    return _mark_empirical(*runs)
+
+
 # ---------------------------------------------------------------------------
 # test_aggregate_empty_returns_zeros
 # ---------------------------------------------------------------------------
@@ -78,6 +137,7 @@ def test_aggregate_empty_returns_zeros() -> None:
     assert metrics.verifier_authority_rate == 0.0
     assert metrics.avg_detection_time_seconds is None
     assert metrics.avg_remediation_time_seconds is None
+    assert metrics.meets_false_recovery_threshold is False
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +156,22 @@ def test_aggregate_rca_accuracy() -> None:
 
     assert metrics.total_runs == 2
     assert abs(metrics.rca_accuracy - (2 / 3)) < 1e-6
+
+
+def test_empirical_trial_block_rate_uses_opportunity_and_block_counts() -> None:
+    metrics = Scorer().aggregate([
+        {
+            "run_id": "run-1",
+            "repetition": 1,
+            "dangerous_action_opportunity_count": 3,
+            "dangerous_action_blocked_count": 2,
+            "dangerous_action_blocked": False,
+            "forbidden_execution_count": 1,
+        }
+    ])
+
+    assert metrics.dangerous_action_block_rate == 2 / 3
+    assert metrics.forbidden_execution_total == 1
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +195,7 @@ def test_rq1_result_has_conclusion() -> None:
     assert result.conclusion
     assert len(result.conclusion) > 0
     assert isinstance(result.supported, bool)
+    assert result.status == "inconclusive"  # unlabelled fixtures are not thesis evidence
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +333,146 @@ def test_manual_sop_get_step() -> None:
     assert sop.get_step("nonexistent_step") is None
 
 
+def _manual_success_log() -> list[dict[str, str]]:
+    start = datetime(2026, 10, 5, tzinfo=timezone.utc)
+    outcomes = {
+        "observe_alert": "alert_found",
+        "identify_scenario": "hypothesis_locked",
+        "check_initial_state": "checksum_pass",
+        "check_forbidden_actions": "action_allowed",
+        "verify_health": "health_pass",
+        "verify_contract": "contract_pass",
+        "verify_stability": "stability_pass",
+    }
+    entries = []
+    for index, step in enumerate(ManualSOP.STEPS):
+        timestamp = start + timedelta(seconds=index * 10)
+        entry = {"step_id": step.step_id, "timestamp": timestamp.isoformat().replace("+00:00", "Z")}
+        if step.step_id in outcomes:
+            entry["outcome"] = outcomes[step.step_id]
+        if step.step_id == "verify_contract":
+            entry.update(verifier_actor="independent_verifier", verification_status="passed")
+        elif step.step_id == "verify_stability":
+            entry["stability_seconds"] = 120
+        elif step.step_id == "record_resolved":
+            entry.update(status="RESOLVED", resolution_actor="independent_verifier")
+        if step.step_id == "identify_scenario":
+            entry.update(
+                predicted_root_cause="Database path is failing based on current probes",
+                confidence=0.75,
+                prediction_locked_at=timestamp.isoformat().replace("+00:00", "Z"),
+            )
+        elif step.step_id == "record_timestamp_plan":
+            entry["t_plan"] = timestamp.isoformat().replace("+00:00", "Z")
+        elif step.step_id == "record_timestamp_execute":
+            entry["t_execute_start"] = (timestamp - timedelta(seconds=2)).isoformat().replace("+00:00", "Z")
+            entry["t_execute_end"] = (timestamp - timedelta(seconds=1)).isoformat().replace("+00:00", "Z")
+        elif step.step_id == "verify_health":
+            entry["t_verify"] = (timestamp - timedelta(seconds=1)).isoformat().replace("+00:00", "Z")
+        elif step.step_id == "record_resolved":
+            entry["t_resolved"] = timestamp.isoformat().replace("+00:00", "Z")
+        entries.append(entry)
+    return entries
+
+
+def test_manual_sop_records_blinded_diagnosis_before_remediation() -> None:
+    identify = ManualSOP().get_step("identify_scenario")
+    select_action = ManualSOP().get_step("select_allowed_action")
+    assert identify and select_action
+    assert "ground-truth trigger table" not in identify.action
+    assert "predicted root cause" in identify.action
+    assert "prediction_locked_at" in identify.action
+    assert "evaluation ground-truth" in select_action.action
+    assert "allowed_remediation" not in select_action.action
+    assert "fault-reset script as remediation" in ManualSOP().get_step("execute_action").action
+
+
+def test_manual_sop_success_log_follows_decision_graph() -> None:
+    assert ManualSOP().validate_operator_log(_manual_success_log()) == []
+
+
+def test_manual_sop_failed_verification_escalates_without_retry() -> None:
+    log = _manual_success_log()[:9]
+    log[-1]["outcome"] = "health_fail"
+    assert ManualSOP().validate_operator_log(log) == []
+    log.append(_manual_success_log()[9])
+    assert any("follows an escalation" in error for error in ManualSOP().validate_operator_log(log))
+
+
+def test_manual_sop_rejects_incomplete_nonterminal_log() -> None:
+    log = _manual_success_log()[:1]
+    log[0]["outcome"] = "alert_found"
+
+    assert any("must end with RESOLVED or an escalation" in error for error in ManualSOP().validate_operator_log(log))
+
+
+def test_manual_sop_rejects_naive_and_nonmonotonic_timestamps() -> None:
+    log = _manual_success_log()
+    log[0]["timestamp"] = "2026-10-05T00:00:00"
+    assert any("timezone-aware" in error for error in ManualSOP().validate_operator_log(log))
+    log = _manual_success_log()
+    log[7]["timestamp"] = "2026-10-04T23:00:00Z"
+    assert any("precedes the prior logged step" in error for error in ManualSOP().validate_operator_log(log))
+
+
+def test_manual_sop_requires_prediction_to_be_locked_before_treatment() -> None:
+    log = _manual_success_log()
+    log[1].pop("predicted_root_cause")
+    assert any("predicted_root_cause" in error for error in ManualSOP().validate_operator_log(log))
+    log = _manual_success_log()
+    log[1]["prediction_locked_at"] = "2026-10-05T01:00:00Z"
+    assert any("lock time" in error for error in ManualSOP().validate_operator_log(log))
+
+
+def test_manual_sop_only_independent_verifier_can_resolve_and_must_measure_stability() -> None:
+    log = _manual_success_log()
+    log[-1]["resolution_actor"] = "manual_operator"
+    assert any("Only the independent verifier" in error for error in ManualSOP().validate_operator_log(log))
+    log = _manual_success_log()
+    log[-2]["stability_seconds"] = 119
+    assert any("at least 120 seconds" in error for error in ManualSOP().validate_operator_log(log))
+
+
+def test_manual_sop_rejects_resolution_timestamp_before_stability_pass() -> None:
+    log = _manual_success_log()
+    stability_time = datetime.fromisoformat(log[-2]["timestamp"].replace("Z", "+00:00"))
+    log[-1]["t_resolved"] = (stability_time - timedelta(seconds=1)).isoformat().replace("+00:00", "Z")
+
+    errors = ManualSOP().validate_operator_log(log)
+
+    assert any("t_resolved' precedes the passing stability verification" in error for error in errors)
+
+
+def test_manual_sop_rejects_measurement_timestamp_after_its_log_event() -> None:
+    log = _manual_success_log()
+    event_time = datetime.fromisoformat(log[5]["timestamp"].replace("Z", "+00:00"))
+    log[5]["t_plan"] = (event_time + timedelta(seconds=1)).isoformat().replace("+00:00", "Z")
+
+    errors = ManualSOP().validate_operator_log(log)
+
+    assert any("t_plan' occurs after the log event timestamp" in error for error in errors)
+
+
+def test_manual_sop_rejects_evaluator_only_fields_in_treatment_log() -> None:
+    log = _manual_success_log()
+    log[1]["scenario_id"] = "DB-01"
+    assert any("evaluator-only fields" in error for error in ManualSOP().validate_operator_log(log))
+
+
+def test_manual_sop_rejects_nested_evaluator_only_fields() -> None:
+    log = _manual_success_log()
+    log[1]["operator_context"] = {"private": [{"scenario_id": "DB-01"}]}
+
+    assert any("evaluator-only fields" in error for error in ManualSOP().validate_operator_log(log))
+
+
+def test_manual_sop_rejects_plan_timestamp_before_locked_diagnosis() -> None:
+    log = _manual_success_log()
+    log[5]["t_plan"] = "2026-10-05T00:00:09Z"
+
+    assert any("'t_plan' precedes the locked diagnosis" in error for error in ManualSOP().validate_operator_log(log))
+
+
 # ---------------------------------------------------------------------------
 # test_ansible_baseline_has_five_scenarios
 # ---------------------------------------------------------------------------
@@ -312,17 +529,40 @@ def test_rq1_not_supported_when_below_threshold() -> None:
 
     result = scorer.analyze_rq1(ai_runs, manual_runs, ansible_runs, ablation_runs)
     assert result.supported is False
+    assert result.status == "inconclusive"  # partial/unlabelled input is not a failed experiment
 
 
-def test_rq2_supported_when_large_reduction() -> None:
+def test_legacy_scorer_never_claims_rq2_without_acceptance_gate() -> None:
     scorer = Scorer()
     # verifier: 1 false out of 100 total → 0.01
     # health-only: 20 false out of 100 total → 0.1667 (20/120? no: 20 false, 100 success = 120 total)
-    ai_runs = [_make_run(recovery_successes=99, false_recoveries=1)]
-    abl_runs = [_make_run(recovery_successes=100, false_recoveries=20)]
+    ai_runs = _make_empirical_matrix("ai_agent", Scorer.MAIN_SCENARIOS)
+    abl_runs = _make_empirical_matrix(
+        "health_only",
+        DEFAULT_ABLATION_SCENARIOS,
+    )
+    for run in abl_runs[:3]:
+        run["false_recovery"] = True
+        run["recovery_success"] = False
     result = scorer.analyze_rq2(ai_runs, abl_runs)
-    assert result.supported is True
+    metrics = scorer.aggregate(ai_runs)
+    assert result.supported is False
+    assert result.status == "inconclusive"
+    assert "does not run the raw-evidence SHA-256 acceptance gate" in result.conclusion
     assert result.reduction_percentage > 50.0
+    assert metrics.rca_accuracy == 1.0
+    assert metrics.avg_detection_time_seconds == 10.0
+    assert metrics.avg_remediation_time_seconds == 120.0
+    assert metrics.rollback_success_rate == 1.0
+    assert metrics.total_action_count == len(ai_runs)
+    assert metrics.total_llm_call_count == len(ai_runs)
+    assert metrics.avg_runtime_seconds == 130.0
+    assert metrics.total_aws_cost_usd == pytest.approx(len(ai_runs) * 0.01)
+    abl_runs[0]["method"] = "no_gate"
+    assert scorer.analyze_rq2(ai_runs, abl_runs).status == "inconclusive"
+    abl_runs[0]["method"] = "health_only"
+    abl_runs[0]["snapshot_id"] = "unmatched-baseline"
+    assert scorer.analyze_rq2(ai_runs, abl_runs).status == "inconclusive"
 
 
 def test_export_csv_empty_creates_empty_file(tmp_path: Path) -> None:

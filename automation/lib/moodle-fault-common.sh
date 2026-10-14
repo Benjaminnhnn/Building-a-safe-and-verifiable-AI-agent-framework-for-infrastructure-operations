@@ -78,19 +78,16 @@ publish_scenario_marker() {
     [[ -n "$host" ]] || continue
     remote "$host" "
       set -eu
-      directory=/var/lib/node_exporter/textfile_collector
-      marker=\$directory/moodle_fault_scenario.prom
-      sudo test -d \"\$directory\"
+      directory=/var/lib/moodle-faults
+      marker=\$directory/active-scenario
+      sudo install -d -o root -g root -m 0700 \"\$directory\"
       if sudo test -e \"\$marker\"; then
         echo 'Refusing to replace an existing Moodle scenario marker.' >&2
         exit 77
       fi
-      temporary=\$(sudo mktemp \"\$directory/.moodle_fault_scenario.XXXXXX\")
-      printf '%s\\n' \\
-        '# HELP moodle_fault_scenario_active Active controlled Moodle staging fault scenario.' \\
-        '# TYPE moodle_fault_scenario_active gauge' \\
-        'moodle_fault_scenario_active{scenario_id=\"$scenario\",drill_id=\"$drill_id\"} 1' | sudo tee \"\$temporary\" >/dev/null
-      sudo chmod 0644 \"\$temporary\"
+      temporary=\$(sudo mktemp \"\$directory/.active-scenario.XXXXXX\")
+      printf '%s\\n%s\\n' '$scenario' '$drill_id' | sudo tee \"\$temporary\" >/dev/null
+      sudo chmod 0600 \"\$temporary\"
       sudo mv \"\$temporary\" \"\$marker\"
     "
   done < <(scenario_hosts "$scenario")
@@ -103,9 +100,9 @@ remove_scenario_marker() {
     [[ -n "$host" ]] || continue
     remote "$host" "
       set -eu
-      marker=/var/lib/node_exporter/textfile_collector/moodle_fault_scenario.prom
+      marker=/var/lib/moodle-faults/active-scenario
       if sudo test -e \"\$marker\"; then
-        actual=\$(sudo sed -n 's/.*scenario_id=\\\"\\([^\\\"]*\\)\\\".*/\\1/p' \"\$marker\")
+        actual=\$(sudo sed -n '1p' \"\$marker\")
         test \"\$actual\" = '$scenario' || {
           echo 'Refusing to remove a marker owned by another scenario.' >&2
           exit 77

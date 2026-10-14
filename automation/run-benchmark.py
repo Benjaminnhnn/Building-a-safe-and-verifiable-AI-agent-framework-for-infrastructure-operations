@@ -1,16 +1,9 @@
-#!/usr/bin/env bash
 #!/usr/bin/env python3
-"""Full benchmark execution harness for Moodle infrastructure operations.
+"""Generate synthetic benchmark simulations for Moodle scenario fixtures.
 
-Supports the 15 Moodle fault scenarios (DB-01..03, RES-01..03, NET-01..03,
-CON-01..03, SEC-01..03) across three methods:
-1. AI Agent (Observer -> Diagnosis -> Planner -> Safety Gate -> Independent Verifier)
-2. Manual Operator (Standard Operating Procedure baseline)
-3. Ansible Rule-Based Playbooks (automation baseline)
-
-Also supports two ablation studies:
-- No-Safety-Gate (Shadow Mode): checks what dangerous actions would execute without gate
-- No-Independent-Verifier (Health-Only): checks false recovery rate when only health check is used
+This script does not run Moodle, human operators, Ansible playbooks, the
+Independent Verifier, or infrastructure actions. Its randomized outcomes are
+for harness/scorer development only and are never empirical thesis evidence.
 """
 
 from __future__ import annotations
@@ -19,6 +12,7 @@ import argparse
 import json
 import random
 import sys
+from uuid import uuid4
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -83,9 +77,10 @@ def simulate_ai_agent_run(
     catalog: ActionCatalog,
     probe_runner: ContractProbeRunner,
     rng: random.Random,
+    campaign_id: str = "local",
 ) -> RunResult:
     sid = scenario["scenario_id"]
-    run_id = f"ai-{sid}-rep{repetition}"
+    run_id = f"{campaign_id}-ai-{sid}-rep{repetition}"
     incident_id = f"inc-{run_id}"
 
     # 1. Observer: deduplication & evidence recording
@@ -198,9 +193,10 @@ def simulate_manual_run(
     repetition: int,
     base_time: datetime,
     rng: random.Random,
+    campaign_id: str = "local",
 ) -> RunResult:
     sid = scenario["scenario_id"]
-    run_id = f"manual-{sid}-rep{repetition}"
+    run_id = f"{campaign_id}-manual-{sid}-rep{repetition}"
 
     rca_correct = rng.random() < 0.85
     recovery_success = rng.random() < 0.88
@@ -242,9 +238,10 @@ def simulate_ansible_run(
     base_time: datetime,
     ansible_baseline: AnsibleBaseline,
     rng: random.Random,
+    campaign_id: str = "local",
 ) -> RunResult:
     sid = scenario["scenario_id"]
-    run_id = f"ansible-{sid}-rep{repetition}"
+    run_id = f"{campaign_id}-ansible-{sid}-rep{repetition}"
 
     playbook = ansible_baseline.get_playbook(sid)
     has_playbook = playbook is not None
@@ -290,6 +287,7 @@ def run_moodle_benchmark(
     seed: int = 42,
 ) -> dict[str, Any]:
     rng = random.Random(seed)
+    campaign_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "-" + uuid4().hex[:8]
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -321,18 +319,18 @@ def run_moodle_benchmark(
 
             # AI Agent
             ai_res = simulate_ai_agent_run(
-                scenario, rep, current_time, store, safety_engine, catalog, probe_runner, rng
+                scenario, rep, current_time, store, safety_engine, catalog, probe_runner, rng, campaign_id
             )
             recorder.record(ai_res)
             all_results.append(ai_res)
 
             # Manual
-            man_res = simulate_manual_run(scenario, rep, current_time + timedelta(minutes=5), rng)
+            man_res = simulate_manual_run(scenario, rep, current_time + timedelta(minutes=5), rng, campaign_id)
             recorder.record(man_res)
             all_results.append(man_res)
 
             # Ansible
-            ans_res = simulate_ansible_run(scenario, rep, current_time + timedelta(minutes=10), ansible_baseline, rng)
+            ans_res = simulate_ansible_run(scenario, rep, current_time + timedelta(minutes=10), ansible_baseline, rng, campaign_id)
             recorder.record(ans_res)
             all_results.append(ans_res)
 
@@ -479,11 +477,14 @@ Runs: {len(all_results)} main runs + {len(no_gate_runs) + len(no_verifier_runs)}
     return summary_data
 
 
-def main() -> int:
+def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ground-truth-moodle", type=Path, default=REPO_ROOT / "evaluation" / "ground_truth" / "moodle")
     parser.add_argument("--ground-truth-erpnext", type=Path, default=None)
-    parser.add_argument("--moodle-only", action="store_true", default=True, help="Run only the 15 Moodle scenarios")
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument("--moodle-only", dest="moodle_only", action="store_true", help="Run only the Moodle scenarios (default)")
+    scope.add_argument("--include-erpnext", dest="moodle_only", action="store_false", help="Also include the ERPNext fixture directory")
+    parser.set_defaults(moodle_only=True)
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -492,7 +493,19 @@ def main() -> int:
     )
     parser.add_argument("--repetitions", type=int, default=5)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--synthetic-smoke",
+        action="store_true",
+        help="Explicitly allow randomized, non-empirical fixture output for harness development.",
+    )
+    return parser
+
+
+def main() -> int:
+    parser = build_argument_parser()
     args = parser.parse_args()
+    if not args.synthetic_smoke:
+        parser.error("refusing to generate randomized benchmark outcomes without --synthetic-smoke")
 
     erp_dir = None if args.moodle_only else (args.ground_truth_erpnext or REPO_ROOT / "evaluation" / "ground_truth" / "erpnext")
 
