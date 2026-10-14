@@ -241,11 +241,15 @@ User `<ai-user>` → **Permissions → Add permissions → Create inline policy 
     { "Sid": "ViewOwnIdentity", "Effect": "Allow",
       "Action": ["iam:GetUser", "iam:ListMFADevices", "iam:ListVirtualMFADevices", "iam:GetAccountPasswordPolicy"],
       "Resource": "*" },
-    { "Sid": "ManageOwnPasswordAndMFA", "Effect": "Allow",
-      "Action": ["iam:ChangePassword", "iam:CreateVirtualMFADevice", "iam:EnableMFADevice",
-                 "iam:ResyncMFADevice", "iam:DeactivateMFADevice", "iam:DeleteVirtualMFADevice"],
+    { "Sid": "ChangeOwnPassword", "Effect": "Allow",
+      "Action": "iam:ChangePassword",
+      "Resource": "arn:aws:iam::<ACCOUNT_ID>:user/${aws:username}" },
+    { "Sid": "ManageOwnMFAWithMFA", "Effect": "Allow",
+      "Action": ["iam:CreateVirtualMFADevice", "iam:EnableMFADevice", "iam:ResyncMFADevice",
+                 "iam:DeactivateMFADevice", "iam:DeleteVirtualMFADevice"],
       "Resource": ["arn:aws:iam::<ACCOUNT_ID>:user/${aws:username}",
-                   "arn:aws:iam::<ACCOUNT_ID>:mfa/*"] },
+                   "arn:aws:iam::<ACCOUNT_ID>:mfa/*"],
+      "Condition": { "Bool": { "aws:MultiFactorAuthPresent": "true" } } },
     { "Sid": "ManageOwnAccessKeysWithMFA", "Effect": "Allow",
       "Action": ["iam:CreateAccessKey", "iam:ListAccessKeys", "iam:UpdateAccessKey",
                  "iam:DeleteAccessKey", "iam:GetAccessKeyLastUsed"],
@@ -262,7 +266,8 @@ User `<ai-user>` → **Permissions → Add permissions → Create inline policy 
 | Statement | Tác dụng |
 |---|---|
 | `ViewOwnIdentity` | Xem thông tin của mình, danh sách thiết bị MFA, chính sách mật khẩu của account |
-| `ManageOwnPasswordAndMFA` | `${aws:username}` thay bằng **chính tên người đang đăng nhập**, nên user **chỉ quản lý được tài khoản của mình** |
+| `ChangeOwnPassword` | Tự đổi mật khẩu của mình. Không cần điều kiện MFA vì API bắt buộc nhập mật khẩu cũ |
+| `ManageOwnMFAWithMFA` | Tự quản lý thiết bị MFA của mình (`${aws:username}`), **chỉ khi phiên đã có MFA**. Thiếu điều kiện này, kẻ có access key bị lộ có thể gắn thiết bị MFA của họ rồi assume role. Vì vậy **lần đăng ký MFA đầu tiên do admin làm cùng AI Engineer** (mục 5.5) |
 | `ManageOwnAccessKeysWithMFA` | Tự tạo, xoay vòng, xóa **access key của chính mình** (cho CLI/Terraform), chỉ khi phiên có MFA |
 | `AssumeAIEngineerWithMFA` | Chỉ được vào role `AIEngineer`, và chỉ khi **phiên đăng nhập có MFA** |
 
@@ -299,7 +304,7 @@ Lý do: lộ một kênh thì kẻ xấu vẫn thiếu mảnh còn lại. Mật 
 ### 5.5. AI Engineer đăng nhập lần đầu
 
 1. Mở link, đăng nhập bằng username và mật khẩu tạm, rồi **đặt mật khẩu mới**.
-2. Góc phải → **Security credentials → Assign MFA device → Authenticator app**, quét QR.
+2. MFA đầu tiên: **admin** mở *IAM → Users → `<ai-user>` → Security credentials → Assign MFA device* khi có mặt AI Engineer, và AI Engineer quét QR bằng điện thoại của mình. (Policy cố ý không cho user tự thêm MFA khi chưa có MFA.)
 3. **Đăng xuất, đăng nhập lại có MFA.** Bắt buộc: điều kiện `aws:MultiFactorAuthPresent` chỉ đúng khi phiên đăng nhập đã qua MFA.
 4. Góc phải → **Switch role**:
    - **Account:** `<ACCOUNT_ID>`
