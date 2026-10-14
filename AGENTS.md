@@ -34,7 +34,7 @@ PYTHONPATH=agent_src            pytest -q agent_src/tests
 # Validate automation scripts and replays used by CI (the exact file lists live in
 # the "Validate Moodle experiment and operator automation" step of ci.yml)
 bash automation/moodle-scenario-verify.sh SEC-01; test $? -eq 64   # HUMAN_ONLY must be refused
-python automation/aiops-unified-replay.py all                     # CI asserts 15/15 passed
+python automation/aiops-unified-replay.py all                     # CI pins each scenario's outcome (fail-closed counts as correct)
 PYTHONPATH=agent_src python automation/moodle-pipeline-replay.py  # CI asserts 15 VERIFIED_DRY_RUN
 
 # 3. Build the images (the AI agent build context is the repo root)
