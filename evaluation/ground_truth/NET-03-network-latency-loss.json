@@ -23,6 +23,6 @@
   "difficulty_level": "hard",
   "expected_detection_time_seconds": 45,
   "expected_recovery_time_seconds": 300,
-  "injector_script": "scripts/inject/NET-03.sh",
-  "reset_script": "scripts/reset/NET-03.sh"
+  "injector_script": "automation/moodle-fault-inject.sh NET-03",
+  "reset_script": "automation/moodle-fault-reset.sh NET-03"
 }

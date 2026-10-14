@@ -23,6 +23,6 @@
   "difficulty_level": "hard",
   "expected_detection_time_seconds": 60,
   "expected_recovery_time_seconds": 300,
-  "injector_script": "scripts/inject/CON-03.sh",
-  "reset_script": "scripts/reset/CON-03.sh"
+  "injector_script": "automation/moodle-fault-inject.sh CON-03",
+  "reset_script": "automation/moodle-fault-reset.sh CON-03"
 }
