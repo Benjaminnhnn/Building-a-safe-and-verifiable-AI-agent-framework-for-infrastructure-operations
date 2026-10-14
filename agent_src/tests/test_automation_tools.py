@@ -96,8 +96,8 @@ def test_harvest_preserves_runtime_method_and_authority(tmp_path: Path) -> None:
     run = campaign / "run-1"
     run.mkdir(parents=True)
     payload = json.dumps({
-        "run_id": "AUTH-01-1",
-        "scenario_id": "AUTH-01",
+        "run_id": "DB-01-1",
+        "scenario_id": "DB-01",
         "status": "passed",
         "method": "ai_agent_shadow",
         "evidence_class": "staging_runtime_shadow",
@@ -122,7 +122,7 @@ def test_harvest_refuses_unmarked_runtime_result(tmp_path: Path) -> None:
     campaign = tmp_path / "campaign"
     campaign.mkdir()
     (campaign / "result.json").write_text(json.dumps({
-        "run_id": "run-1", "scenario_id": "AUTH-01", "status": "passed"
+        "run_id": "run-1", "scenario_id": "DB-01", "status": "passed"
     }), encoding="utf-8")
 
     with pytest.raises(harvester.InputError, match="evidence_class"):

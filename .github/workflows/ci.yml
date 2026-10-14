@@ -50,8 +50,6 @@ jobs:
             automation/trigger_live_agent.py \
             automation/run-benchmark.py \
             automation/moodle-auth-verify.py \
-            automation/auth-lab/scripts/auth-probe.py \
-            automation/auth-lab/scripts/auth-actuator.py \
             automation/sprint6-acceptance.py \
             evaluation/benchmark/statistical_analysis.py
           bash -n \
