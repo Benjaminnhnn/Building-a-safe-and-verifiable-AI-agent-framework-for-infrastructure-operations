@@ -19,7 +19,7 @@ Never commit: `agent_src/vector_db/` (ChromaDB runtime data), any `.env*` file, 
 
 ### Verify before pushing (mirrors `.github/workflows/ci.yml`)
 
-CI runs lint -> AI-agent tests -> automation validation -> Docker builds -> compose config validation. Run locally in this order:
+CI runs lint -> AI-agent tests -> automation validation -> unified replay -> AI image build + ground-truth exclusion check -> Moodle image build + secret-file and web-root checks -> Sprint 2 pipeline replay -> Moodle compose validation. Run locally in this order:
 
 ```bash
 # 1. Lint — critical-rule subset only (undefined names, syntax)
@@ -31,25 +31,24 @@ pip install pytest ruff "httpx<0.28"
 
 PYTHONPATH=agent_src            pytest -q agent_src/tests
 
-# Validate automation scripts used by CI
-python -m py_compile automation/moodle-synthetic-transaction.py automation/moodle-pipeline-replay.py automation/aiops-unified-replay.py automation/moodle-safe-executor-api.py automation/moodle-safe-approval.py automation/moodle-safe-executor-request.py automation/harvest-benchmark-results.py automation/inspect_live_db.py automation/trigger_live_agent.py automation/run-benchmark.py automation/moodle-auth-verify.py automation/sprint6-acceptance.py evaluation/benchmark/statistical_analysis.py
-bash -n automation/lib/moodle-fault-common.sh automation/moodle-environment-baseline.sh
-bash -n automation/moodle-fault-inject.sh automation/moodle-fault-reset.sh automation/moodle-fault-trial.sh
-bash -n automation/moodle-synthetic-soak.sh automation/moodle-sprint2-live-drill.sh
+# Validate automation scripts and replays used by CI (the exact file lists live in
+# the "Validate Moodle experiment and operator automation" step of ci.yml)
+bash automation/moodle-scenario-verify.sh SEC-01; test $? -eq 64   # HUMAN_ONLY must be refused
+python automation/aiops-unified-replay.py all                     # CI asserts 15/15 passed
+PYTHONPATH=agent_src python automation/moodle-pipeline-replay.py  # CI asserts 15 VERIFIED_DRY_RUN
 
-# 3. Build the release images
-docker build -t local/ai-agent:ci agent_src
+# 3. Build the images (the AI agent build context is the repo root)
+docker build -f agent_src/Dockerfile -t local/ai-agent:ci .
 docker build -t local/moodle:ci moodle
 
-# 4. Validate release compose (CI copies .env.example to .env.staging/.env.production first)
-cp release/.env.example release/.env.staging
-cp release/.env.example release/.env.production
-docker compose -f release/docker-compose.staging.yml    config > /dev/null
-docker compose -f release/docker-compose.production.yml config > /dev/null
+# 4. Validate the Moodle compose file
 MOODLE_RUNTIME_ENV_FILE=./moodle-runtime.env.example \
 docker compose --env-file release/moodle/moodle-runtime.env.example \
 	-f release/moodle/docker-compose.yml config > /dev/null
 ```
+
+On macOS, a few probe tests need GNU `timeout` on PATH (`brew install coreutils`);
+CI runs on Linux.
 
 ### Single test
 
@@ -61,15 +60,15 @@ PYTHONPATH=agent_src pytest -q agent_src/tests/test_alert_dedup.py::test_name
 
 Moodle on AWS EC2 is the primary thesis environment. The source tree contains Terraform for the Moodle ALB, two application nodes, RDS PostgreSQL, EFS, and the monitoring host; Ansible host configuration; Moodle image/Compose; and the agent's safety-gated incident pipeline. Verify AWS state and dated artifacts before making claims about what is currently deployed.
 
-1. **Terraform** (`terraform/`) owns cloud resources. `terraform.tfstate*` and `terraform.tfvars` are sensitive. Existing state also has optional legacy `bank-web-01`/`bank-core-01` resources; do not disable or remove them without a fresh state-backed plan and reviewed retirement impact.
-2. **Ansible** (`ansible/`) owns host configuration and deployment prerequisites. `ansible/inventory.ini` contains real addresses and is sensitive.
+1. **Terraform** (`terraform/`) owns cloud resources. Operators use the Git-ignored `terraform/deployment.tfvars` (copied from `deployment.tfvars.example`); `terraform.tfstate*` and `deployment.tfvars` are sensitive. Role credentials require MFA; pass them to Terraform with `aws configure export-credentials` (see `docs/AWS_IAM_ACCESS_GUIDE.md`).
+2. **Ansible** (`ansible/`) owns host configuration and deployment prerequisites. The Moodle playbooks use the inventory and SSH config that Terraform writes to the Git-ignored `terraform/.artifacts/`; there is no static inventory in the repo.
 3. **Moodle runtime** (`moodle/`, `release/moodle/`) defines the Moodle image and Compose deployment. `automation/github-deploy-moodle.sh` is used by Moodle staging CD; verify its target hosts, environment, and rollback behavior before changing it.
 4. **Agent and evidence** (`agent_src/`, `evaluation/`) implement the incident contracts, policy, evidence, verifier, Moodle ground truth, and offline replay.
 5. **CI/CD** (`.github/workflows/`) runs CI, publishes AI/Moodle images, and deploys Moodle staging. CI replay is offline simulation. It does not prove live recovery.
 
-### Legacy release files
+### Retired legacy lane
 
-`release/docker-compose.staging.yml`, `release/docker-compose.production.yml`, `automation/app-release-deploy.sh`, and their banking/payment API references are a legacy application lane. They are not the Moodle thesis deployment gate. Preserve them only as needed for existing deployments; do not use them to claim Moodle deployment. The stale generic production workflow and saved staging workflow were removed because they referenced missing `demo-web` build contexts.
+The bank/payment demo (bank-web/bank-core hosts, payment-api, frontend, `release/docker-compose.{staging,production}.yml`, `automation/app-release-deploy.sh`, its Ansible stack) and the local OpenLDAP auth lab were removed on 2026-10-14. The legacy alert-diagnosis branch in `core/tasks.py` (WebEndpointDown, FrontendAPIProxyDown, PaymentAPIEndpointDown, ...) no longer receives alerts and is pending a separate refactor; do not extend it.
 
 ### Evidence and safety invariants
 
@@ -81,7 +80,7 @@ Moodle on AWS EC2 is the primary thesis environment. The source tree contains Te
 
 ## AI Agent internals (`agent_src/`)
 
-Python 3.11. Entrypoint: `core.main:app` (FastAPI, served by uvicorn on port 8000). `docker-entrypoint.sh` starts four processes in one container: `monitoring/log_watcher.py`, `monitoring/service_monitor.py`, Celery worker (`core.celery_app`), and the FastAPI server. In release compose, these are split: `ai-agent` runs FastAPI, `celery-worker` runs Celery, `log-watcher` runs log monitoring — each its own container.
+Python 3.11. The image `CMD` serves `core.main:app` (FastAPI) with uvicorn on port 8000. On `monitor-ai-01`, `ansible/playbooks/configure-moodle-monitoring.yml` runs it as `moodle-ai-agent`, plus `moodle-agent-worker` (Celery, `core.celery_app`) and `moodle-agent-redis`. The image is published as `ghcr.io/<owner>/moodle-ai-agent:<sha>`.
 
 - **Alert flow**: Alertmanager -> `/webhook` (FastAPI) -> Celery `process_alerts_task`. The task routes Moodle alerts through `core/moodle_alert_integration.py` and the unified/shadow path, and legacy service alerts through the RAG/Gemini assistant path. These paths have different execution authorities; do not describe them as one self-remediating pipeline.
 - **Cooldown/dedup**: identity from Alertmanager `fingerprint`, else hash of `alertname`/`instance`/`job`/`service`/`target`. Redis key `alert-ai-cooldown:<identity>` with TTL `ALERT_AI_COOLDOWN_SECONDS` (default 900). Falls back to in-memory cooldown if Redis is down. `resolved` alerts clear the cooldown.
@@ -98,7 +97,7 @@ CI verifies the Moodle image's secret-file handling, PHP syntax, public web-root
 ## Conventions to preserve
 
 - **No production image builds on EC2.** EC2 only pulls GHCR artifacts that CI produced. Do not copy application source to EC2 for releases.
-- `automation/app-release-deploy.sh` belongs to the legacy banking/payment lane. Moodle staging uses its Moodle-specific workflow and deployment helper; keep each lane explicit.
+- Moodle staging deploys through `.github/workflows/cd-staging.yml` and `automation/github-deploy-moodle.sh` (self-hosted runner `moodle-staging`), or manually per `docs/MOODLE_OPERATIONS_RUNBOOK.md` §8. Run operator scripts from the repository root.
 - **Terraform owns cloud resources; Ansible owns host config.** Don't mix concerns.
 - **Ruff lint uses only critical rules** (`E9,F63,F7,F82`) in CI — undefined names and syntax. Broader style rules are not enforced; do not fail a change for style unless it breaks CI.
 - **`httpx` must stay `<0.28`** for FastAPI `TestClient` compatibility.
@@ -106,7 +105,9 @@ CI verifies the Moodle image's secret-file handling, PHP syntax, public web-root
 
 ## Reference docs (already in repo)
 
-- `README.md` — Moodle thesis scope, repository map, evidence modes, and legacy-lane boundaries.
+- `README.md` — Moodle thesis scope, repository map and evidence modes.
+- `docs/MOODLE_ENTRA_OKTA_OIDC_IMPLEMENTATION.md`, `docs/MOODLE_SSO_INCIDENT_SCENARIOS.md` — Okta/Entra SSO deployment and incident scenarios.
+- `docs/AWS_IAM_ACCESS_GUIDE.md` — InfraEngineer/AIEngineer role-based AWS access.
 - `docs/AI_ENGINEER_STATUS.md` — AI-owned implementation, evidence status, and remaining cross-role dependencies.
 - `docs/` — Moodle deployment, infrastructure, operational baseline, runbooks, and CI/CD documentation.
 - `docs/MOODLE_OPERATIONS_RUNBOOK.md` — Terraform + Ansible provisioning, deployment, monitoring and teardown steps.

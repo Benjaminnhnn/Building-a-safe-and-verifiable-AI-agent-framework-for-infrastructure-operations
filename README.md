@@ -19,7 +19,7 @@ This repository contains the thesis implementation and operational tooling for a
 | `ansible/` | Host bootstrap, monitoring, Moodle runtime preparation, and safe-executor configuration. |
 | `moodle/`, `release/moodle/` | Moodle image, health/synthetic probes, and Moodle Compose runtime. |
 | `agent_src/core/` | Incident contracts, evidence store, observer/diagnosis/planner, safety policy, executor boundary, orchestrator, and verifier. |
-| `evaluation/ground_truth/moodle/` | The 15 Moodle scenario contracts; resource/topology catalogs are under `evaluation/resources/`. |
+| `evaluation/ground_truth/` | `moodle/` holds the 15 Moodle scenario contracts used by the Moodle pipeline, acceptance and benchmark; the top-level `<ID>-*.json` files are the unified-replay fixtures for the same scenarios. The resource inventory mirror is in `evaluation/resources/`. |
 | `automation/` | Moodle baseline, fault/reset drills, replay, safe-executor workflows, evidence harvesting, and deployment helpers. |
 | `.github/workflows/` | CI validation, AI/Moodle image publishing, and Moodle staging deployment. |
 | `docs/` | Planning, runbooks, architecture, operational evidence, and sprint reports. Treat dated reports as historical snapshots. |
@@ -34,7 +34,7 @@ Telegram webhooks require `TELEGRAM_WEBHOOK_SECRET`; runbook approval and feedba
 
 ### Local validation and offline replay
 
-Follow the commands in `AGENTS.md`. CI runs the critical Ruff checks and agent tests, validates Moodle automation, builds the agent and Moodle images, checks Compose configuration, and runs the 15-scenario replay. The replay asserts that it remains simulated and cannot authorize live execution.
+Follow the commands in `AGENTS.md`. CI runs the critical Ruff checks and agent tests, validates Moodle automation, builds the agent and Moodle images, checks the Moodle Compose configuration, and runs two 15-scenario replays (unified control plane and Sprint 2 pipeline). The replay asserts that it remains simulated and cannot authorize live execution.
 
 ### Moodle staging deployment and live drills
 
@@ -52,7 +52,7 @@ The checked-in `report.md` and files under `docs/` are dated evidence snapshots,
 
 ## Legacy components
 
-The repository still contains legacy banking/payment release files and Terraform-managed `bank-web-01` / `bank-core-01` resources. They are not part of the Moodle thesis path. Terraform state may still own those resources; do not remove or disable them in infrastructure code until a fresh state-backed plan and data/availability review establishes the retirement impact. Legacy release Compose files are retained for reference and are not the thesis deployment workflow.
+The banking/payment demo (bank-web-01 / bank-core-01, payment-api, frontend, its release Compose files, deploy script and Ansible stack) and the local OpenLDAP auth lab were removed on 2026-10-14. The two legacy security groups are destroyed by the next reviewed `terraform apply`. A dormant legacy alert-diagnosis branch remains in `agent_src/core/tasks.py` pending refactor. Dated documents may still describe the removed components.
 
 ## Core invariants
 

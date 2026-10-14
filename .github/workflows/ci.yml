@@ -36,7 +36,7 @@ jobs:
           PYTHONPATH: agent_src
         run: pytest -q agent_src/tests
 
-      - name: Validate Moodle and auth experiment automation
+      - name: Validate Moodle experiment and operator automation
         run: |
           python -m py_compile \
             automation/moodle-synthetic-transaction.py \
@@ -51,6 +51,8 @@ jobs:
             automation/run-benchmark.py \
             automation/moodle-auth-verify.py \
             automation/sprint6-acceptance.py \
+            automation/sso-identity-drill.py \
+            automation/benchmark-cost-dashboard.py \
             evaluation/benchmark/statistical_analysis.py
           bash -n \
             automation/lib/moodle-fault-common.sh \
@@ -64,7 +66,18 @@ jobs:
             automation/github-deploy-moodle.sh \
             automation/configure-moodle-safe-executor-api.sh \
             automation/moodle-safe-executor-drill.sh \
-            automation/moodle-scenario-verify.sh
+            automation/moodle-scenario-verify.sh \
+            automation/stage-moodle-release.sh \
+            automation/moodle-db02-role-quota.sh \
+            automation/prepare-moodle-runtime.sh \
+            automation/moodle-preflight.sh \
+            automation/configure-moodle-monitoring.sh \
+            automation/configure-moodle-ghcr-access.sh \
+            automation/configure-moodle-safe-executor.sh \
+            automation/update-infrastructure.sh \
+            automation/authorize-ai-engineer.sh \
+            automation/capture-moodle-baseline.sh \
+            automation/moodle-rds-restore-drill.sh
           if bash automation/moodle-scenario-verify.sh SEC-01 >/dev/null 2>&1; then
             echo "HUMAN_ONLY scenario was unexpectedly accepted for live verification" >&2
             exit 1
