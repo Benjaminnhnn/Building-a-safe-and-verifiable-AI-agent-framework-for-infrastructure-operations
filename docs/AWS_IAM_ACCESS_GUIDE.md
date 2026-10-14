@@ -52,6 +52,7 @@ IAM user <ai-user>    ──► ┌───────────────
 | **Quyền nằm ở role, không nằm ở user** | Credential của role là **tạm thời** (≤ 4 giờ) và **bắt buộc MFA**. Credential lâu dài của user (mật khẩu, access key) một mình không đủ để làm gì |
 | **Mỗi vai trò một role riêng** (`InfraEngineer`, `AIEngineer`), dùng chung một policy | Quyền giống nhau, nhưng CloudTrail ghi rõ **ai** làm (`assumed-role/AIEngineer/...`), và thu hồi quyền một người không ảnh hưởng người kia |
 | **Chỉ cho phép `ap-southeast-1`** | Giới hạn phạm vi thiệt hại, và tránh tài nguyên "mồ côi" ở region khác, vốn khó phát hiện và vẫn tính tiền |
+| **Chỉ đọc kho tài nguyên** (`tag:GetResources`, `ssm:DescribeInstanceInformation`, `iam:ListAttachedUserPolicies`) | Xem tài nguyên theo tag, EC2 đăng ký SSM và policy gắn cho user mà không mở quyền ghi; `ListAttachedUserPolicies` chỉ đọc, không cho gắn/gỡ policy |
 | **Không có quyền quản lý IAM** | Đúng nguyên tắc dự án: thay đổi IAM là **HUMAN_ONLY**. Kể cả AI agent hay người dùng role này cũng không tự nâng quyền được |
 | **KMS chỉ dùng được "qua" RDS, Secrets Manager, EFS** (`kms:ViaService`) | Mã hóa vẫn hoạt động, nhưng không ai dùng được khóa KMS trực tiếp cho việc khác |
 | **Secrets Manager chỉ với secret `rds!*`** | Chỉ đọc được secret master do RDS tự quản lý, không đọc được secret khác trong account |
@@ -119,7 +120,11 @@ Tạo **một lần**, dùng chung cho cả hai role.
     { "Sid": "ServiceLinkedRolesOnly", "Effect": "Allow", "Action": "iam:CreateServiceLinkedRole", "Resource": "*",
       "Condition": { "StringEquals": { "iam:AWSServiceName": [
         "rds.amazonaws.com", "elasticloadbalancing.amazonaws.com",
-        "elasticfilesystem.amazonaws.com", "backup.amazonaws.com" ] } } }
+        "elasticfilesystem.amazonaws.com", "backup.amazonaws.com" ] } } },
+    { "Sid": "ReadOnlyInventory", "Effect": "Allow",
+      "Action": ["tag:GetResources", "ssm:DescribeInstanceInformation"], "Resource": "*" },
+    { "Sid": "ReadUserPolicyAttachments", "Effect": "Allow",
+      "Action": "iam:ListAttachedUserPolicies", "Resource": "arn:aws:iam::<ACCOUNT_ID>:user/*" }
   ]
 }
 ```

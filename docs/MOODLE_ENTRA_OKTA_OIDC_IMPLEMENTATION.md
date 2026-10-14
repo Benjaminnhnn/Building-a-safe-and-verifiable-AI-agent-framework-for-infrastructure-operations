@@ -576,7 +576,11 @@ Thay `ACCOUNT_ID` trước khi dùng.
     { "Sid": "ServiceLinkedRolesOnly", "Effect": "Allow", "Action": "iam:CreateServiceLinkedRole", "Resource": "*",
       "Condition": { "StringEquals": { "iam:AWSServiceName": [
         "rds.amazonaws.com", "elasticloadbalancing.amazonaws.com",
-        "elasticfilesystem.amazonaws.com", "backup.amazonaws.com" ] } } }
+        "elasticfilesystem.amazonaws.com", "backup.amazonaws.com" ] } } },
+    { "Sid": "ReadOnlyInventory", "Effect": "Allow",
+      "Action": ["tag:GetResources", "ssm:DescribeInstanceInformation"], "Resource": "*" },
+    { "Sid": "ReadUserPolicyAttachments", "Effect": "Allow",
+      "Action": "iam:ListAttachedUserPolicies", "Resource": "arn:aws:iam::<ACCOUNT_ID>:user/*" }
   ]
 }
 ```
