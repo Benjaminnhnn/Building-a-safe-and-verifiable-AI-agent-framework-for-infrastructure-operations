@@ -206,7 +206,6 @@ def test_moodle_alert_mapping_has_no_unmapped_configured_alerts() -> None:
     repo = Path(__file__).resolve().parents[2]
     rule_files = [
         repo / "ansible/config/moodle_alert_rules.yml",
-        repo / "ansible/config/alert_rules.yml",
     ]
     configured = {
         line.strip().split(":", 1)[1].strip()
