@@ -1,171 +1,203 @@
 # CI/CD Moodle và AI Agent
 
-Tài liệu này mô tả luồng delivery hiện tại của môi trường Moodle staging. Nó
-thay thế thiết kế CI/CD của delivery stack ứng dụng cũ.
+Tài liệu này mô tả **luồng CI/CD đang chạy** cho môi trường Moodle staging và
+AI Agent, theo đúng các workflow trong `.github/workflows/`. Khi workflow thay
+đổi, cập nhật tài liệu này trong cùng commit.
+
+> **Trạng thái ngày 15/10/2026:** hạ tầng staging đã được destroy (xem
+> [Moodle Operations Runbook](MOODLE_OPERATIONS_RUNBOOK.md) §14). CI và việc
+> publish image vẫn chạy bình thường; job deploy của CD sẽ không thể chạy cho
+> tới khi hạ tầng được dựng lại theo runbook §4–§8.
 
 ## 1. Mục tiêu và ranh giới
 
-CI/CD tạo các image Docker bất biến, kiểm thử chúng và triển khai **Moodle**
-vào hai Moodle application node. Hạ tầng AWS không được GitHub Actions tự ý
-tạo, thay đổi hoặc phá hủy.
+CI/CD kiểm thử mọi thay đổi, tạo **image Docker bất biến** (gắn theo commit
+SHA) và triển khai **Moodle** lên hai application node. GitHub Actions **không**
+tạo, sửa hay phá hủy hạ tầng AWS.
 
 | Thành phần | Chủ sở hữu | Cách thay đổi |
 | --- | --- | --- |
-| VPC, ALB, EC2, RDS, EFS, security group | Terraform + Infrastructure Engineer | <code>plan</code> được review, rồi <code>apply</code> rõ ràng |
-| Host runtime và monitoring | Ansible + automation | Chạy từ máy điều khiển tin cậy |
+| VPC, ALB, EC2, RDS, EFS, security group | Terraform, Infrastructure Engineer | `plan` được review rồi `apply`, theo runbook §5 |
+| Host runtime và monitoring | Ansible, script trong `automation/` | Chạy từ máy điều khiển tin cậy, theo runbook §6 và §9 |
 | Moodle image | GitHub Actions + GHCR | Build theo commit SHA; CD staging triển khai |
-| AI Agent image | GitHub Actions + GHCR | Build theo commit SHA; owner phê duyệt rollout monitoring |
-| Runtime secrets | Secret files trên host | Stage thủ công; không nằm trong image, repo hay workflow log |
+| AI Agent image | GitHub Actions + GHCR | Build theo commit SHA; owner triển khai thủ công |
+| Runtime secrets | File secret trên host | Stage thủ công (runbook §8); không nằm trong image, repo hay log |
 
-## 2. Image và registry
+## 2. Luồng theo branch
 
-Hai artifact chính được phát hành lên GitHub Container Registry (GHCR):
+| Sự kiện | CI (`ci.yml`) | Moodle image | AI Agent image (`agent-image.yml`) | CD staging (`cd-staging.yml`) |
+| --- | --- | --- | --- | --- |
+| Pull request vào `develop`/`main` | ✅ | — | — | — |
+| Push `feature/**` | ✅ | ✅ `moodle-image.yml` (khi `moodle/**` đổi) | ✅ (khi `agent_src/**` đổi) | — |
+| Push `develop` | ✅ | ✅ do `cd-staging.yml` build | ✅ (khi `agent_src/**` đổi) | ✅ khi `moodle/**`, `release/moodle/**`, `automation/github-deploy-moodle.sh` hoặc chính workflow đổi |
+| Push `main` | ✅ | ✅ `moodle-image.yml` | ✅ | — |
+| Chạy tay (`workflow_dispatch`) | — | ✅ | ✅ | ✅ |
 
-| Artifact | Build context | Image immutable |
+Không có CD production. Moodle staging là môi trường triển khai duy nhất.
+
+## 3. Image và registry
+
+| Artifact | Dockerfile và build context | Image bất biến |
 | --- | --- | --- |
-| Moodle | <code>moodle/</code> | <code>ghcr.io/&lt;owner&gt;/moodle:&lt;commit-sha&gt;</code> |
-| AI Agent | <code>agent_src/</code> | <code>ghcr.io/&lt;owner&gt;/moodle-ai-agent:&lt;commit-sha&gt;</code> |
+| Moodle | `moodle/Dockerfile`, context `moodle/` | `ghcr.io/<owner>/moodle:<commit-sha-40-ký-tự>` |
+| AI Agent | `agent_src/Dockerfile`, context **thư mục gốc repo** (`docker build -f agent_src/Dockerfile .`) | `ghcr.io/<owner>/moodle-ai-agent:<commit-sha-40-ký-tự>` |
 
-Commit SHA gồm 40 ký tự là định danh release. Không dùng image tag trôi như
-<code>latest</code> để triển khai staging.
+- Commit SHA 40 ký tự là định danh release. Không dùng tag trôi như `latest`.
+- Image AI Agent dùng `agent_src/Dockerfile.dockerignore`, nên **không chứa**
+  `evaluation/ground_truth/`. CI kiểm tra điều này ở bước 9.
+- Package `moodle` hiện là **public**; package `moodle-ai-agent` do GHCR quản lý
+  quyền riêng.
+- EC2 không build source. Mỗi node chỉ pull image do CI tạo và chạy Docker
+  Compose với file runtime đã stage sẵn.
 
-EC2 không build source application. Mỗi node chỉ xác thực GHCR, pull image đã
-được CI tạo, rồi chạy Docker Compose với file runtime đã stage sẵn.
+## 4. CI: kiểm thử mọi thay đổi
 
-## 3. CI: kiểm thử mọi thay đổi
+Workflow [ci.yml](../.github/workflows/ci.yml) chạy một job
+`lint-test-build` trên `ubuntu-latest`, gồm các bước theo thứ tự:
 
-Workflow [ci.yml](../.github/workflows/ci.yml) chạy cho pull request và push
-vào <code>feature/**</code>, <code>develop</code>, <code>main</code>.
+| # | Bước | Kiểm tra gì |
+| --- | --- | --- |
+| 1–3 | Checkout, Python 3.11, cài dependency | `pip install --require-hashes -r agent_src/requirements.txt`, cộng `pytest`, `ruff`, `httpx<0.28` |
+| 4 | Lint (critical rules) | `ruff check agent_src --select E9,F63,F7,F82` (lỗi cú pháp và tên chưa định nghĩa) |
+| 5 | Test AI Agent | `pytest -q agent_src/tests` |
+| 6 | Validate Moodle experiment and operator automation | `py_compile` các script Python và `bash -n` các script shell trong `automation/`; `moodle-scenario-verify.sh SEC-01` phải bị từ chối với exit 64 (HUMAN_ONLY) |
+| 7 | Replay merged unified AI control plane | Replay offline 15 kịch bản. **Kết quả từng kịch bản được ghim**: 13 `fail_closed_missing_rollback`, SEC-01 `fail_closed_human_only`, DB-01 `escalated_without_action`; không có thực thi live |
+| 8 | Build AI Agent image | Build local, không push |
+| 9 | Verify runtime image excludes evaluation ground truth | Trong image: không có `/app/evaluation/ground_truth`; chế độ `live` phải escalate và không cho thực thi |
+| 10 | Build Moodle image | Build local, không push |
+| 11 | Test Moodle secret-file handling | Moodle đọc mật khẩu DB qua `MOODLE_DB_PASSWORD_FILE` |
+| 12 | Replay Moodle Sprint 2 pipeline | 15 kịch bản `VERIFIED_DRY_RUN`, 0 thực thi bị cấm |
+| 13 | Test Moodle public web root layout | `healthz.php`, `synthetic-transaction.php`, DocumentRoot `/var/www/html/public` |
+| 14 | Validate Docker Compose files | `docker compose config` cho `release/moodle/docker-compose.yml` |
+| 15–16 | Notify admins on failure | Chỉ khi có bước lỗi: gửi Telegram qua `automation/notify.sh` (secret `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`) |
 
-Nó thực hiện:
+Chạy lại các bước này ở máy local theo `AGENTS.md`, mục *Verify before pushing*.
 
-1. Ruff critical rules và pytest cho <code>agent_src</code>.
-2. Python/Bash syntax validation cho Moodle automation và replay.
-3. Build local image AI Agent và Moodle.
-4. Kiểm tra Moodle đọc database password qua
-   <code>MOODLE_DB_PASSWORD_FILE</code>, PHP syntax, Apache public document root và
-   Docker Compose configuration.
-5. Replay control-plane AI ở chế độ không mutation.
+**Lưu ý khi CI đỏ:** CI dừng ở bước lỗi **đầu tiên**, nên lỗi ở bước sau bị
+che. Sau khi sửa một bước, bước tiếp theo có thể lộ lỗi mới. Hãy chạy lại toàn
+bộ các bước ở local (mỗi lệnh kiểm tra phải trả về exit code 0, đừng để `| tail`
+nuốt mã lỗi) trước khi push.
 
-CI fail phải được sửa trước khi merge; CI không có quyền Terraform hoặc AWS
-credential để <code>apply</code>/<code>destroy</code>.
+CI không có credential AWS, nên không thể `apply` hay `destroy` hạ tầng.
 
-> **Trạng thái chuyển tiếp cần biết:** workflow hiện tại vẫn validate hai Compose
-> file root <code>release/docker-compose.staging.yml</code> và
-> <code>release/docker-compose.production.yml</code> ngoài Moodle Compose. Đây
-> là validation còn lại của release stack cũ, không phải CD path Moodle và nên
-> được bỏ cùng đợt dọn source legacy. Không coi chúng là source of truth cho
-> Moodle staging.
-
-## 4. Build Moodle và Agent images
+## 5. Build và publish image
 
 ### Moodle
 
-| Workflow | Trigger | Kết quả |
+| Workflow | Khi nào chạy | Kết quả |
 | --- | --- | --- |
-| [moodle-image.yml](../.github/workflows/moodle-image.yml) | Push vào <code>feature/**</code> hoặc <code>main</code> khi <code>moodle/</code> thay đổi | Push image Moodle immutable lên GHCR |
-| [cd-staging.yml](../.github/workflows/cd-staging.yml) | Push vào <code>develop</code> khi <code>moodle/</code>, <code>release/moodle/</code> hoặc Moodle deploy script thay đổi | Build/push image rồi deploy Moodle staging |
+| [moodle-image.yml](../.github/workflows/moodle-image.yml) | Push `feature/**` hoặc `main` khi `moodle/**` đổi, hoặc chạy tay | Push `moodle:<sha>` lên GHCR |
+| [cd-staging.yml](../.github/workflows/cd-staging.yml), job `build-moodle` | Push `develop` theo path filter ở mục 2, hoặc chạy tay | Push `moodle:<sha>` rồi chuyển sang job deploy |
 
 ### AI Agent
 
-[agent-image.yml](../.github/workflows/agent-image.yml) build/push AI Agent
-khi <code>agent_src/</code> thay đổi trên <code>feature/**</code>, <code>develop</code> hoặc
-<code>main</code>. Workflow này **không tự thay Agent đang chạy**. Infrastructure
-owner chọn image SHA đã review và chạy:
+[agent-image.yml](../.github/workflows/agent-image.yml) build và push
+`moodle-ai-agent:<sha>`. Workflow này **không tự thay Agent đang chạy**. Owner
+chọn SHA đã review và triển khai bằng:
 
-~~~bash
+```bash
 bash automation/configure-moodle-monitoring.sh \
-  --agent-image ghcr.io/&lt;owner&gt;/moodle-ai-agent:&lt;commit-sha&gt;
-~~~
+  --agent-image ghcr.io/<owner>/moodle-ai-agent:<commit-sha>
+```
 
-Tách Agent rollout khỏi Moodle CD giúp tránh thay đổi logic diagnosis/execution
-ngoài ý muốn khi chỉ release ứng dụng Moodle.
+Tách rollout Agent khỏi CD Moodle để việc release ứng dụng không vô tình thay
+đổi logic chẩn đoán hay thực thi của agent.
 
-## 5. CD staging Moodle
+## 6. CD staging Moodle
 
-Sau một push hợp lệ vào <code>develop</code>, <code>CD Staging Moodle</code> chạy theo trình tự:
+Workflow [cd-staging.yml](../.github/workflows/cd-staging.yml) có hai job:
 
-~~~text
-push to develop
-  → GitHub Actions: test/build Moodle image
-  → GHCR: publish ghcr.io/&lt;owner&gt;/moodle:&lt;commit-sha&gt;
-  → self-hosted runner on monitor-ai-01
-  → SSH deploy moodle-app-b, then moodle-app-a
-  → each node: docker pull + compose up --wait + local health check
-  → ALB /healthz.php check
-~~~
+```text
+push develop (đúng path filter)
+  → job build-moodle (ubuntu-latest): build + push ghcr.io/<owner>/moodle:<sha>
+  → job deploy-moodle (runner tự host: self-hosted, linux, moodle-staging;
+                       GitHub Environment "staging")
+      → kiểm tra đủ secret
+      → automation/github-deploy-moodle.sh:
+          moodle-app-b trước, rồi moodle-app-a
+          mỗi node: docker login GHCR → cập nhật MOODLE_IMAGE trong
+                    /opt/moodle/release/moodle-runtime.env → compose pull
+                    → compose up -d --wait → curl http://127.0.0.1:8080/healthz.php
+      → curl $MOODLE_PUBLIC_URL/healthz.php qua ALB
+```
 
-Deploy node B trước để duy trì một target healthy phía sau ALB. Script
-[github-deploy-moodle.sh](../automation/github-deploy-moodle.sh) fail ngay nếu
-runtime chưa được stage, image không immutable, Docker pull/Compose/health
-check thất bại hoặc ALB không healthy.
+- Node B được deploy trước để luôn còn một target healthy phía sau ALB.
+- **Runner tự host bắt buộc** (thường đặt trên `monitor-ai-01`, nơi SSH được
+  vào hai node private). Không có runner online thì job `deploy-moodle` đứng ở
+  trạng thái `queued` rồi bị hủy; image vẫn đã được publish. Khi đó deploy tay
+  theo runbook §8.
+- Script SSH với `StrictHostKeyChecking=accept-new`: tin host key ở lần kết nối
+  đầu tiên. Khác với luồng thủ công trong runbook (bắt buộc đối chiếu fingerprint).
 
-### GitHub Secrets bắt buộc cho CD
+### Secret của GitHub Environment `staging`
 
 | Secret | Mục đích |
 | --- | --- |
-| <code>MOODLE_APP_A_HOST</code>, <code>MOODLE_APP_B_HOST</code> | Target SSH private address/hostname |
-| <code>SSH_PRIVATE_KEY</code> | Private key deploy, chỉ dùng tạm thời trong runner |
-| <code>SSH_PORT</code> | Port SSH, mặc định 22 nếu không khai báo |
-| <code>GHCR_USERNAME</code>, <code>GHCR_TOKEN</code> | Quyền pull package GHCR |
-| <code>MOODLE_PUBLIC_URL</code> | Kiểm tra health qua ALB sau rollout |
+| `MOODLE_APP_A_HOST`, `MOODLE_APP_B_HOST` | IP private hoặc hostname của hai node (runner phải tới được) |
+| `SSH_PRIVATE_KEY` | Key deploy; chỉ ghi ra file tạm trên runner, xóa khi script kết thúc |
+| `SSH_PORT` | Không bắt buộc, mặc định 22 |
+| `GHCR_USERNAME`, `GHCR_TOKEN` | **Bắt buộc**, vì script luôn `docker login`, kể cả khi package public. Token chỉ cần `read:packages` |
+| `MOODLE_PUBLIC_URL` | Không bắt buộc; nếu có thì kiểm tra health qua ALB sau rollout |
 
-<code>GHCR_TOKEN</code> chỉ cần scope <code>read:packages</code>. Không ghi bất kỳ secret nào vào
-repository, Docker image, Terraform output công khai hay evidence artifacts.
+**Mỗi lần dựng lại hạ tầng**, IP private của node và DNS của ALB đều đổi: phải
+cập nhật `MOODLE_APP_A_HOST`, `MOODLE_APP_B_HOST`, `MOODLE_PUBLIC_URL`.
 
-## 6. Điều kiện trước CD
+### Điều kiện trước khi CD chạy được
 
-CD không bootstrap Moodle từ đầu. Trước lần deploy đầu tiên, Infrastructure
-Engineer phải hoàn tất theo
-[Moodle Operations Runbook](MOODLE_OPERATIONS_RUNBOOK.md):
+CD **không** bootstrap Moodle. Trước lần deploy đầu tiên, Infrastructure
+Engineer phải hoàn tất runbook:
 
-1. Apply Terraform đã review và tạo inventory/SSH config.
-2. Chạy <code>prepare-moodle-runtime.sh</code>.
-3. Cấu hình quyền GHCR trên cả hai Moodle nodes.
-4. Stage RDS app role, database secret, admin secret và Compose runtime.
-5. Chạy installer Moodle một lần.
-6. Xác nhận ALB health, RDS, EFS và preflight pass.
+1. §4–§5: Terraform `apply`, xác minh host key, sinh SSH config và inventory.
+2. §6: `prepare-moodle-runtime.sh` (Docker, EFS).
+3. §8: preflight, tạo secret, `stage-moodle-release.sh`, cài Moodle một lần,
+   khởi động web/cron.
+4. §8.1: khôi phục cấu hình Okta OIDC (database mới, DNS ALB mới).
+5. Cài runner tự host và cập nhật secret của environment `staging`.
 
-CD chỉ thay <code>MOODLE_IMAGE</code> trong <code>/opt/moodle/release/moodle-runtime.env</code>; nó
-không tạo database, không thay RDS password, không mount EFS và không chạy
+CD chỉ thay `MOODLE_IMAGE` trong `/opt/moodle/release/moodle-runtime.env`; nó
+không tạo database, không đổi mật khẩu RDS, không mount EFS và không chạy
 Terraform.
 
-## 7. Monitoring, rollback và xử lý lỗi
+## 7. Rollback và xử lý lỗi
 
-- Moodle deployment phải giữ health endpoint <code>healthz.php</code> hợp lệ trên mỗi
-  node và qua ALB.
-- Prometheus, Alertmanager, Grafana, Redis và AI Agent được cấu hình bằng
-  <code>configure-moodle-monitoring.sh</code>; chúng không phải là service của Moodle
-  release Compose.
-- Khi rollout fail, dừng tại node lỗi, giữ node còn healthy trong ALB, xem
-  Docker Compose status/log và xác minh image SHA. Chỉ rollback bằng một SHA
-  đã biết healthy sau khi review.
-- Không dùng CD để xử lý RDS restore, EFS permission repair, fault injection
-  hay Terraform destruction. Các thao tác này phải theo runbook và có
-  evidence/baseline riêng.
+- Script deploy **không tự rollback**. Gặp lỗi (pull, compose, health check),
+  script dừng ngay: node đã deploy giữ image mới, node chưa tới lượt giữ image cũ.
+- Cách rollback: chọn một SHA **đã biết healthy**, rồi deploy lại theo runbook
+  §8 (cập nhật `MOODLE_IMAGE`, `compose up -d --wait` lần lượt node B rồi A).
+- Khi một node lỗi: giữ node còn healthy trong ALB, xem
+  `docker compose ps` và log của node lỗi, xác minh image SHA.
+- **Cần xác minh: cron có thể chạy trên cả hai node.** Script gọi
+  `compose up -d --wait moodle-web moodle-cron` trên **cả** node B và A. Service
+  `moodle-cron` thuộc profile `cron`, nhưng Docker Compose vẫn khởi động một
+  service khi nó được gọi đích danh. Nếu đúng như vậy, sau một lần CD sẽ có
+  **hai** cron runner, trái với quy tắc "chỉ node A chạy cron" của runbook §8.
+  Kiểm tra bằng `docker compose ps` trên node B sau lần CD tiếp theo; nếu thấy
+  `moodle-cron`, sửa script để chỉ node A chạy cron.
+- Không dùng CD để khôi phục RDS, sửa quyền EFS, tạo lỗi diễn tập hay xóa hạ
+  tầng. Các việc này làm theo runbook, có baseline và bằng chứng riêng.
 
-## 8. Kiểm tra release
+## 8. Kiểm tra sau release
 
-Sau một CD thành công:
-
-~~~bash
-curl --fail --silent "$MOODLE_PUBLIC_URL/healthz.php"
+```bash
+MOODLE_URL="$(terraform -chdir=terraform output -json moodle_application | jq -r .url)"
+curl --fail --silent "$MOODLE_URL/healthz.php"
 
 for host in moodle-app-a moodle-app-b; do
   ssh -F terraform/.artifacts/moodle-ssh.config "$host" \
     'sudo docker compose --env-file /opt/moodle/release/moodle-runtime.env \
       -f /opt/moodle/release/docker-compose.yml ps'
 done
-~~~
+```
 
-Sau đó kiểm tra target health của ALB, Prometheus targets và Grafana theo
-[Moodle Operations Runbook](MOODLE_OPERATIONS_RUNBOOK.md).
+Sau đó kiểm tra target health của ALB (runbook §8), nút đăng nhập Okta
+(runbook §8.1), và Prometheus/Grafana nếu monitoring đã triển khai (runbook §9).
 
 ## 9. Nguyên tắc an toàn
 
-- Không auto-apply Terraform/Ansible từ GitHub Actions.
-- Không build production image trên EC2.
-- Không dùng <code>latest</code>, public RDS/EFS, hoặc password trên command line.
-- Không đưa private key, PAT, Terraform state hay <code>.artifacts</code> vào Git.
-- Chỉ deploy image SHA được review; ghi lại commit SHA, image reference,
-  thời điểm deploy và kết quả health check trong release evidence.
+- Không tự động `apply` Terraform hay Ansible từ GitHub Actions.
+- Không build image production trên EC2.
+- Không dùng tag `latest`, không mở RDS/EFS ra Internet, không đặt mật khẩu
+  trên dòng lệnh.
+- Không đưa private key, PAT, Terraform state hay `terraform/.artifacts/` vào Git.
+- Chỉ deploy image SHA đã qua CI; ghi lại commit SHA, image reference, thời điểm
+  deploy và kết quả health check làm bằng chứng release.

@@ -2,7 +2,7 @@
 
 **Môi trường:** staging, AWS `ap-southeast-1`
 **Thời gian triển khai:** 09–11/10/2026
-**Tài liệu liên quan:** [Kế hoạch demo](OKTA_ENTRA_MOODLE_OIDC_DEMO_PLAN.md) · [Moodle Operations Runbook](MOODLE_OPERATIONS_RUNBOOK.md)
+**Tài liệu liên quan:** [Moodle Operations Runbook](MOODLE_OPERATIONS_RUNBOOK.md) · [Kịch bản sự cố SSO](MOODLE_SSO_INCIDENT_SCENARIOS.md) · [Phân quyền AWS IAM](AWS_IAM_ACCESS_GUIDE.md) (kế hoạch demo ban đầu đã được tài liệu này thay thế)
 
 Tài liệu này ghi lại **đúng những gì đã thực hiện**: các bước triển khai, các lỗi gặp phải cùng nguyên nhân gốc, và lý do của từng quyết định thiết kế. Các giá trị nhạy cảm như Account ID, IP, client secret, mật khẩu và token được thay bằng placeholder dạng `<...>`.
 
