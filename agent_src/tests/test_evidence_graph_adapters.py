@@ -8,9 +8,9 @@ from threading import Barrier
 
 import pytest
 from pydantic import ValidationError
-from core.adapters import ActionRequest, FakeDockerAdapter
-from core.dependency_graph import DependencyGraph, DependencyGraphError
-from core.evidence_store import (
+from core.evidence.adapters import ActionRequest, FakeDockerAdapter
+from core.evidence.dependency_graph import DependencyGraph, DependencyGraphError
+from core.evidence.evidence_store import (
     EvidenceConflictError,
     EvidenceIntegrityError,
     SQLiteEvidenceStore,

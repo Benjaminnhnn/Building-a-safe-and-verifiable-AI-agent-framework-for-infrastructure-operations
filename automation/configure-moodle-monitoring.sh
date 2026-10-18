@@ -68,8 +68,24 @@ elif [[ -r "$agent_image_file" ]]; then
   agent_image="$(<"$agent_image_file")"
 fi
 
+if [[ -n "$agent_image" && ! -r "$artifacts_dir/safe-executor/verifier-ed25519.pub" ]]; then
+  echo "Missing Independent Verifier public key; run automation/configure-moodle-safe-executor-api.sh first." >&2
+  exit 66
+fi
+
 agent_enabled=false
 [[ -n "$agent_image" ]] && agent_enabled=true
+live_args=(--extra-vars moodle_safe_action_live_enabled=false)
+if [[ "${MOODLE_SAFE_ACTION_LIVE_ENABLED:-false}" == true ]]; then
+  [[ "${MOODLE_SAFE_ACTION_LIVE_CONFIRM:-}" == staging ]] || {
+    echo "Set MOODLE_SAFE_ACTION_LIVE_CONFIRM=staging to enable the Agent live switch." >&2
+    exit 77
+  }
+  live_args=(
+    --extra-vars moodle_safe_action_live_enabled=true
+    --extra-vars moodle_safe_action_live_confirm=staging
+  )
+fi
 
 mkdir -p "$artifacts_dir"
 terraform -chdir="$terraform_dir" output -raw moodle_ssh_config > "$ssh_config_path"
@@ -97,4 +113,5 @@ ansible-playbook \
   --extra-vars "moodle_monitor_rds_endpoint=$moodle_rds_endpoint" \
   --extra-vars "moodle_synthetic_password_file=$synthetic_password_file" \
   --extra-vars "moodle_agent_enabled=$agent_enabled" \
-  --extra-vars "moodle_agent_image=$agent_image"
+  --extra-vars "moodle_agent_image=$agent_image" \
+  "${live_args[@]}"

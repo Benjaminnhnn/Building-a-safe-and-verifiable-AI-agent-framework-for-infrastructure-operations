@@ -14,10 +14,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "agent_src"))
 
-from core.ground_truth import load_ground_truth, validate_ground_truth  # noqa: E402
-from core.unified_core import DiagnosisAgent, ObserverAgent, PlannerAgent, SQLiteEvidenceStore, SequentialOrchestrator  # noqa: E402
+from evaluation.agent_replay.ground_truth import load_ground_truth, validate_ground_truth  # noqa: E402
+from evaluation.agent_replay.unified_core import DiagnosisAgent, ObserverAgent, PlannerAgent, SQLiteEvidenceStore, SequentialOrchestrator  # noqa: E402
 
 
 def replay(root: Path, output: Path) -> dict:

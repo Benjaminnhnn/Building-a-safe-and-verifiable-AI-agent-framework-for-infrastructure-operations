@@ -6,14 +6,14 @@ from datetime import timezone
 
 import pytest
 
-from core.evidence_collectors import (
+from core.evidence.evidence_collectors import (
     METRIC_QUERIES_BY_ALERT,
     PrometheusEvidenceCollector,
     alert_context_evidence,
     sanitize_log_excerpt,
     static_inventory_evidence,
 )
-from core.sanitization import sanitize_untrusted_data
+from core.safety.sanitization import sanitize_untrusted_data
 
 
 class _Response:
@@ -87,8 +87,9 @@ def test_node_rds_alert_uses_fixed_node_local_probe_query():
     batch = collector.collect("MoodleNodeRdsTcpFailed", resource_id="moodle-app")
 
     assert batch.errors == []
-    assert len(batch.evidence) == 1
+    assert len(batch.evidence) == 2
     assert batch.evidence[0].payload["query_id"] == "moodle_node_rds_tcp_success"
+    assert batch.evidence[1].payload["query_id"] == "moodle_fault_db01_tagged_rule"
     assert client.calls[0][1]["query"] == 'moodle_node_rds_tcp_success{job="moodle_node"}'
 
 

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.probes import LoginObservation, MoodleAuthVerifier, MoodleLoginProbe
+from core.verification.probes import LoginObservation, MoodleAuthVerifier, MoodleLoginProbe
 
 
 class _Session:

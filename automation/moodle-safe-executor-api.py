@@ -38,10 +38,15 @@ IDEMPOTENCY = re.compile(r"^[A-Za-z0-9._:-]{16,128}$")
 # Exact staging catalog: values are remote node aliases, never caller input.
 CATALOG = {
     ("DB-01", "remove_scoped_db_reject", "staging_moodle_nodes"): ("a", "b"),
+    ("DB-01", "reconcile_db01_safe_baseline", "staging_moodle_nodes"): ("a", "b"),
     ("RES-01", "remove_named_cpu_load_container", "moodle-app-b"): ("b",),
+    ("RES-01", "reconcile_res01_safe_baseline", "moodle-app-b"): ("b",),
     ("NET-01", "recreate_moodle_web_from_reviewed_compose", "staging_moodle_nodes"): ("a", "b"),
+    ("NET-01", "reconcile_net01_safe_baseline", "staging_moodle_nodes"): ("a", "b"),
     ("CON-01", "start_reviewed_compose_service", "moodle-app-b"): ("b",),
+    ("CON-01", "reconcile_con01_safe_baseline", "moodle-app-b"): ("b",),
     ("SEC-02", "restore_fixture_directory_mode", "moodledata_synthetic_fixture_directory"): ("a",),
+    ("SEC-02", "reconcile_sec02_safe_baseline", "moodledata_synthetic_fixture_directory"): ("a",),
 }
 
 
@@ -223,7 +228,7 @@ class Handler(BaseHTTPRequestHandler):
                 "ssh", "-F", "/dev/null", "-i", str(SSH_KEY),
                 "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes",
                 "-o", f"UserKnownHostsFile={KNOWN_HOSTS}", "-o", "ConnectTimeout=8",
-                f"aiops-executor@{NODES[node]}", scenario,
+                f"aiops-executor@{NODES[node]}", action_id,
             ]
             try:
                 result = subprocess.run(command, capture_output=True, text=True, timeout=45, check=False)
@@ -242,6 +247,12 @@ class Handler(BaseHTTPRequestHandler):
             "failure": failure,
             "mutated": bool(completed),
         }
+        if failure is not None and not completed:
+            # A failed or timed-out command may have changed state before
+            # returning its error. Make that uncertainty explicit so a
+            # reviewed idempotent safe-baseline compensation can be requested.
+            response["mutated"] = None
+            response["mutation_state"] = "unknown"
         with sqlite3.connect(STATE_DB) as db:
             db.execute("UPDATE executions SET status = ?, result_json = ? WHERE idempotency_key = ?", (response["status"], canonical(response).decode(), key))
         self.respond(200 if failure is None else 502, response)

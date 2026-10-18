@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import core.shadow_pipeline as shadow_pipeline
-from core.evidence_store import SQLiteEvidenceStore
+from core.evidence.evidence_store import SQLiteEvidenceStore
 from core.shadow_pipeline import _alert_fingerprint, get_unified_core_mode, run_shadow_if_enabled
 
 

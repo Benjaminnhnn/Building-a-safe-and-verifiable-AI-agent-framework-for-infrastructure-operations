@@ -11,7 +11,7 @@ from pathlib import Path
 
 repo_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo_root / "agent_src"))
-from core.safe_executor_client import execute_approved_staging_action
+from core.safety.safe_executor_client import execute_approved_staging_action
 
 
 def main() -> int:

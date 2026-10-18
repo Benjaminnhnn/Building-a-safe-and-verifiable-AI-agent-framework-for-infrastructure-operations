@@ -1,0 +1,145 @@
+# Dedicated single-host staging stack. Versions and service names intentionally
+# match the ERP-01/02/03 ground-truth contracts. Never expose database or Redis.
+x-erpnext-image: &erpnext-image
+  image: frappe/erpnext:v16.51.0
+  platform: linux/amd64
+  restart: unless-stopped
+  volumes:
+    - sites:/home/frappe/frappe-bench/sites
+
+services:
+  configurator:
+    <<: *erpnext-image
+    restart: on-failure
+    entrypoint: ["bash", "-c"]
+    command: >-
+      ls -1 apps > sites/apps.txt;
+      bench set-config -g db_host erpnext_mariadb;
+      bench set-config -gp db_port 3306;
+      bench set-config -g redis_cache redis://erpnext_redis:6379;
+      bench set-config -g redis_queue redis://erpnext_redis:6379;
+      bench set-config -g redis_socketio redis://erpnext_redis:6379;
+      bench set-config -gp socketio_port 9000
+    depends_on:
+      erpnext_mariadb:
+        condition: service_healthy
+      erpnext_redis:
+        condition: service_started
+
+  erpnext_mariadb:
+    image: mariadb:11.8
+    container_name: erpnext_mariadb
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+      MARIADB_AUTO_UPGRADE: "1"
+    secrets: [db_root_password]
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 10s
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  erpnext_redis:
+    image: redis:8.6-alpine
+    container_name: erpnext_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    <<: *erpnext-image
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+
+  websocket:
+    <<: *erpnext-image
+    command: ["node", "/home/frappe/frappe-bench/apps/frappe/socketio.js"]
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+
+  queue-short:
+    <<: *erpnext-image
+    command: ["bench", "worker", "--queue", "short,default"]
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+
+  queue-long:
+    <<: *erpnext-image
+    command: ["bench", "worker", "--queue", "long,default,short"]
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+
+  scheduler:
+    <<: *erpnext-image
+    command: ["bench", "schedule"]
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+
+  erpnext_nginx:
+    <<: *erpnext-image
+    container_name: erpnext_nginx
+    command: ["nginx-entrypoint.sh"]
+    environment:
+      BACKEND: ${ERPNEXT_BACKEND:-backend:8000}
+      SOCKETIO: websocket:9000
+      FRAPPE_SITE_NAME_HEADER: ${FRAPPE_SITE_NAME_HEADER:-erpnext-staging.local}
+      NGINX_LISTEN_PORT: "8080"
+      UPSTREAM_REAL_IP_ADDRESS: 127.0.0.1
+      UPSTREAM_REAL_IP_HEADER: X-Forwarded-For
+      UPSTREAM_REAL_IP_RECURSIVE: "off"
+      PROXY_READ_TIMEOUT: "120"
+      CLIENT_MAX_BODY_SIZE: 50m
+    ports:
+      - "8080:8080"
+    depends_on:
+      - backend
+      - websocket
+
+  create-site:
+    <<: *erpnext-image
+    profiles: [initialize]
+    entrypoint: ["bash", "-c"]
+    command: >-
+      set -euo pipefail;
+      if [ ! -f sites/erpnext-staging.local/site_config.json ]; then
+        bench new-site erpnext-staging.local
+        --mariadb-root-password "$$(cat /run/secrets/db_root_password)"
+        --admin-password "$$(cat /run/secrets/erpnext_admin_password)"
+        --install-app erpnext --set-default;
+      fi
+    secrets: [db_root_password, erpnext_admin_password]
+    depends_on:
+      erpnext_mariadb:
+        condition: service_healthy
+      configurator:
+        condition: service_completed_successfully
+
+secrets:
+  db_root_password:
+    file: ./secrets/db_root_password
+  erpnext_admin_password:
+    file: ./secrets/erpnext_admin_password
+
+volumes:
+  sites:
+  db-data:
+  redis-data:

@@ -72,17 +72,28 @@ class LogFileHandler(FileSystemEventHandler):
     def __init__(self, file_path):
         self.file_path = file_path
         self.file_handle = open(file_path, "r")
+        try:
+            self.file_inode = os.stat(file_path).st_ino
+        except OSError:
+            self.file_inode = 0
         self.file_handle.seek(0, os.SEEK_END)
 
     def on_modified(self, event):
         if event.src_path == self.file_path:
             # Handle log rotation or truncation
-            current_pos = self.file_handle.tell()
-            file_size = os.path.getsize(self.file_path)
-
-            if file_size < current_pos:
-                print(f"🔄 Log file {self.file_path} truncated or rotated. Resetting pointer to 0.")
-                self.file_handle.seek(0)
+            try:
+                stat = os.stat(self.file_path)
+                if stat.st_ino != self.file_inode or stat.st_size < self.file_handle.tell():
+                    print(f"🔄 Log file {self.file_path} rotated or truncated. Reopening handle.")
+                    try:
+                        self.file_handle.close()
+                    except Exception:
+                        pass
+                    self.file_handle = open(self.file_path, "r")
+                    self.file_inode = stat.st_ino
+                    self.file_handle.seek(0)
+            except OSError:
+                return
 
             lines = self.file_handle.readlines()
             for line in lines:

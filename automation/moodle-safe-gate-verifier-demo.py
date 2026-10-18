@@ -17,13 +17,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "agent_src"))
 
-from core.adapters import SafeActionRequest  # noqa: E402
-from core.safe_execution_gate import ApprovalRecord, SafeExecutionGate  # noqa: E402
+from core.evidence.adapters import SafeActionRequest  # noqa: E402
+from core.safety.safe_execution_gate import ApprovalRecord, SafeExecutionGate  # noqa: E402
 from core.schema.action import RollbackPlan, TypedAction  # noqa: E402
 from core.schema.common import ActionType, Environment  # noqa: E402
 from core.schema.incident import Incident  # noqa: E402
 from core.schema.verification import StabilityObservation  # noqa: E402
-from core.verification_agent import DryRunProbe, VerificationAgent  # noqa: E402
+from core.verification.verification_agent import DryRunProbe, VerificationAgent  # noqa: E402
 
 
 def main() -> int:

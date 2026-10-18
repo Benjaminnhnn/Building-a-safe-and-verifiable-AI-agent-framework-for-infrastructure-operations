@@ -7,8 +7,8 @@ source "$script_dir/lib/moodle-fault-common.sh"
 
 scenario="${1:-}"
 drill_id="${2:-}"
-if [[ -n "$drill_id" && ! "$drill_id" =~ ^[A-Z0-9-]+$ ]]; then
-  echo "Drill ID may contain only uppercase letters, digits, and hyphens." >&2
+if [[ -n "$drill_id" && ! "$drill_id" =~ ^[A-Za-z0-9-]+$ ]]; then
+  echo "Drill ID may contain only letters, digits, and hyphens." >&2
   exit 64
 fi
 case "$scenario" in
@@ -47,6 +47,7 @@ load_moodle_environment_read_only() {
   target_group_arn="$(jq -r '.target_group_arn' <<<"$application_json")"
   region="$(jq -r '.alb_arn | split(":")[3]' <<<"$application_json")"
   moodledata_path="$(jq -r '.host_mount_path' <<<"$filesystem_json")"
+  external_rds_health_check_id="$(jq -r '.external_tcp_health_check_id // empty' <<<"$database_json")"
   [[ "$public_url" == http://moodle-staging-* || "$public_url" == https://moodle-staging-* ]] || {
     echo "Refusing verification outside the Moodle staging URL: $public_url" >&2
     exit 77
@@ -110,6 +111,23 @@ check_two_healthy_alb_targets() {
   [[ "$healthy" == 2 ]]
 }
 
+check_internet_to_postgresql_blocked() {
+  [[ -n "$external_rds_health_check_id" ]] || return 1
+  local observations
+  observations="$(AWS_PROFILE="${AWS_PROFILE:-target-account}" aws route53 get-health-check-status \
+    --health-check-id "$external_rds_health_check_id" --output json)" || return 1
+  jq -e '
+    .HealthCheckObservations as $observations
+    | ($observations | length >= 3)
+      and (($observations | map(.IPAddress) | unique | length) >= 3)
+      and all($observations[];
+        (.StatusReport.Status | startswith("Failure"))
+        and ((now - (.StatusReport.CheckedTime | fromdateiso8601)) >= 0)
+        and ((now - (.StatusReport.CheckedTime | fromdateiso8601)) <= 180)
+      )
+  ' <<<"$observations" >/dev/null
+}
+
 record_check common_synthetic_transaction \
   'Prometheus has a successful authenticated Moodle transaction newer than 180 seconds' \
   "$(if check_prometheus_synthetic; then printf passed; else printf failed; fi)"
@@ -119,6 +137,9 @@ alert_resolution_description="$alert_name is not firing"
 record_check scenario_alert_resolved \
   "$alert_resolution_description" \
   "$(if check_scenario_alert_resolved; then printf passed; else printf failed; fi)"
+record_check internet_to_postgresql_blocked \
+  'At least three distinct external Route 53 checkers recently failed to connect to PostgreSQL TCP 5432' \
+  "$(if check_internet_to_postgresql_blocked; then printf passed; else printf failed; fi)"
 
 case "$scenario" in
   DB-01)

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import json
 import re
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
-from core.sanitization import contains_unredacted_secret
+from core.safety.sanitization import contains_unredacted_secret
 from .common import EvidenceType
 
 

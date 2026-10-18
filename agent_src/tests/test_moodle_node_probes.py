@@ -70,6 +70,11 @@ def test_missing_container_emits_zero_not_fake_recovery(tmp_path: Path) -> None:
     assert "moodle_node_router_fallback_success 0\n" in metrics
     assert "moodle_node_reverse_proxy_enabled 0\n" in metrics
     assert "moodle_node_scratch_enospc 0\n" in metrics
+    assert "moodle_fault_db01_tagged_rule 0\n" in metrics
+    assert "moodle_fault_res01_cpu_fixture_running 0\n" in metrics
+    assert "moodle_fault_net01_hosts_override 0\n" in metrics
+    assert "moodle_fault_con01_web_stopped 0\n" in metrics
+    assert "moodle_fault_sec02_fixture_mode_zero 0\n" in metrics
     assert "MOODLE_DB_PASSWORD" not in metrics
 
 
@@ -94,6 +99,7 @@ def test_positive_container_probes_emit_expected_values(tmp_path: Path) -> None:
         "#!/bin/sh\n"
         "case \"$*\" in\n"
         "  *RestartCount*) echo 3 ;;\n"
+        "  *'printenv MOODLE_DB_HOST'*) echo db.example ;;\n"
         "  *.State.Running*) echo true ;;\n"
         "  *'php -r'*) echo 0.012345 ;;\n"
         "  *) exit 0 ;;\n"
@@ -102,6 +108,12 @@ def test_positive_container_probes_emit_expected_values(tmp_path: Path) -> None:
         newline="\n",
     )
     docker.chmod(0o755)
+    iptables = fake_bin / "iptables"
+    iptables.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8", newline="\n")
+    iptables.chmod(0o755)
+    cat = fake_bin / "cat"
+    cat.write_text("#!/bin/sh\necho 192.0.2.1\n", encoding="utf-8", newline="\n")
+    cat.chmod(0o755)
     curl = fake_bin / "curl"
     curl.write_text(
         "#!/bin/sh\necho 'The requested resource could not be found. Please verify the URI'\n",
@@ -122,3 +134,7 @@ def test_positive_container_probes_emit_expected_values(tmp_path: Path) -> None:
     assert "moodle_node_rds_tcp_success 1\n" in metrics
     assert "moodle_node_rds_tcp_duration_seconds 0.012345\n" in metrics
     assert "moodle_node_web_restart_count 3\n" in metrics
+    assert "moodle_fault_db01_tagged_rule 1\n" in metrics
+    assert "moodle_fault_res01_cpu_fixture_running 1\n" in metrics
+    assert "moodle_fault_net01_hosts_override 1\n" in metrics
+    assert "moodle_fault_con01_web_stopped 0\n" in metrics

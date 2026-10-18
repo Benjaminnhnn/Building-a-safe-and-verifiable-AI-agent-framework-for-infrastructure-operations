@@ -9,6 +9,7 @@
 !docs/
 !docs/*.md
 !evaluation/benchmark/**/*.md
+!evaluation/agent_replay/README.md
 !agent_src/config/knowledge_base/moodle/
 !agent_src/config/knowledge_base/moodle/*.md
 
@@ -61,6 +62,7 @@ env/
 
 # Runtime vector database (recreated at startup)
 agent_src/vector_db/
+/vector_db/
 agent_src/data/*.db*
 
 # VS Code & IDE
@@ -85,5 +87,6 @@ keys/
 *.key
 # Pytest & local runtime test DBs
 .pytest-tmp/
+.pytest-tmp*/
 .pytest_cache/
 *.sqlite3

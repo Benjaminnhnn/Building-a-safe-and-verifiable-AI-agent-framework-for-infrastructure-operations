@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from core.evidence_store import EvidenceConflictError, EvidenceIntegrityError, SQLiteEvidenceStore
-from core.orchestrator import (
+from core.evidence.evidence_store import EvidenceConflictError, EvidenceIntegrityError, SQLiteEvidenceStore
+from evaluation.agent_replay.coordination.orchestrator import (
     SUCCESS_STAGE_ORDER,
     CheckpointOrchestrator,
     OrchestratorStage,
 )
-from core.replay import observations_from_scenario
+from evaluation.agent_replay.replay import observations_from_scenario
 from core.schema.audit import AuditEvent, StageAuditEvent
 from core.schema.resource import Resource
 from core.schema.scenario import ScenarioGroundTruth
@@ -101,13 +101,13 @@ def test_resume_from_checkpoint_does_not_duplicate_records(tmp_path) -> None:
             scenario, _resources(), observations=observations, run_id="resume-run"
         )
 
-        assert resumed.stages == SUCCESS_STAGE_ORDER[:-1]
+        assert resumed.stages == SUCCESS_STAGE_ORDER
         assert repeated == resumed
         assert len(store.list_for_incident(resumed.incident.incident_id)) == evidence_count
-        assert len(resumed.audit_events) == audit_count + 4
+        assert len(resumed.audit_events) == audit_count + 8
         assert resumed.audit_complete is True
         assert resumed.audit_completeness == 1.0
-        assert len(store.list_checkpoints("resume-run")) == len(SUCCESS_STAGE_ORDER) - 1
+        assert len(store.list_checkpoints("resume-run")) == len(SUCCESS_STAGE_ORDER)
 
 
 def test_resume_rejects_reused_run_id_with_changed_observation(tmp_path) -> None:
@@ -171,7 +171,7 @@ def test_transition_audit_is_append_only_and_verified_on_checkpoint_load(tmp_pat
 
 
 def test_resume_from_gate_request_stops_before_verification_when_policy_denies(tmp_path) -> None:
-    scenario = _scenarios()[0]
+    scenario = next(item for item in _scenarios() if item.scenario_id == "CON-02")
     observations = observations_from_scenario(scenario)
     with SQLiteEvidenceStore(tmp_path / "evidence.db") as store:
         orchestrator = CheckpointOrchestrator(store)
@@ -279,8 +279,8 @@ def test_concurrent_run_is_rejected_while_another_worker_owns_checkpoint(tmp_pat
     assert worker_errors == []
     with SQLiteEvidenceStore(database) as store:
         checkpoints = store.list_checkpoints("shared-concurrent-run")
-        assert len(checkpoints) == len(SUCCESS_STAGE_ORDER) - 1
-        assert checkpoints[-1]["stage"] == OrchestratorStage.EXECUTE.value
+        assert len(checkpoints) == len(SUCCESS_STAGE_ORDER)
+        assert checkpoints[-1]["stage"] == OrchestratorStage.VERIFY.value
 
 
 def test_expired_worker_cannot_overwrite_checkpoint_after_lease_takeover(tmp_path) -> None:

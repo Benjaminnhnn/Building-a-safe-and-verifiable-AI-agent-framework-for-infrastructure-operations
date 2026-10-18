@@ -66,13 +66,25 @@
           action="${1:-}"
           case "$action" in
             DB-01)
-              test -r /var/lib/moodle-faults/DB-01.ip
-              db_ip=$(cat /var/lib/moodle-faults/DB-01.ip)
+              if test -r /var/lib/moodle-faults/DB-01.ip; then
+                db_ip=$(cat /var/lib/moodle-faults/DB-01.ip)
+              else
+                rules=$(iptables -S DOCKER-USER)
+                if printf '%s\n' "$rules" | grep -Fq -- '--comment moodle-fault-DB-01'; then
+                  echo 'DB-01 tagged rule exists but its ownership marker is missing' >&2
+                  exit 77
+                fi
+                exit 0
+              fi
               while iptables -C DOCKER-USER -p tcp -d "$db_ip" --dport 5432 -m comment --comment moodle-fault-DB-01 -j REJECT 2>/dev/null; do
                 iptables -D DOCKER-USER -p tcp -d "$db_ip" --dport 5432 -m comment --comment moodle-fault-DB-01 -j REJECT
               done
               rm -f /var/lib/moodle-faults/DB-01.ip ;;
-            RES-01) docker rm -f moodle-fault-res-01 >/dev/null 2>&1 || true ;;
+            RES-01)
+              containers=$(docker ps -a --format '{{.Names}}')
+              if printf '%s\n' "$containers" | grep -Fxq moodle-fault-res-01; then
+                docker rm -f moodle-fault-res-01 >/dev/null
+              fi ;;
             NET-01) docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml up -d --force-recreate moodle-web ;;
             CON-01) docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml up -d --wait moodle-web ;;
             SEC-02) install -d -o 1000 -g 1000 -m 0770 '{{ moodledata_path }}/synthetic-fixtures'; chown 1000:1000 '{{ moodledata_path }}/synthetic-fixtures'; chmod 0770 '{{ moodledata_path }}/synthetic-fixtures' ;;
@@ -87,9 +99,19 @@
           #!/usr/bin/env bash
           set -euo pipefail
           case "${SSH_ORIGINAL_COMMAND:-}" in
-            DB-01|RES-01|NET-01|CON-01|SEC-02) exec sudo /usr/local/sbin/moodle-safe-executor "$SSH_ORIGINAL_COMMAND" ;;
+            DB-01|remove_scoped_db_reject|reconcile_db01_safe_baseline)
+              scenario=DB-01 ;;
+            RES-01|remove_named_cpu_load_container|reconcile_res01_safe_baseline)
+              scenario=RES-01 ;;
+            NET-01|recreate_moodle_web_from_reviewed_compose|reconcile_net01_safe_baseline)
+              scenario=NET-01 ;;
+            CON-01|start_reviewed_compose_service|reconcile_con01_safe_baseline)
+              scenario=CON-01 ;;
+            SEC-02|restore_fixture_directory_mode|reconcile_sec02_safe_baseline)
+              scenario=SEC-02 ;;
             *) echo 'forced command rejected' >&2; exit 64 ;;
           esac
+          exec sudo /usr/local/sbin/moodle-safe-executor "$scenario"
     - ansible.posix.authorized_key:
         user: "{{ safe_executor_user }}"
         key: "{{ hostvars['monitor-ai-01'].safe_executor_public_key }}"

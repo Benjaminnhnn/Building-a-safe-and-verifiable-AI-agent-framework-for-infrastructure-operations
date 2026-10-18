@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.rag_engine import RAGEngine, RUNBOOK_ALERT_NAMES, _chunk_markdown
+from core.rag.rag_engine import RAGEngine, RUNBOOK_ALERT_NAMES, _chunk_markdown
 
 
 def test_chunk_markdown_splits_by_heading_and_size() -> None:

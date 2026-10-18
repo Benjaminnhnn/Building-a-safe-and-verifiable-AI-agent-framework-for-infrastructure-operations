@@ -5,7 +5,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from core import main
-from core.tool_auto_discovery import detect_ci_toolchain, verify_github_signature
+from core.coordination.tool_auto_discovery import detect_ci_toolchain, verify_github_signature
 
 
 client = TestClient(main.app)
@@ -71,6 +71,7 @@ def test_verify_github_signature() -> None:
     signature = "sha256=" + hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
     assert verify_github_signature(secret, body, signature) is True
     assert verify_github_signature(secret, body, "sha256=bad") is False
+    assert verify_github_signature(None, body, signature) is False
 
 
 def test_github_webhook_auto_registers_ci_quality_gate_without_publishing() -> None:
@@ -86,7 +87,7 @@ def test_github_webhook_auto_registers_ci_quality_gate_without_publishing() -> N
         }
 
         with (
-            patch.dict(os.environ, {"RUNBOOK_WORKFLOW_DIR": workflow_dir, "KNOWLEDGE_BASE_DIR": kb_dir}),
+            patch.dict(os.environ, {"RUNBOOK_WORKFLOW_DIR": workflow_dir, "KNOWLEDGE_BASE_DIR": kb_dir, "GITHUB_WEBHOOK_AUTH_OPTIONAL": "true"}),
             patch.object(main, "GITHUB_WEBHOOK_SECRET", None),
             patch.object(
                 main,
@@ -121,7 +122,7 @@ def test_github_webhook_dedupes_same_toolchain_signature_on_new_sha() -> None:
         files = [{"filename": ".github/workflows/ci.yml", "patch": _workflow_patch()}]
 
         with (
-            patch.dict(os.environ, {"RUNBOOK_WORKFLOW_DIR": workflow_dir, "KNOWLEDGE_BASE_DIR": kb_dir}),
+            patch.dict(os.environ, {"RUNBOOK_WORKFLOW_DIR": workflow_dir, "KNOWLEDGE_BASE_DIR": kb_dir, "GITHUB_WEBHOOK_AUTH_OPTIONAL": "true"}),
             patch.object(main, "GITHUB_WEBHOOK_SECRET", None),
             patch.object(main, "changed_files_from_github_event", return_value=files),
             patch.object(main.review_tool_change_task, "delay") as delay,

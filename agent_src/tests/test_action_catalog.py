@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from core.action_catalog import ActionCatalog
+from core.safety.action_catalog import ActionCatalog
 
 
 @pytest.fixture()
@@ -167,14 +167,19 @@ def test_s3_3_execution_catalog_contains_only_reviewed_s3_2_pairs() -> None:
     catalog = ActionCatalog.load_moodle_s3_3_execution_catalog()
     assert set(catalog._entries) == {
         "remove_scoped_db_reject",
+        "reconcile_db01_safe_baseline",
         "verify_tls_database_connection",
         "remove_named_cpu_load_container",
+        "reconcile_res01_safe_baseline",
         "verify_node_cpu_recovers",
         "recreate_moodle_web_from_reviewed_compose",
+        "reconcile_net01_safe_baseline",
         "verify_database_hostname",
         "start_reviewed_compose_service",
+        "reconcile_con01_safe_baseline",
         "wait_for_alb_target_health",
         "restore_fixture_directory_mode",
+        "reconcile_sec02_safe_baseline",
         "verify_efs_write",
     }
 
@@ -188,6 +193,67 @@ def test_s3_3_execution_allows_only_exact_reviewed_tuple() -> None:
         environment="staging",
         role="executor",
     ) is True
+
+
+def test_each_s3_3_mutation_has_a_reciprocal_idempotent_safe_baseline_compensation() -> None:
+    catalog = ActionCatalog.load_moodle_s3_3_execution_catalog()
+    action_pairs = {
+        "remove_scoped_db_reject": "reconcile_db01_safe_baseline",
+        "remove_named_cpu_load_container": "reconcile_res01_safe_baseline",
+        "recreate_moodle_web_from_reviewed_compose": "reconcile_net01_safe_baseline",
+        "start_reviewed_compose_service": "reconcile_con01_safe_baseline",
+        "restore_fixture_directory_mode": "reconcile_sec02_safe_baseline",
+    }
+    for action_id, compensation_id in action_pairs.items():
+        action = catalog.lookup(action_id)
+        compensation = catalog.lookup(compensation_id)
+        assert action is not None and compensation is not None
+        assert action.rollback_action == compensation_id
+        assert compensation.rollback_action == action_id
+        assert action.is_reversible and compensation.is_reversible
+        assert action.idempotent and compensation.idempotent
+        assert action.adapter == compensation.adapter
+        assert action.action_type == compensation.action_type
+        assert set(action.valid_target_resource_types) == set(compensation.valid_target_resource_types)
+        assert action.permission.required_role == compensation.permission.required_role == "executor"
+
+
+def test_full_catalog_all_mutations_have_reciprocal_rollback_action() -> None:
+    full = ActionCatalog.load_full_catalog()
+    s3_3 = ActionCatalog.load_moodle_s3_3_execution_catalog()
+    erpnext = ActionCatalog.load_erpnext_catalog()
+    reviewed_mutation_ids = {
+        entry.action_id
+        for entry in list(s3_3._entries.values()) + list(erpnext._entries.values())
+        if not entry.permission.read_only
+    }
+    assert len(reviewed_mutation_ids) == 16  # 5 S3.3 pairs (10) + 3 ERPNext pairs (6)
+    for action_id in reviewed_mutation_ids:
+        entry = full.lookup(action_id)
+        assert entry is not None
+        assert entry.is_reversible is True, f"{entry.action_id} must be reversible"
+        assert entry.rollback_action is not None, (
+            f"Reviewed mutation action '{entry.action_id}' is missing rollback_action"
+        )
+        compensation = full.lookup(entry.rollback_action)
+        assert compensation is not None, (
+            f"Rollback action '{entry.rollback_action}' for '{entry.action_id}' not in catalog"
+        )
+        assert compensation.rollback_action == entry.action_id, (
+            f"Compensation '{compensation.action_id}' does not reciprocally point to '{entry.action_id}'"
+        )
+        assert compensation.is_reversible is True
+        assert compensation.idempotent is True
+        assert compensation.action_type == entry.action_type
+        assert set(compensation.valid_target_resource_types) == set(
+            entry.valid_target_resource_types
+        )
+
+    for entry in full._entries.values():
+        if not entry.permission.read_only and entry.action_id not in reviewed_mutation_ids:
+            assert entry.rollback_action is None, (
+                f"Unreviewed mutation '{entry.action_id}' must keep rollback_action=None so policy fails closed"
+            )
 
 
 @pytest.mark.parametrize(

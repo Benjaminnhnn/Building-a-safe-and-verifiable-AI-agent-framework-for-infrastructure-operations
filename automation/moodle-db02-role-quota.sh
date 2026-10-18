@@ -15,11 +15,11 @@ for command_name in docker curl ss; do command -v "$command_name" >/dev/null || 
 
 profile="${AWS_PROFILE:-target-account}"
 identity="$(aws sts get-caller-identity --profile "$profile" --query Account --output text)"
-[[ "$identity" == 583845872420 && "$region" == ap-southeast-1 ]] || { echo "Refusing non-staging AWS account or region" >&2; exit 77; }
+[[ "$identity" == 829162041762 && "$region" == ap-southeast-1 ]] || { echo "Refusing non-staging AWS account or region" >&2; exit 77; }
 db_identifier="$(jq -r '.instance_identifier' <<<"$database_json")"
 db_name="$(jq -r '.database_name' <<<"$database_json")"
 secret_arn="$(jq -r '.master_secret_arn' <<<"$database_json")"
-[[ "$db_identifier" == moodle-staging-postgres && "$db_name" == moodle && "$secret_arn" == arn:aws:secretsmanager:ap-southeast-1:583845872420:secret:* ]] || exit 77
+[[ "$db_identifier" == moodle-staging-postgres && "$db_name" == moodle && "$secret_arn" == arn:aws:secretsmanager:ap-southeast-1:829162041762:secret:* ]] || exit 77
 fixture="$fault_artifacts/DB-02.limit"
 port=15434
 if ss -ltn "sport = :$port" | grep -q LISTEN; then echo "Local RDS tunnel port is busy" >&2; exit 69; fi

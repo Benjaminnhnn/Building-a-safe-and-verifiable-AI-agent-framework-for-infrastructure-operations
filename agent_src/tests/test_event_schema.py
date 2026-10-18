@@ -1,4 +1,4 @@
-from core.event_schema import normalize_alertmanager_payload
+from core.schema.event_schema import normalize_alertmanager_payload
 
 
 def test_postgresql_chain_gets_one_replayable_correlation_id() -> None:

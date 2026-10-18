@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from core.adapters import (
+from core.evidence.adapters import (
     SafeActionRequest,
     SafeAnsibleDryRunAdapter,
     SafeDockerDryRunAdapter,

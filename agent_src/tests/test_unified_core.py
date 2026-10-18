@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from core.unified_core import (
+from evaluation.agent_replay.unified_core import (
     AgentMessage,
     Incident,
     IncidentState,
@@ -35,6 +35,8 @@ def test_incident_transition_guard_and_verifier_authority() -> None:
                 StabilityObservation(observed_at=checked, healthy=True, simulated=False),
             ],
             allowed_probes=[ProbeResult(name="moodle", passed=True, simulated=False, details="ok")],
+            forbidden_probes=[ProbeResult(name="public_db", passed=True, simulated=False, details="blocked")],
+            related_probes=[ProbeResult(name="monitoring", passed=True, simulated=False, details="ok")],
             verdict="resolved", resolution_eligible=True, simulated=True,
         ))
     assert replay_result.state == IncidentState.VERIFIED_DRY_RUN

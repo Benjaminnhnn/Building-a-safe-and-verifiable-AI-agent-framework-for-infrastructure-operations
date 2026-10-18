@@ -1,13 +1,14 @@
 output "moodle_database" {
   description = "RDS PostgreSQL connection metadata. No password is read into Terraform state or outputs."
   value = {
-    instance_identifier = aws_db_instance.moodle.identifier
-    endpoint            = aws_db_instance.moodle.address
-    address             = aws_db_instance.moodle.address
-    port                = aws_db_instance.moodle.port
-    database_name       = "moodle"
-    master_secret_arn   = try(aws_db_instance.moodle.master_user_secret[0].secret_arn, null)
-    sslmode             = "verify-full"
+    instance_identifier          = aws_db_instance.moodle.identifier
+    endpoint                     = aws_db_instance.moodle.address
+    address                      = aws_db_instance.moodle.address
+    port                         = aws_db_instance.moodle.port
+    database_name                = "moodle"
+    master_secret_arn            = try(aws_db_instance.moodle.master_user_secret[0].secret_arn, null)
+    sslmode                      = "verify-full"
+    external_tcp_health_check_id = try(aws_route53_health_check.moodle_rds_external_tcp[0].id, null)
   }
 }
 
