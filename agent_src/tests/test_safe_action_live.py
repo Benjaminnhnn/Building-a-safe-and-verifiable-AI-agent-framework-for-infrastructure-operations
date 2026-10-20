@@ -3,12 +3,12 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from core.action_catalog import ActionCatalog, ActionPermission, CatalogEntry
-from core.adapters import ActionRequest, SafeActionRequest, SafeLiveActionRequest
-from core.safe_action_audit import SafeActionAuditStore
-from core.safe_action_live import SafeActionLiveWorkflow
-from core.safe_execution_gate import ApprovalRecord, GateVerdict, SafeExecutionGate
-from core.safe_executor_client import action_digest
+from core.safety.action_catalog import ActionCatalog, ActionPermission, CatalogEntry
+from core.evidence.adapters import ActionRequest, SafeActionRequest, SafeLiveActionRequest
+from core.safety.safe_action_audit import SafeActionAuditStore
+from core.safety.safe_action_live import SafeActionLiveWorkflow
+from core.safety.safe_execution_gate import ApprovalRecord, GateVerdict, SafeExecutionGate
+from core.safety.safe_executor_client import action_digest
 from core.schema.action import RollbackPlan, TypedAction
 from core.schema.common import ActionType, Environment
 
@@ -16,10 +16,15 @@ from core.schema.common import ActionType, Environment
 def _request(scenario: str = "DB-01", action_id: str = "remove_scoped_db_reject", scope: str = "staging_moodle_nodes") -> SafeLiveActionRequest:
     action_type = {
         "remove_scoped_db_reject": ActionType.REMOVE_SCOPED_PORT_BLOCK,
+        "reconcile_db01_safe_baseline": ActionType.REMOVE_SCOPED_PORT_BLOCK,
         "remove_named_cpu_load_container": ActionType.STOP_FAULT_INJECTOR,
+        "reconcile_res01_safe_baseline": ActionType.STOP_FAULT_INJECTOR,
         "recreate_moodle_web_from_reviewed_compose": ActionType.RUN_ANSIBLE_PLAYBOOK,
+        "reconcile_net01_safe_baseline": ActionType.RUN_ANSIBLE_PLAYBOOK,
         "start_reviewed_compose_service": ActionType.START_CONTAINER,
+        "reconcile_con01_safe_baseline": ActionType.START_CONTAINER,
         "restore_fixture_directory_mode": ActionType.RESTORE_MOODLEDATA_PERMISSION,
+        "reconcile_sec02_safe_baseline": ActionType.RESTORE_MOODLEDATA_PERMISSION,
     }.get(action_id, ActionType.READ_HEALTH)
     return SafeLiveActionRequest(
         request_id=f"live-{scenario}",
@@ -40,8 +45,16 @@ def _request(scenario: str = "DB-01", action_id: str = "remove_scoped_db_reject"
             rollback_plan=RollbackPlan(
                 available=True,
                 rollback_action_id={
-                    "remove_scoped_db_reject": "restore_scoped_db_reject",
-                    "start_reviewed_compose_service": "stop_reviewed_compose_service",
+                    "remove_scoped_db_reject": "reconcile_db01_safe_baseline",
+                    "remove_named_cpu_load_container": "reconcile_res01_safe_baseline",
+                    "recreate_moodle_web_from_reviewed_compose": "reconcile_net01_safe_baseline",
+                    "start_reviewed_compose_service": "reconcile_con01_safe_baseline",
+                    "restore_fixture_directory_mode": "reconcile_sec02_safe_baseline",
+                    "reconcile_db01_safe_baseline": "remove_scoped_db_reject",
+                    "reconcile_res01_safe_baseline": "remove_named_cpu_load_container",
+                    "reconcile_net01_safe_baseline": "recreate_moodle_web_from_reviewed_compose",
+                    "reconcile_con01_safe_baseline": "start_reviewed_compose_service",
+                    "reconcile_sec02_safe_baseline": "restore_fixture_directory_mode",
                 }.get(action_id),
                 method="Restore the prior fixture state.",
             ),
@@ -51,7 +64,7 @@ def _request(scenario: str = "DB-01", action_id: str = "remove_scoped_db_reject"
 
 def _api_approval(request: SafeLiveActionRequest) -> dict[str, str]:
     return {
-        "actor_id": "operator",
+        "actor_id": "human-approver",
         "expires_at": "2099-01-01T00:00:00Z",
         "action_sha256": action_digest(
             request.scenario_id, request.catalog_action_id, request.target_scope, request.idempotency_key
@@ -61,20 +74,10 @@ def _api_approval(request: SafeLiveActionRequest) -> dict[str, str]:
 
 
 def _test_gate() -> SafeExecutionGate:
-    inverse = CatalogEntry(
-        action_id="restore_scoped_db_reject",
-        description="Test-only inverse entry for gate-flow coverage.",
-        adapter="docker",
-        permission=ActionPermission(required_role="executor", environment_scope=["staging"]),
-        blast_radius="LOW",
-        is_reversible=True,
-        rollback_action="remove_scoped_db_reject",
-        idempotent=True,
-    )
     return SafeExecutionGate(
         approval_signing_key="test",
         approved_actors={"operator"},
-        rollback_catalog=ActionCatalog([inverse]),
+        rollback_catalog=ActionCatalog.load_full_catalog(),
     )
 
 
@@ -200,7 +203,7 @@ def test_live_workflow_calls_executor_only_after_gate_and_audit(tmp_path) -> Non
         audit.close()
 
 
-def test_live_workflow_denies_catalog_action_without_rollback_before_executor(tmp_path) -> None:
+def test_live_workflow_requires_human_gate_approval_for_medium_risk_action(tmp_path) -> None:
     calls = []
     audit = SafeActionAuditStore(tmp_path / "audit.db")
     request = _request("NET-01", "recreate_moodle_web_from_reviewed_compose", "staging_moodle_nodes")
@@ -211,7 +214,7 @@ def test_live_workflow_denies_catalog_action_without_rollback_before_executor(tm
 
     workflow = SafeActionLiveWorkflow(gate=gate, audit=audit, executor=executor)
     try:
-        denied = workflow.run(
+        pending = workflow.run(
             request,
             actor_role="executor",
             confidence=0.9,
@@ -219,9 +222,93 @@ def test_live_workflow_denies_catalog_action_without_rollback_before_executor(tm
             gate_approval=None,
             executor_approval=_api_approval(request),
         )
-        assert denied["status"] == "denied"
-        assert "catalogued reversible rollback plan" in denied["reason"]
+        assert pending["status"] == "awaiting_approval"
+        assert pending["execution_permitted"] is False
         assert not calls
+    finally:
+        audit.close()
+
+
+def test_live_workflow_requires_independent_gate_and_executor_approvers(tmp_path) -> None:
+    calls = []
+    request = _request().model_copy(update={
+        "action": _request().action.model_copy(update={"requires_approval": True})
+    })
+    audit = SafeActionAuditStore(tmp_path / "independent-approvals.db")
+    gate = SafeExecutionGate(
+        approval_signing_key="test-key", approved_actors={"human-approver"}
+    )
+    workflow = SafeActionLiveWorkflow(
+        gate=gate, audit=audit, executor=lambda **kwargs: calls.append(kwargs)
+    )
+    same_actor_approval = ApprovalRecord.create(
+        action_sha256=gate.action_hash(request),
+        actor_id="human-approver",
+        signing_key="test-key",
+    )
+    try:
+        result = workflow.run(
+            request,
+            actor_role="executor",
+            confidence=0.9,
+            pre_snapshot={},
+            gate_approval=same_actor_approval,
+            executor_approval=_api_approval(request),
+        )
+        assert result["status"] == "awaiting_approval"
+        assert result["execution_permitted"] is False
+        assert calls == []
+        event = next(
+            event for event in audit.list_for_incident(request.action.incident_id)
+            if event["event_type"] == "live_approvals_rejected"
+        )
+        assert "different actors" in event["payload"]["reason"]
+    finally:
+        audit.close()
+
+
+@pytest.mark.parametrize(
+    ("scenario", "action_id", "scope"),
+    [
+        ("DB-01", "remove_scoped_db_reject", "staging_moodle_nodes"),
+        ("RES-01", "remove_named_cpu_load_container", "moodle-app-b"),
+        ("NET-01", "recreate_moodle_web_from_reviewed_compose", "staging_moodle_nodes"),
+        ("CON-01", "start_reviewed_compose_service", "moodle-app-b"),
+        ("SEC-02", "restore_fixture_directory_mode", "moodledata_synthetic_fixture_directory"),
+    ],
+)
+def test_live_workflow_catalogs_safe_baseline_compensation_for_every_s3_3_mutation(
+    tmp_path, scenario: str, action_id: str, scope: str
+) -> None:
+    calls = []
+    audit = SafeActionAuditStore(tmp_path / f"{scenario}-audit.db")
+    request = _request(scenario, action_id, scope)
+    gate = SafeExecutionGate(approval_signing_key="test-key", approved_actors={"operator"})
+    workflow = SafeActionLiveWorkflow(
+        gate=gate,
+        audit=audit,
+        executor=lambda **kwargs: calls.append(kwargs) or {
+            "status": "disabled", "scenario_id": scenario, "completed_nodes": [], "mutated": False
+        },
+    )
+    try:
+        gate_approval = ApprovalRecord.create(
+            action_sha256=gate.action_hash(request), actor_id="operator", signing_key="test-key"
+        )
+        report = workflow.run(
+            request,
+            actor_role="executor",
+            confidence=0.9,
+            pre_snapshot={},
+            gate_approval=gate_approval,
+            executor_approval=_api_approval(request),
+        )
+
+        assert report["status"] == "escalated"
+        assert report["execution_permitted"] is False
+        assert len(calls) == 1
+        assert calls[0]["catalog_action_id"] == action_id
+        assert audit.verify_chain(f"incident-{scenario}") is True
     finally:
         audit.close()
 
@@ -350,6 +437,112 @@ def test_conditional_rollback_runs_only_for_audited_partial_mutation(tmp_path) -
         audit.close()
 
 
+def test_unknown_single_node_failure_triggers_approved_safe_baseline_compensation(tmp_path) -> None:
+    calls = []
+    original = _request("RES-01", "remove_named_cpu_load_container", "moodle-app-b")
+    compensation = _rollback_request(original)
+
+    def executor(**kwargs):
+        calls.append(kwargs["catalog_action_id"])
+        if kwargs["catalog_action_id"] == original.catalog_action_id:
+            return {
+                "status": "failed",
+                "scenario_id": original.scenario_id,
+                "completed_nodes": [],
+                "failure": {"node": "b", "status": "timeout"},
+                "mutated": None,
+                "mutation_state": "unknown",
+            }
+        return {
+            "status": "executed",
+            "scenario_id": original.scenario_id,
+            "completed_nodes": ["b"],
+            "mutated": True,
+        }
+
+    audit = SafeActionAuditStore(tmp_path / "unknown-single-node-mutation.db")
+    workflow = SafeActionLiveWorkflow(gate=_AllowGate(), audit=audit, executor=executor)
+    try:
+        first = workflow.run(
+            original,
+            actor_role="executor",
+            confidence=0.9,
+            pre_snapshot={},
+            gate_approval=None,
+            executor_approval=_api_approval(original),
+        )
+        compensation_result = workflow.rollback_after_failure(
+            original,
+            compensation,
+            actor_role="executor",
+            confidence=0.9,
+            pre_snapshot={},
+            gate_approval=None,
+            executor_approval=_api_approval(compensation),
+        )
+
+        assert first["status"] == "escalated"
+        assert first["execution_permitted"] is True
+        assert first["mutated"] is None
+        assert first["mutation_state"] == "unknown"
+        assert compensation_result["status"] == "awaiting_verification"
+        assert calls == [original.catalog_action_id, compensation.catalog_action_id]
+        events = audit.list_for_incident(original.action.incident_id)
+        requested = next(event for event in events if event["event_type"] == "conditional_rollback_requested")
+        assert requested["payload"]["trigger"] == "unknown_mutation"
+        assert audit.verify_chain(original.action.incident_id)
+    finally:
+        audit.close()
+
+
+def test_executor_transport_exception_triggers_approved_safe_baseline_compensation(tmp_path) -> None:
+    calls = []
+    original = _request("RES-01", "remove_named_cpu_load_container", "moodle-app-b")
+    compensation = _rollback_request(original)
+
+    def executor(**kwargs):
+        calls.append(kwargs["catalog_action_id"])
+        if kwargs["catalog_action_id"] == original.catalog_action_id:
+            raise TimeoutError("executor response was lost")
+        return {
+            "status": "executed",
+            "scenario_id": original.scenario_id,
+            "completed_nodes": ["b"],
+            "mutated": True,
+        }
+
+    audit = SafeActionAuditStore(tmp_path / "transport-exception.db")
+    workflow = SafeActionLiveWorkflow(gate=_AllowGate(), audit=audit, executor=executor)
+    try:
+        first = workflow.run(
+            original,
+            actor_role="executor",
+            confidence=0.9,
+            pre_snapshot={},
+            gate_approval=None,
+            executor_approval=_api_approval(original),
+        )
+        compensation_result = workflow.rollback_after_failure(
+            original,
+            compensation,
+            actor_role="executor",
+            confidence=0.9,
+            pre_snapshot={},
+            gate_approval=None,
+            executor_approval=_api_approval(compensation),
+        )
+
+        assert first["status"] == "escalated"
+        assert first["mutated"] is None
+        assert first["mutation_state"] == "unknown"
+        assert first["result"]["status"] == "transport_error"
+        assert compensation_result["status"] == "awaiting_verification"
+        assert calls == [original.catalog_action_id, compensation.catalog_action_id]
+        assert audit.verify_chain(original.action.incident_id)
+    finally:
+        audit.close()
+
+
 def test_conditional_rollback_rejects_nonreciprocal_target_without_dispatch(tmp_path) -> None:
     calls = []
     original = _request()
@@ -401,9 +594,14 @@ def test_conditional_rollback_fails_closed_when_runtime_catalog_has_no_inverse(t
     original = _request()
     rollback = _rollback_request(original)
     audit = SafeActionAuditStore(tmp_path / "conditional-rollback-missing-inverse.db")
+    original_entry = ActionCatalog.load_moodle_s3_3_execution_catalog().lookup(
+        original.catalog_action_id
+    )
+    assert original_entry is not None
     workflow = SafeActionLiveWorkflow(
-        gate=_test_gate(),
+        gate=_AllowGate(),
         audit=audit,
+        catalog=ActionCatalog([original_entry]),
         executor=lambda **kwargs: calls.append(kwargs) or {
             "status": "partial_failure",
             "scenario_id": original.scenario_id,

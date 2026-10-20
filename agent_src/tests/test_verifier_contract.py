@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import timezone
 
 import pytest
-from core.verifier_contract import ContractProbeRunner, ContractVerdict
+from core.verification.verifier_contract import ContractProbeRunner, ContractVerdict
 
 
 @pytest.fixture()

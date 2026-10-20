@@ -1,38 +1,39 @@
 # Safe and Verifiable AIOps for Moodle on AWS
 
-This repository contains the thesis implementation and operational tooling for a safety-gated AI agent that observes and diagnoses Moodle infrastructure incidents, proposes bounded actions, and relies on an independent verifier before reporting recovery.
+Thesis implementation and operations tooling for an AI agent that observes Moodle incidents, proposes bounded actions, and uses an independent verifier before reporting recovery.
 
-## Thesis scope
+## Start here
 
-- **Primary environment:** Moodle on AWS EC2, backed by RDS PostgreSQL and EFS, with ALB, Prometheus, Alertmanager, and the AI agent.
-- **Research questions:** whether an evidence- and policy-based Safety Gate reduces unsafe actions (RQ1), and whether independent contract probes reduce false recovery reports compared with health-only checks (RQ2).
-- **Incident lifecycle:** alert → evidence → diagnosis → action plan → Safety Gate → approved/bounded execution → independent verification.
-- **Resolution rule:** only the Independent Verifier may mark an incident `RESOLVED`; health checks alone are insufficient.
-- **Evidence boundary:** fixture replay validates code and contracts, not live fault recovery. Shadow mode observes and records decisions without remediating infrastructure.
-- **Generalization:** `evaluation/ground_truth/erpnext/` contains optional ERPNext fixtures. They do not establish a deployed or empirically evaluated ERPNext environment.
+- [Current AI status and evidence gaps](docs/AI_ENGINEER_STATUS.md)
+- [Documentation index](docs/README.md)
+- [Repository and agent instructions](AGENTS.md)
+- [Thesis report snapshot](report.md) — historical evidence; check dates and artifacts before reusing claims.
 
-## Repository map
+## Find the code
 
-| Path | Responsibility |
+| Path | Contents |
 |---|---|
 | `terraform/` | AWS network, monitor/Moodle hosts, ALB, RDS, EFS, and security groups. Review state and plan before any apply or retirement. |
 | `ansible/` | Host bootstrap, monitoring, Moodle runtime preparation, and safe-executor configuration. |
 | `moodle/`, `release/moodle/` | Moodle image, health/synthetic probes, and Moodle Compose runtime. |
-| `agent_src/core/` | Incident contracts, evidence store, observer/diagnosis/planner, safety policy, executor boundary, orchestrator, and verifier. |
+| `release/erpnext/` | Isolated ERPNext generalization runtime; Terraform is opt-in. |
+| `agent_src/core/` | Alert handling, evidence, diagnosis/planning, safety gates, execution boundaries, and verification. |
 | `evaluation/ground_truth/` | `moodle/` holds the 15 Moodle scenario contracts used by the Moodle pipeline, acceptance and benchmark; the top-level `<ID>-*.json` files are the unified-replay fixtures for the same scenarios. The resource inventory mirror is in `evaluation/resources/`. |
+| `evaluation/agent_replay/` | Offline replay roles, domain model, coordination, and independent verification used by the replay harnesses; not imported by the runtime image. |
 | `automation/` | Moodle baseline, fault/reset drills, replay, safe-executor workflows, evidence harvesting, and deployment helpers. |
 | `.github/workflows/` | CI validation, AI/Moodle image publishing, and Moodle staging deployment. |
 | `docs/` | Planning, runbooks, architecture, operational evidence, and sprint reports. Treat dated reports as historical snapshots. |
 
-Start with [AI Engineer status](docs/AI_ENGINEER_STATUS.md) for the current ownership and evidence gaps.
-[Architecture and threat model](docs/AI_AGENT_ARCHITECTURE_AND_THREAT_MODEL.md) records the six-layer design against the code that is actually wired today. Moodle `shadow` mode observes only; `investigate` adds evidence-derived diagnosis and read-only probe proposals. Both modes prohibit execution and resolution. The former ground-truth-backed `live` route remains fail-closed.
-The Moodle monitoring playbook authenticates Alertmanager webhook delivery with a generated bearer token. Deployments that do not use that playbook must configure the equivalent token-file settings before exposing `/webhook` beyond a trusted private network.
+## Common workflows
 
-Telegram webhooks require `TELEGRAM_WEBHOOK_SECRET`; runbook approval and feedback also require authorized numeric Telegram user IDs in `TELEGRAM_ADMIN_USER_IDS`. Configure these in the release environment only when enabling inbound Telegram actions.
+- **Validate locally:** follow the ordered commands in `AGENTS.md`.
+- **Run offline replay:** `python automation/aiops-unified-replay.py all --output-dir <output-dir>`; replay is simulated evidence, not live recovery.
+- **Deploy Moodle staging / run live drills:** use the Moodle-specific workflow and scripts documented in [Moodle operations](docs/MOODLE_OPERATIONS_RUNBOOK.md). Verify AWS identity, target environment, baseline, and reset path first.
+- **Understand evidence status:** read [AI Engineer status](docs/AI_ENGINEER_STATUS.md) and [benchmark evidence status](evaluation/benchmark/results/BENCHMARK_REPORT.md). Keep fixture, shadow, deployed runtime, and live acceptance claims separate.
 
-## Main workflows
+## Project boundaries
 
-### Local validation and offline replay
+Moodle on AWS is the thesis environment. Terraform owns cloud resources; Ansible owns host configuration. CI builds images and EC2 pulls them. Only the Independent Verifier may mark an incident `RESOLVED`; fixtures are for post-decision evaluation, never authorization.
 
 Follow the commands in `AGENTS.md`. CI runs the critical Ruff checks and agent tests, validates Moodle automation, builds the agent and Moodle images, checks the Moodle Compose configuration, and runs two 15-scenario replays (unified control plane and Sprint 2 pipeline). The replay asserts that it remains simulated and cannot authorize live execution.
 
@@ -49,6 +50,10 @@ The agent proposes typed actions. The Safety Gate checks policy and execution co
 `automation/aiops-unified-replay.py` produces offline simulation artifacts. `automation/run-benchmark.py` is a synthetic harness and its generated metrics must not be presented as observed Moodle outcomes. Synthetic benchmark result files were removed from the active results directory; see the [benchmark evidence status](evaluation/benchmark/results/BENCHMARK_REPORT.md). Use raw, provenance-bearing live trial records for empirical RQ1/RQ2 results; keep fixture, shadow, deployed-runtime, and live-acceptance results distinct.
 
 The checked-in `report.md` and files under `docs/` are dated evidence snapshots, not live status pages. Confirm their artifact paths and timestamps before reusing any operational claim. In particular, a successful Moodle staging shadow drill demonstrates alert-to-agent processing and observation, not AI remediation.
+
+## ERPNext generalization
+
+The approved proposal also requires ERPNext generalization after Moodle acceptance. See [ERPNext staging runbook](docs/ERPNEXT_STAGING_RUNBOOK.md); its runtime and drill tooling are prepared, but no AWS deployment or empirical recovery evidence is claimed.
 
 ## Legacy components
 

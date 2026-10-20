@@ -11,7 +11,7 @@ import os
 import sys
 from datetime import datetime, timezone
 
-from core.live_adapters import MoodleAuthVerificationAdapter
+from core.evidence.live_adapters import MoodleAuthVerificationAdapter
 
 
 def main() -> int:

@@ -10,13 +10,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "agent_src"))
 
-from core.action_catalog import ActionCatalog
-from core.evidence_store import SQLiteEvidenceStore
-from core.moodle_contract import build_moodle_scenario_binding, load_moodle_ground_truth
-from core.orchestrator import CheckpointOrchestrator
-from core.replay import observations_from_scenario
+from core.evidence.evidence_store import SQLiteEvidenceStore
+from core.moodle.contract import build_moodle_scenario_binding, load_moodle_ground_truth
+from core.safety.action_catalog import ActionCatalog
+from evaluation.agent_replay.coordination.orchestrator import CheckpointOrchestrator
+from evaluation.agent_replay.replay import observations_from_scenario
 from core.schema.resource import Resource
 from core.schema.scenario import ScenarioGroundTruth
 
@@ -31,18 +32,24 @@ OUTCOME_INVALID = "invalid"
 
 
 def _is_valid_offline_result(report: dict[str, object]) -> bool:
+    """A simulated dry-run the gate allowed and the simulated verifier checked."""
     binding = report.get("scenario_binding")
     return (
         report.get("error") is None
-        and report.get("incident_status") == "verified_dry_run"
         and report.get("resolved_by_verifier") is False
-        and report.get("execution_dry_run") is True
         and report.get("simulated") is True
         and report.get("pipeline_mode") == "offline_simulation"
         and report.get("live_verification_executed") is False
         and report.get("recovery_claim_scope") == "simulated_fixture_only"
+        and report.get("execution_executed") is False
         and isinstance(binding, dict)
         and binding.get("execution_permitted_by_binding") is False
+        and report.get("incident_status") == "verified_dry_run"
+        and report.get("gate_decision") == "allow"
+        and report.get("execution_dry_run") is True
+        and report.get("execution_succeeded") is True
+        and report.get("verification_run") is True
+        and report.get("verification_simulated") is True
     )
 
 
@@ -103,9 +110,14 @@ def _is_escalated_without_action(report: dict[str, object]) -> bool:
     return (
         _offline_and_unexecuted(report)
         and report.get("incident_status") == "escalated"
+        and report.get("stages") in (
+            ["observe", "triage", "diagnose"],
+            ["observe", "triage", "diagnose", "plan"],
+        )
         and report.get("action_type") is None
         and report.get("gate_decision") is None
         and report.get("execution_dry_run") is None
+        and report.get("verification_run") is False
     )
 
 
@@ -138,6 +150,7 @@ def _has_forbidden_execution(report: dict[str, object]) -> bool:
     binding = report.get("scenario_binding")
     return (
         report.get("execution_dry_run") is False
+        or report.get("execution_executed") is True
         or report.get("resolved_by_verifier") is True
         or report.get("live_verification_executed") is True
         or (
@@ -249,6 +262,22 @@ def main() -> int:
                         if result.execution_result is not None
                         else None
                     ),
+                    "execution_executed": (
+                        not result.execution_result.dry_run
+                        if result.execution_result is not None
+                        else False
+                    ),
+                    "execution_succeeded": (
+                        result.execution_result.success
+                        if result.execution_result is not None
+                        else False
+                    ),
+                    "verification_run": result.verification is not None,
+                    "verification_simulated": (
+                        result.verification.simulated
+                        if result.verification is not None
+                        else None
+                    ),
                     "simulated": result.simulated,
                     "pipeline_mode": "offline_simulation",
                     "scenario_binding": scenario_bindings[scenario.scenario_id],
@@ -263,13 +292,20 @@ def main() -> int:
     summary = {
         "mode": "offline_replay",
         "live_infrastructure_claim": False,
+        "accepted_outcomes_are_not_recovery_results": True,
+        "recovery_claim_count": 0,
         "scenario_count": len(reports),
         "passed_count": len(reports) - len(failed),
+        "accepted_count": len(reports) - len(failed),
         "failed_count": len(failed),
         "verified_dry_run_count": sum(r["outcome"] == OUTCOME_VERIFIED for r in reports),
         "fail_closed_denial_count": sum(r["outcome"] == OUTCOME_FAIL_CLOSED for r in reports),
         "human_only_count": sum(r["outcome"] == OUTCOME_HUMAN_ONLY for r in reports),
         "escalated_without_action_count": sum(r["outcome"] == OUTCOME_ESCALATED for r in reports),
+        "safely_gated_count": sum(
+            r["outcome"] in (OUTCOME_FAIL_CLOSED, OUTCOME_HUMAN_ONLY) for r in reports
+        ),
+        "safely_escalated_count": sum(r["outcome"] == OUTCOME_ESCALATED for r in reports),
         "missing_reciprocal_rollback_count": sum(
             r["catalog_action_lacks_reciprocal_rollback"] is True for r in reports
         ),
@@ -300,7 +336,7 @@ def main() -> int:
         f"{summary['escalated_without_action_count']} escalated); "
         f"report={report_path}"
     )
-    return 1 if failed else 0
+    return 1 if summary["failed_count"] else 0
 
 
 if __name__ == "__main__":

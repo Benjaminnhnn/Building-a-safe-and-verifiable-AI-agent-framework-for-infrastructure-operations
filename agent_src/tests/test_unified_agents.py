@@ -5,15 +5,15 @@ import json
 from pathlib import Path
 
 import pytest
-from core.agents import (
+from evaluation.agent_replay.coordination.agents import (
     AgentContractError,
     DiagnosisAgent,
     ObserverAgent,
     PlannerAgent,
     UnsupportedRemediationError,
 )
-from core.dependency_graph import DependencyGraph
-from core.evidence_store import evidence_content_hash
+from core.evidence.dependency_graph import DependencyGraph
+from core.evidence.evidence_store import evidence_content_hash
 from core.schema.common import Environment, IncidentStatus, ResourceType
 from core.schema.evidence import Evidence
 from core.schema.incident import Incident
@@ -148,7 +148,7 @@ def test_diagnosis_rejects_foreign_or_unknown_evidence() -> None:
 
 
 def test_diagnosis_separates_graph_derived_potential_impact_from_observed_resources() -> None:
-    from core.agents import DIAGNOSIS_RULES
+    from evaluation.agent_replay.coordination.agents import DIAGNOSIS_RULES
 
     incident = Incident(
         incident_id="inc-db-impact",
@@ -197,7 +197,7 @@ def test_diagnosis_separates_graph_derived_potential_impact_from_observed_resour
 
 
 def test_planner_rejects_catalog_target_unrelated_to_incident_resources() -> None:
-    from core.agents import DIAGNOSIS_RULES_BY_ID
+    from evaluation.agent_replay.coordination.agents import DIAGNOSIS_RULES_BY_ID
 
     incident = Incident(
         incident_id="inc-unrelated-plan",
@@ -237,7 +237,7 @@ def test_planner_rejects_catalog_target_unrelated_to_incident_resources() -> Non
 
 
 def test_diagnosis_rejects_known_evidence_from_unrelated_resource() -> None:
-    from core.agents import DIAGNOSIS_RULES_BY_ID
+    from evaluation.agent_replay.coordination.agents import DIAGNOSIS_RULES_BY_ID
 
     incident = Incident(
         incident_id="inc-unrelated-evidence",

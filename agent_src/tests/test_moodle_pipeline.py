@@ -10,11 +10,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from core.event_schema import normalize_alert
-from core.moodle_pipeline import (
+from core.schema.event_schema import normalize_alert
+from evaluation.agent_replay.moodle_pipeline import (
     SCENARIOS,
     GateDecision,
     HumanApproval,
+    MoodleExecutionAdapter,
     MoodleIncidentPipeline,
     MoodleSafetyGate,
     PipelineError,
@@ -212,3 +213,16 @@ def test_evaluation_pipeline_cannot_execute_live_remediation(tmp_path: Path) -> 
             mode="execute",
             live_verify=True,
         )
+
+
+def test_execution_adapter_requires_valid_gate_pass() -> None:
+    adapter = MoodleExecutionAdapter(allow_live_execution=True)
+    action = TypedAction(
+        scenario_id="DB-01",
+        action="restore_previous_approved_release",
+        target="moodle-app-01",
+        mode="execute",
+    )
+    with pytest.raises(PermissionError, match="valid GatePass"):
+        adapter.execute(action, gate_pass=None)
+

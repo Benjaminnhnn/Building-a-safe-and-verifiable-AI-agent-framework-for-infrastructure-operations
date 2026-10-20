@@ -235,6 +235,14 @@ def check_http_service(url: str = "http://localhost"):
     Gọi khi Nginx báo lỗi để xác định mã lỗi (200, 404, 502, 504).
     """
     try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"}:
+            return json.dumps({"url": url, "error": "Only http and https schemes are permitted", "status": "blocked"})
+        hostname = (parsed.hostname or "").lower()
+        if hostname in {"169.254.169.254", "metadata.google.internal", "metadata"}:
+            return json.dumps({"url": url, "error": "Access to cloud metadata service is prohibited", "status": "blocked"})
+
         import requests
         response = requests.get(url, timeout=5)
         return json.dumps({
@@ -252,11 +260,15 @@ def check_db_connection():
     """
     try:
         import psycopg2
+        db_user = os.getenv("POSTGRES_USER", "postgres")
+        db_pass = os.getenv("POSTGRES_PASSWORD", "")
+        db_name = os.getenv("POSTGRES_DB", "aiops_db")
+        db_host = os.getenv("POSTGRES_HOST", "localhost")
         conn = psycopg2.connect(
-            dbname="aiops_db", 
-            user="postgres", 
-            password="postgres", 
-            host="localhost",
+            dbname=db_name, 
+            user=db_user, 
+            password=db_pass, 
+            host=db_host,
             connect_timeout=3
         )
         conn.close()

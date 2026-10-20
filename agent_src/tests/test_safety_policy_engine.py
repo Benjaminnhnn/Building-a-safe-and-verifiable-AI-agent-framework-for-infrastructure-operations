@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 import pytest
-from core.safety_policy_engine import (
+from core.safety.safety_policy_engine import (
     AuditRecord,
     BlastRadius,
     PolicyDecision,

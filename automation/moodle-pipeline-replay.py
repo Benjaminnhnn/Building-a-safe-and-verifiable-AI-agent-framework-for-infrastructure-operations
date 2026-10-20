@@ -9,9 +9,10 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "agent_src"))
 
-from core.moodle_pipeline import load_moodle_catalog, replay_all  # noqa: E402
+from evaluation.agent_replay.moodle_pipeline import load_moodle_catalog, replay_all  # noqa: E402
 
 
 def main() -> int:

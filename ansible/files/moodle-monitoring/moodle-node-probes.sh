@@ -12,6 +12,7 @@ container="${MOODLE_NODE_PROBE_CONTAINER:-release-moodle-web-1}"
 [[ "$container" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || exit 64
 
 web_running=0
+web_exists=0
 router_enabled=0
 router_fallback_success=0
 reverse_proxy_enabled=0
@@ -19,12 +20,44 @@ scratch_enospc=0
 db_tcp_success=0
 db_tcp_duration=0
 restart_count=0
+fault_db01_tagged_rule=0
+fault_res01_cpu_fixture_running=0
+fault_net01_hosts_override=0
+fault_con01_web_stopped=0
+fault_sec02_fixture_mode_zero=0
 
 if docker inspect "$container" >/dev/null 2>&1; then
+  web_exists=1
   actual_running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
   [[ "$actual_running" == true ]] && web_running=1
   actual_restarts="$(docker inspect --format '{{.RestartCount}}' "$container" 2>/dev/null || true)"
   [[ "$actual_restarts" =~ ^[0-9]+$ ]] && restart_count="$actual_restarts"
+fi
+
+# Exact, read-only facts for the five reviewed S3.3 remediations. Positive
+# values require the fault's unique marker or exact fixture identity.
+db_fault_ip="$(cat /var/lib/moodle-faults/DB-01.ip 2>/dev/null || true)"
+if [[ "$db_fault_ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] &&
+  iptables -C DOCKER-USER -p tcp -d "$db_fault_ip" --dport 5432 -m comment --comment moodle-fault-DB-01 -j REJECT 2>/dev/null; then
+  fault_db01_tagged_rule=1
+fi
+if docker inspect moodle-fault-res-01 >/dev/null 2>&1 &&
+  [[ "$(docker inspect --format '{{.State.Running}}' moodle-fault-res-01 2>/dev/null || true)" == true ]]; then
+  fault_res01_cpu_fixture_running=1
+fi
+db_host="$(timeout 5 docker exec "$container" printenv MOODLE_DB_HOST 2>/dev/null || true)"
+if (( web_running == 1 )) && [[ "$db_host" =~ ^[A-Za-z0-9.-]{1,253}$ ]] &&
+  timeout 5 docker exec -u 0 "$container" grep -Fxq "127.0.0.1 $db_host # moodle-fault-NET-01" /etc/hosts 2>/dev/null; then
+  fault_net01_hosts_override=1
+fi
+if (( web_exists == 1 && web_running == 0 )); then
+  fault_con01_web_stopped=1
+fi
+fixture_path=/mnt/efs/moodledata/synthetic-fixtures
+if [[ "$(findmnt --noheadings --output FSTYPE --target /mnt/efs/moodledata 2>/dev/null || true)" =~ ^(nfs4|efs)$ ]] &&
+  [[ -d "$fixture_path" ]] &&
+  [[ "$(stat -c '%u:%g:%a' "$fixture_path" 2>/dev/null || true)" == '1000:1000:0' ]]; then
+  fault_sec02_fixture_mode_zero=1
 fi
 
 if (( web_running == 1 )); then
@@ -74,6 +107,21 @@ printf '%s\n' \
   '# HELP moodle_node_web_running Whether the named Moodle web container is running.' \
   '# TYPE moodle_node_web_running gauge' \
   "moodle_node_web_running $web_running" \
+  '# HELP moodle_fault_db01_tagged_rule Whether the exact DB-01 fault-tagged rule is present.' \
+  '# TYPE moodle_fault_db01_tagged_rule gauge' \
+  "moodle_fault_db01_tagged_rule $fault_db01_tagged_rule" \
+  '# HELP moodle_fault_res01_cpu_fixture_running Whether the exact RES-01 CPU fixture is running.' \
+  '# TYPE moodle_fault_res01_cpu_fixture_running gauge' \
+  "moodle_fault_res01_cpu_fixture_running $fault_res01_cpu_fixture_running" \
+  '# HELP moodle_fault_net01_hosts_override Whether the exact NET-01 hosts override is present.' \
+  '# TYPE moodle_fault_net01_hosts_override gauge' \
+  "moodle_fault_net01_hosts_override $fault_net01_hosts_override" \
+  '# HELP moodle_fault_con01_web_stopped Whether the existing reviewed Moodle web container is stopped.' \
+  '# TYPE moodle_fault_con01_web_stopped gauge' \
+  "moodle_fault_con01_web_stopped $fault_con01_web_stopped" \
+  '# HELP moodle_fault_sec02_fixture_mode_zero Whether the exact synthetic fixture directory has the SEC-02 mode 0000.' \
+  '# TYPE moodle_fault_sec02_fixture_mode_zero gauge' \
+  "moodle_fault_sec02_fixture_mode_zero $fault_sec02_fixture_mode_zero" \
   '# HELP moodle_node_apache_router_enabled Whether the Moodle Apache router config is enabled.' \
   '# TYPE moodle_node_apache_router_enabled gauge' \
   "moodle_node_apache_router_enabled $router_enabled" \

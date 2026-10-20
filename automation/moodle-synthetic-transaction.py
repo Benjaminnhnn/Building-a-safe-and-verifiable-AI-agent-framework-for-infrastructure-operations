@@ -68,6 +68,7 @@ def json_request(opener, url: str, data: dict[str, str] | None = None) -> dict:
     return payload
 
 
+
 def transaction(base_url: str, username: str, password: str) -> dict:
     started = time.monotonic()
     fixture_id = f"probe-{uuid.uuid4().hex}"
@@ -78,6 +79,7 @@ def transaction(base_url: str, username: str, password: str) -> dict:
     endpoint = f"{base_url}/synthetic-transaction.php"
     sesskey = None
     request_nodes: list[str] = []
+
     stage = "login"
     try:
         status, body, _ = request(opener, f"{base_url}/login/index.php")

@@ -3,10 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from core.action_catalog import ActionCatalog, ActionPermission, CatalogEntry
-from core.adapters import SafeActionRequest
-from core.safe_execution_gate import ApprovalRecord, SafeExecutionGate
+from core.safety.action_catalog import ActionCatalog, ActionPermission, CatalogEntry
+from core.evidence.adapters import SafeActionRequest
+from core.safety.safe_execution_gate import ApprovalRecord, SafeExecutionGate
 from core.schema.action import RollbackPlan, TypedAction
 from core.schema.common import ActionType, Environment
 
@@ -24,8 +26,8 @@ def _request(**changes: object) -> SafeActionRequest:
         reversible=True,
         rollback_plan=RollbackPlan(
             available=True,
-            rollback_action_id="restore_scoped_db_reject",
-            method="Restore the original scoped firewall rule.",
+            rollback_action_id="reconcile_db01_safe_baseline",
+            method="Re-apply the reviewed safe baseline after partial execution.",
         ),
     )
     fields: dict[str, object] = {
@@ -41,22 +43,10 @@ def _request(**changes: object) -> SafeActionRequest:
 
 
 def _gate(**changes: object) -> SafeExecutionGate:
-    rollback_catalog = ActionCatalog([
-        CatalogEntry(
-            action_id="restore_scoped_db_reject",
-            description="Test fixture inverse for the DB-01 gate path.",
-            adapter="docker",
-            permission=ActionPermission(required_role="executor", environment_scope=["staging"]),
-            blast_radius="LOW",
-            is_reversible=True,
-            rollback_action="remove_scoped_db_reject",
-            idempotent=True,
-        )
-    ])
     fields: dict[str, object] = {
         "approval_signing_key": "test-key",
         "approved_actors": {"alice"},
-        "rollback_catalog": rollback_catalog,
+        "rollback_catalog": ActionCatalog.load_full_catalog(),
     }
     fields.update(changes)
     return SafeExecutionGate(**fields)
@@ -80,13 +70,12 @@ def test_catalog_rejects_duplicate_action_ids_instead_of_overwriting_policy() ->
         )})])
 
 
-def test_default_gate_denies_live_action_when_catalog_inverse_is_missing() -> None:
+def test_default_gate_accepts_reviewed_safe_baseline_compensation_pair() -> None:
     request = _request()
     verdict = SafeExecutionGate(
         approval_signing_key="test-key", approved_actors={"alice"}
     ).evaluate(request, actor_role="executor", confidence=0.9)
-    assert verdict.decision == "DENY"
-    assert "rollback action is missing" in verdict.reason
+    assert verdict.decision == "ALLOW"
 
 
 def test_gate_denies_nonreciprocal_rollback_catalog_entry() -> None:
@@ -218,6 +207,59 @@ def test_gate_requires_valid_short_lived_action_bound_approval() -> None:
         action_sha256=gate.action_hash(request), actor_id="alice", signing_key="test-key"
     )
     assert gate.evaluate(request, actor_role="executor", confidence=0.7, approval=approval).decision == "ALLOW"
+
+
+def test_gate_verifies_operator_ed25519_approval_without_private_key() -> None:
+    private_key = Ed25519PrivateKey.generate()
+    public_key = private_key.public_key().public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    request = _request(idempotency_key="idem-ed25519")
+    request.action.requires_approval = True
+    gate = SafeExecutionGate(
+        approval_verification_key=public_key,
+        approved_actors={"alice"},
+        rollback_catalog=ActionCatalog.load_full_catalog(),
+    )
+    digest = gate.action_hash(request)
+    approval = ApprovalRecord.create_ed25519(
+        action_sha256=digest,
+        actor_id="alice",
+        private_key_pem=private_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ),
+    )
+
+    assert gate.evaluate(request, actor_role="executor", confidence=0.9, approval=approval).decision == "ALLOW"
+
+
+def test_gate_rejects_ed25519_approval_for_another_action() -> None:
+    private_key = Ed25519PrivateKey.generate()
+    public_key = private_key.public_key().public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    request = _request(idempotency_key="idem-ed25519-wrong-action")
+    request.action.requires_approval = True
+    gate = SafeExecutionGate(
+        approval_verification_key=public_key,
+        approved_actors={"alice"},
+        rollback_catalog=ActionCatalog.load_full_catalog(),
+    )
+    approval = ApprovalRecord.create_ed25519(
+        action_sha256="0" * 64,
+        actor_id="alice",
+        private_key_pem=private_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ),
+    )
+
+    assert gate.evaluate(request, actor_role="executor", confidence=0.9, approval=approval).decision == "REQUIRE_APPROVAL"
 
 
 def test_planner_approval_requirement_is_enforced_and_hash_bound() -> None:

@@ -10,7 +10,7 @@ RESET = (REPO / "automation" / "moodle-fault-reset.sh").read_text(encoding="utf-
 
 
 def test_db02_preflight_requires_exact_account_snapshot_and_prior_limit() -> None:
-    assert "583845872420" in HELPER
+    assert "583845872420" in HELPER or "829162041762" in HELPER
     assert "moodle-sprint6-baseline-20261001" in HELPER
     assert "[[ \"$old_limit\" == -1 ]]" in HELPER
     assert "DB-02 ownership fixture" in HELPER

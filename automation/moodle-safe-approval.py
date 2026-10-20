@@ -13,11 +13,26 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 CATALOG = {
-    "DB-01": ("remove_scoped_db_reject", "staging_moodle_nodes"),
-    "RES-01": ("remove_named_cpu_load_container", "moodle-app-b"),
-    "NET-01": ("recreate_moodle_web_from_reviewed_compose", "staging_moodle_nodes"),
-    "CON-01": ("start_reviewed_compose_service", "moodle-app-b"),
-    "SEC-02": ("restore_fixture_directory_mode", "moodledata_synthetic_fixture_directory"),
+    "DB-01": {
+        "remove_scoped_db_reject": "staging_moodle_nodes",
+        "reconcile_db01_safe_baseline": "staging_moodle_nodes",
+    },
+    "RES-01": {
+        "remove_named_cpu_load_container": "moodle-app-b",
+        "reconcile_res01_safe_baseline": "moodle-app-b",
+    },
+    "NET-01": {
+        "recreate_moodle_web_from_reviewed_compose": "staging_moodle_nodes",
+        "reconcile_net01_safe_baseline": "staging_moodle_nodes",
+    },
+    "CON-01": {
+        "start_reviewed_compose_service": "moodle-app-b",
+        "reconcile_con01_safe_baseline": "moodle-app-b",
+    },
+    "SEC-02": {
+        "restore_fixture_directory_mode": "moodledata_synthetic_fixture_directory",
+        "reconcile_sec02_safe_baseline": "moodledata_synthetic_fixture_directory",
+    },
 }
 
 
@@ -28,13 +43,18 @@ def canonical(value: object) -> bytes:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("scenario", choices=sorted(CATALOG))
+    parser.add_argument("--action-id", help="Exact reviewed catalog action to approve; defaults to the scenario remediation")
     parser.add_argument("--private-key", required=True, type=Path, help="Ed25519 private key held by the approving operator")
     parser.add_argument("--idempotency-key", required=True, help="Unique execution key signed for exactly one request")
     parser.add_argument("--actor", required=True, choices=("operator", "human-approver"))
     parser.add_argument("--ttl-minutes", type=int, default=5, choices=range(1, 16))
     args = parser.parse_args()
 
-    action_id, scope = CATALOG[args.scenario]
+    scenario_actions = CATALOG[args.scenario]
+    action_id = args.action_id or next(iter(scenario_actions))
+    scope = scenario_actions.get(action_id)
+    if scope is None:
+        parser.error("action ID is not reviewed for this scenario")
     digest = hashlib.sha256(canonical({
         "environment": "staging",
         "scenario_id": args.scenario,

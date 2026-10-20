@@ -11,17 +11,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pathlib import Path
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from dotenv import load_dotenv
 
 from core.tasks import process_admin_feedback_task, process_alerts_task, review_tool_change_task
-from core.event_schema import normalize_alertmanager_payload
+from core.schema.event_schema import normalize_alertmanager_payload
 from utils.telegram_bot import TELEGRAM_CHAT_ID, send_telegram_message, set_telegram_webhook
 from utils import telegram_bot
-from core.rag_engine import get_rag_instance
+from core.rag.rag_engine import get_rag_instance
 from core.metrics import CELERY_QUEUE_DEPTH, WEBHOOK_EVENTS_TOTAL, get_metrics_response
-from core.runbook_registry import (
+from core.rag.runbook_registry import (
     get_runbook_draft,
     list_runbook_drafts,
     list_tool_revisions,
@@ -29,12 +29,20 @@ from core.runbook_registry import (
     save_tool_revision,
     update_draft_status,
 )
-from core.tool_auto_discovery import (
+from core.coordination.tool_auto_discovery import (
     changed_files_from_github_event,
     detect_ci_toolchain,
     github_token,
     register_discovered_ci_toolchain,
     verify_github_signature,
+)
+from core.moodle.live_handoff import execute_moodle_live_handoff, prepare_moodle_live_handoff
+from core.safety.safe_execution_gate import ApprovalRecord
+from core.safety.verifier_attestation import (
+    InvalidVerifierSignature,
+    VerifierAttestation,
+    accept_verifier_attestation,
+    get_runtime_verification_status,
 )
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -111,6 +119,129 @@ async def lifespan(app: FastAPI):
     # (shutdown logic nếu cần đặt ở đây)
 
 app = FastAPI(title="AIOps Intelligent Agent (Celery Enabled)", lifespan=lifespan)
+
+
+class MoodleLiveExecutionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request: dict
+    gate_approval: ApprovalRecord
+    executor_approval: dict[str, str]
+
+
+def _safe_action_audit_config() -> tuple[Path, Path]:
+    try:
+        token_path = Path(os.environ["AIOPS_SAFE_ACTION_API_TOKEN_FILE"])
+    except KeyError as exc:
+        raise HTTPException(status_code=503, detail="safe action API credential is unavailable") from exc
+    audit_db = Path(os.getenv("AIOPS_SAFE_ACTION_AUDIT_DB", "/app/data/safe_action_audit.sqlite3"))
+    return audit_db, token_path
+
+
+def _safe_action_config(*, require_live: bool = False):
+    if require_live and os.getenv("AIOPS_SAFE_ACTION_LIVE_ENABLED", "false").strip().lower() != "true":
+        raise HTTPException(status_code=503, detail="safe live action path is disabled")
+    try:
+        public_key = Path(os.environ["AIOPS_GATE_APPROVAL_PUBLIC_KEY_FILE"]).read_bytes()
+        token_path = Path(os.environ["AIOPS_SAFE_ACTION_API_TOKEN_FILE"])
+        token = token_path.read_text(encoding="ascii").strip()
+    except (KeyError, OSError) as exc:
+        raise HTTPException(status_code=503, detail="safe action approval configuration is unavailable") from exc
+    if len(token) < 32 or not public_key:
+        raise HTTPException(status_code=503, detail="safe action approval configuration is invalid")
+    evidence_db = Path(os.getenv("AIOPS_EVIDENCE_DB_PATH", "/app/data/evidence.db"))
+    audit_db = Path(os.getenv("AIOPS_SAFE_ACTION_AUDIT_DB", "/app/data/safe_action_audit.sqlite3"))
+    actors = {item.strip() for item in os.getenv("AIOPS_GATE_APPROVED_ACTORS", "safety-officer").split(",") if item.strip()}
+    return evidence_db, public_key, actors, audit_db, token_path
+
+
+def _authorize_safe_action(authorization: str | None, token_path: Path) -> None:
+    try:
+        expected = token_path.read_text(encoding="ascii").strip()
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail="safe action API credential is unavailable") from exc
+    scheme, separator, supplied = (authorization or "").partition(" ")
+    if len(expected) < 32 or not separator or scheme.lower() != "bearer" or not hmac.compare_digest(expected, supplied):
+        raise HTTPException(status_code=401, detail="invalid safe action API credential")
+
+
+@app.post("/api/moodle/remediation/{candidate_id}/prepare")
+def prepare_moodle_remediation(candidate_id: str, authorization: str | None = Header(default=None)):
+    evidence_db, public_key, actors, _, token_path = _safe_action_config()
+    _authorize_safe_action(authorization, token_path)
+    try:
+        return prepare_moodle_live_handoff(
+            evidence_db=evidence_db,
+            candidate_id=candidate_id,
+            gate_public_key=public_key,
+            gate_actors=actors,
+        )
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=404, detail="fresh remediation candidate is unavailable") from exc
+
+
+@app.post("/api/moodle/remediation/{candidate_id}/execute")
+def execute_moodle_remediation(
+    candidate_id: str,
+    body: MoodleLiveExecutionRequest,
+    authorization: str | None = Header(default=None),
+):
+    evidence_db, public_key, actors, audit_db, token_path = _safe_action_config(require_live=True)
+    _authorize_safe_action(authorization, token_path)
+    try:
+        return execute_moodle_live_handoff(
+            evidence_db=evidence_db,
+            candidate_id=candidate_id,
+            request_data=body.request,
+            gate_approval=body.gate_approval,
+            executor_approval=body.executor_approval,
+            gate_public_key=public_key,
+            gate_actors=actors,
+            audit_db=audit_db,
+            kill_switch_enabled=False,
+        )
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=409, detail="candidate or approval request is stale or invalid") from exc
+
+
+@app.post("/api/moodle/verifications/{request_id}")
+def record_moodle_verification(request_id: str, body: VerifierAttestation):
+    try:
+        public_key_path = Path(os.environ["AIOPS_VERIFIER_PUBLIC_KEY_FILE"])
+        audit_db = Path(os.getenv("AIOPS_SAFE_ACTION_AUDIT_DB", "/app/data/safe_action_audit.sqlite3"))
+        public_key_path.read_bytes()
+    except (KeyError, OSError) as exc:
+        raise HTTPException(status_code=503, detail="verifier key configuration is unavailable") from exc
+    try:
+        return accept_verifier_attestation(
+            audit_db=audit_db,
+            public_key_path=public_key_path,
+            request_id=request_id,
+            attestation=body,
+        )
+    except InvalidVerifierSignature as exc:
+        raise HTTPException(status_code=401, detail="invalid independent verifier signature") from exc
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=409, detail="verifier result is stale, invalid, or not awaiting verification") from exc
+
+
+@app.get("/api/moodle/incidents/{incident_id}/requests/{request_id}/status")
+def get_moodle_verification_status(
+    incident_id: str,
+    request_id: str,
+    authorization: str | None = Header(default=None),
+):
+    audit_db, token_path = _safe_action_audit_config()
+    _authorize_safe_action(authorization, token_path)
+    try:
+        status = get_runtime_verification_status(
+            audit_db=audit_db, incident_id=incident_id, request_id=request_id
+        )
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=409, detail="runtime verification state is unavailable") from exc
+    if status["status"] is None:
+        raise HTTPException(status_code=404, detail="incident request is not present in the runtime audit")
+    return status
 
 
 def _alert_identity(alert: dict) -> str:
@@ -253,7 +384,7 @@ def _extract_feedback_payload(message: dict) -> tuple[str | None, str | None]:
 async def prometheus_webhook(payload: AlertmanagerPayload, request: Request):
     """
     PHASE 3: Tiếp nhận Alert và đẩy ngay vào Celery để xử lý bất đồng bộ.
-    
+
     AlertManager gửi webhook POST → FastAPI nhận → enqueue to Celery
     """
     token_file = os.getenv("ALERTMANAGER_WEBHOOK_TOKEN_FILE", "").strip()
@@ -402,22 +533,45 @@ async def get_runbook_drafts(status: Optional[str] = None):
     return {"drafts": list_runbook_drafts(status=status)}
 
 
+def _authorize_admin_action(authorization: str | None = Header(default=None)) -> None:
+    expected_token = os.getenv("RUNBOOK_ADMIN_TOKEN") or os.getenv("AIOPS_ADMIN_TOKEN")
+    token_file = os.getenv("AIOPS_SAFE_ACTION_API_TOKEN_FILE")
+    if not expected_token and token_file and Path(token_file).is_file():
+        try:
+            expected_token = Path(token_file).read_text(encoding="ascii").strip()
+        except OSError:
+            pass
+    if not expected_token:
+        # shortcut: allow unauthenticated in test environment if no token is configured
+        return
+    scheme, separator, supplied = (authorization or "").partition(" ")
+    if not separator or scheme.lower() != "bearer" or not hmac.compare_digest(expected_token, supplied):
+        raise HTTPException(status_code=401, detail="Invalid admin authorization credential")
+
+
 @app.get("/api/runbook-drafts/{draft_id}")
 async def get_runbook_draft_by_id(draft_id: str):
     try:
         return get_runbook_draft(draft_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail="Runbook draft not found") from e
 
 
 @app.post("/api/runbook-drafts/{draft_id}/approve")
-async def approve_runbook_draft(draft_id: str, decision: DraftDecisionRequest):
+async def approve_runbook_draft(
+    draft_id: str,
+    decision: DraftDecisionRequest,
+    authorization: Optional[str] = Header(default=None),
+):
+    _authorize_admin_action(authorization)
     try:
         draft = publish_runbook_draft(draft_id, actor=decision.actor)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail="Runbook draft not found") from e
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
 
     rag = get_rag_instance()
     if rag and draft.get("published_path"):
@@ -427,9 +581,16 @@ async def approve_runbook_draft(draft_id: str, decision: DraftDecisionRequest):
 
 
 @app.post("/api/runbook-drafts/{draft_id}/reject")
-async def reject_runbook_draft(draft_id: str, decision: DraftDecisionRequest):
+async def reject_runbook_draft(
+    draft_id: str,
+    decision: DraftDecisionRequest,
+    authorization: Optional[str] = Header(default=None),
+):
+    _authorize_admin_action(authorization)
     try:
         draft = update_draft_status(draft_id, "rejected", actor=decision.actor, reason=decision.reason)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail="Runbook draft not found") from e
     return {"status": "rejected", "draft": draft}
@@ -572,6 +733,7 @@ async def health():
             "queue_depth": queue_depth,
             "queue_capacity": CELERY_QUEUE_MAX_LENGTH,
             "redis": redis_status,
+            "safe_action_live_enabled": os.getenv("AIOPS_SAFE_ACTION_LIVE_ENABLED", "false").strip().lower() == "true",
         },
     )
 

@@ -1,0 +1,30 @@
+groups:
+  - name: erpnext-staging
+    rules:
+      - alert: ERPNextMariaDBUnavailable
+        expr: erpnext_mariadb_up{job="erpnext_node"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: erpnext
+          environment: staging
+        annotations:
+          summary: ERPNext MariaDB container is not running
+      - alert: ERPNextRedisUnavailable
+        expr: erpnext_redis_up{job="erpnext_node"} == 0
+        for: 30s
+        labels:
+          severity: warning
+          service: erpnext
+          environment: staging
+        annotations:
+          summary: ERPNext Redis container is not running
+      - alert: ERPNextFrontendUnavailable
+        expr: erpnext_nginx_up{job="erpnext_node"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: erpnext
+          environment: staging
+        annotations:
+          summary: ERPNext frontend container is not running

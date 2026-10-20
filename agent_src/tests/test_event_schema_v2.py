@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from core.event_schema import (
+from core.schema.event_schema import (
     SCHEMA_VERSION,
     SCHEMA_VERSION_V1,
     SUPPORTED_SCHEMA_VERSIONS,

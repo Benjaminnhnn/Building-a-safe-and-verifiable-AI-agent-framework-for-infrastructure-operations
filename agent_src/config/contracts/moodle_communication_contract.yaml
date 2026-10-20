@@ -1,0 +1,177 @@
+# ==============================================================================
+# OFFICIAL COMMUNICATION CONTRACT FOR MOODLE INFRASTRUCTURE TOPOLOGY
+# ------------------------------------------------------------------------------
+# Target: Moodle Staging & Production on AWS (ALB, 2 EC2 App Nodes, RDS, EFS, Monitor)
+# Verified by IndependentVerifier (core/verification/independent_verifier.py)
+# ==============================================================================
+version: "1.0"
+contract_name: "moodle-infrastructure-communication-contract"
+sample_only: false
+target_system: "moodle"
+description: "Authoritative communication contract defining allowed and forbidden network flows and required service dependencies for the multi-tier Moodle infrastructure."
+
+# Service definitions and required inbound/outbound flows
+services:
+  alb:
+    description: "AWS Application Load Balancer terminating public HTTPS and routing to Moodle application nodes"
+    health_endpoint: "http://alb:80/healthz.php"
+    required_flows:
+      - "alb_to_app_01"
+      - "alb_to_app_02"
+
+  moodle-app-01:
+    description: "Moodle EC2 Application Node 1 (Apache, PHP 8.x, Moodle public web root)"
+    health_endpoint: "http://moodle-app-01:80/healthz.php"
+    required_flows:
+      - "app_01_to_rds"
+      - "app_01_to_efs"
+
+  moodle-app-02:
+    description: "Moodle EC2 Application Node 2 (Apache, PHP 8.x, Moodle public web root)"
+    health_endpoint: "http://moodle-app-02:80/healthz.php"
+    required_flows:
+      - "app_02_to_rds"
+      - "app_02_to_efs"
+
+  rds:
+    description: "AWS RDS PostgreSQL managed relational database service (Moodle state storage)"
+    health_endpoint: "rds:5432"
+    required_flows: []
+
+  efs:
+    description: "AWS EFS Network File System for shared /var/www/moodledata directory"
+    health_endpoint: "efs:2049"
+    required_flows: []
+
+  monitoring:
+    description: "Independent monitoring host (monitor-ai-01) with Prometheus, Alertmanager, and synthetic transaction probe"
+    health_endpoint: "http://monitoring:9090/-/healthy"
+    required_flows:
+      - "monitoring_to_alb"
+      - "monitoring_to_app_01_node_exporter"
+      - "monitoring_to_app_02_node_exporter"
+
+# Allowed connections: must be operational and responsive
+allowed_connections:
+  - id: "client_to_alb"
+    name: "client_to_alb"
+    source: "client"
+    destination: "alb"
+    port: 443
+    protocol: "tcp"
+    description: "Public client HTTPS traffic to Moodle ALB"
+
+  - id: "alb_to_app_01"
+    name: "alb_to_app_01"
+    source: "alb"
+    destination: "moodle-app-01"
+    port: 80
+    protocol: "tcp"
+    description: "ALB reverse proxy routing to Moodle App Node 1"
+
+  - id: "alb_to_app_02"
+    name: "alb_to_app_02"
+    source: "alb"
+    destination: "moodle-app-02"
+    port: 80
+    protocol: "tcp"
+    description: "ALB reverse proxy routing to Moodle App Node 2"
+
+  - id: "app_01_to_rds"
+    name: "app_01_to_rds"
+    source: "moodle-app-01"
+    destination: "rds"
+    port: 5432
+    protocol: "tcp"
+    description: "Moodle Node 1 TLS connection to RDS PostgreSQL database"
+
+  - id: "app_02_to_rds"
+    name: "app_02_to_rds"
+    source: "moodle-app-02"
+    destination: "rds"
+    port: 5432
+    protocol: "tcp"
+    description: "Moodle Node 2 TLS connection to RDS PostgreSQL database"
+
+  - id: "app_01_to_efs"
+    name: "app_01_to_efs"
+    source: "moodle-app-01"
+    destination: "efs"
+    port: 2049
+    protocol: "tcp"
+    description: "Moodle Node 1 NFS mount to EFS for /var/www/moodledata"
+
+  - id: "app_02_to_efs"
+    name: "app_02_to_efs"
+    source: "moodle-app-02"
+    destination: "efs"
+    port: 2049
+    protocol: "tcp"
+    description: "Moodle Node 2 NFS mount to EFS for /var/www/moodledata"
+
+  - id: "monitoring_to_alb"
+    name: "monitoring_to_alb"
+    source: "monitoring"
+    destination: "alb"
+    port: 80
+    protocol: "tcp"
+    description: "Continuous synthetic transactions executing authenticated user flows via ALB"
+
+  - id: "monitoring_to_app_01_node_exporter"
+    name: "monitoring_to_app_01_node_exporter"
+    source: "monitoring"
+    destination: "moodle-app-01"
+    port: 9100
+    protocol: "tcp"
+    description: "Prometheus scraping host metrics from Moodle App Node 1"
+
+  - id: "monitoring_to_app_02_node_exporter"
+    name: "monitoring_to_app_02_node_exporter"
+    source: "monitoring"
+    destination: "moodle-app-02"
+    port: 9100
+    protocol: "tcp"
+    description: "Prometheus scraping host metrics from Moodle App Node 2"
+
+# Forbidden connections: must be blocked / unreachable (security & isolation regression checks)
+forbidden_connections:
+  - id: "client_to_rds_forbidden"
+    name: "client_to_rds_forbidden"
+    source: "client"
+    destination: "rds"
+    port: 5432
+    protocol: "tcp"
+    description: "Direct public Internet access to RDS PostgreSQL is strictly forbidden"
+
+  - id: "client_to_efs_forbidden"
+    name: "client_to_efs_forbidden"
+    source: "client"
+    destination: "efs"
+    port: 2049
+    protocol: "tcp"
+    description: "Direct public Internet access to EFS NFS is strictly forbidden"
+
+  - id: "rds_to_internet_forbidden"
+    name: "rds_to_internet_forbidden"
+    source: "rds"
+    destination: "internet"
+    port: 0
+    protocol: "all"
+    description: "RDS outbound egress to public internet is strictly blocked"
+
+  - id: "efs_to_internet_forbidden"
+    name: "efs_to_internet_forbidden"
+    source: "efs"
+    destination: "internet"
+    port: 0
+    protocol: "all"
+    description: "EFS outbound egress to public internet is strictly blocked"
+
+  - id: "client_to_app_direct_forbidden"
+    name: "client_to_app_direct_forbidden"
+    source: "client"
+    destination: "moodle-app-01"
+    port: 8080
+    protocol: "tcp"
+    description: "Direct client bypass of ALB to internal container port is strictly forbidden"
+

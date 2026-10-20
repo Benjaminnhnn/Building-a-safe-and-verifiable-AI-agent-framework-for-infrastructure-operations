@@ -13,7 +13,7 @@ Build a safe, verifiable AI-agent framework for Moodle incident operations on AW
 
 ### Scope
 
-Moodle on AWS EC2 is the primary implementation and evaluation environment, with ALB, RDS PostgreSQL, EFS, Prometheus/Alertmanager, and the AI Agent. ERPNext is an optional generalization extension; it is not a Moodle acceptance requirement and its fixtures do not prove a deployed or evaluated runtime.
+Moodle on AWS EC2 is the primary implementation and evaluation environment, with ALB, RDS PostgreSQL, EFS, Prometheus/Alertmanager, and the AI Agent. ERPNext is the required generalization environment in the approved thesis proposal; it follows Moodle acceptance and has its own isolated staging runtime and its fixtures do not prove a deployed or evaluated runtime.
 
 In scope: Linux, Docker Compose, Terraform, Ansible, monitoring, evidence storage, RAG, Safety Gate, approval, audit, conditional rollback, Independent Verifier, bounded fault injection, and benchmark methodology. Out of scope: Kubernetes/EKS, OpenStack, Windows, multi-cloud, automatic IAM/security-group changes, business-data changes/deletion, and complex multi-agent fan-out.
 
@@ -37,7 +37,7 @@ This is a static source-tree inventory. Code or configuration being present does
 | CI/CD | CI checks agent, Moodle automation, image builds, Compose config, and offline replay; Moodle staging deploy workflow exists | CI replay is simulated; deployment depends on runner/secrets/runtime | Keep mode and provenance assertions |
 | Benchmark | Synthetic-only harness; no committed result dataset | `automation/run-benchmark.py` generates randomized fixture outcomes; latest default n=5 empirical acceptance audit is 0/225 | Do not use generated outcomes as observed Moodle data; collect/freeze raw live trials before RQ conclusions |
 | Legacy banking stack | Old README/Compose/workflow files, `app-release-deploy.sh`, Terraform `bank-web-01`/`bank-core-01`, and inventory references | Terraform state may still own resources; removal may destroy EC2/EIPs | Remove from thesis docs/CD first; retire cloud resources only after state-backed plan and review |
-| ERPNext | Three fixture contracts and offline demo | No evidence here of deployed runtime or measured generalization | Keep as optional extension, not Moodle acceptance |
+| ERPNext | Three fixture contracts and offline demo | No evidence here of deployed runtime or measured generalization | Implement the required isolated generalization lane; preserve the no-deployment/no-evaluation evidence boundary |
 | Dated reports | `report.md` and sprint/operations reports contain dated snapshots | Historical, not live status; claims require source artifacts | Retain scope, date, and limitations |
 
 ### Baseline evidence policy
@@ -56,7 +56,7 @@ Old baseline/test counts elsewhere in this plan are historical and are not curre
 6. Safety Policy Engine, catalog, RBAC, approval, audit, conditional rollback.
 7. Independent Verifier và communication contract.
 8. Moodle và 15 fault scenarios.
-9. (Optional) ERPNext three-scenario generalization after Moodle acceptance is established.
+9. ERPNext three-scenario generalization on isolated staging after Moodle acceptance is established.
 10. Manual/Ansible/AI benchmark, hai ablation, raw data và phân tích RQ1/RQ2.
 11. Báo cáo, slide, demo runbook, video backup và reproduction guide.
 
@@ -131,7 +131,7 @@ R: Reviewer - Người review chéo, kiểm tra thiết kế, chất lượng v�
 
 | Tuần | Mục tiêu và task đủ nhỏ cho GitHub Issue | AI Engineer | Infrastructure Engineer | Dependency | Deliverable kiểm tra được | Acceptance/test | Rủi ro và dự phòng | Effort |
 |---|---|---|---|---|---|---|---|---|
-| 13 | Moodle ablation và phân tích theo cụm scenario; ERPNext chỉ mở sau khi Moodle acceptance đạt | O: safety/no-gate và verifier/health-only analysis; R: phương pháp | O: thu hai tập ablation Moodle, mỗi tập ≥50 run, cùng protocol và provenance; ERPNext runtime chỉ khi được duyệt sau Moodle acceptance | Stable core + frozen Moodle benchmark | Hai tập ablation Moodle và phân tích thống kê; ERPNext result là deliverable tùy chọn | ≥50 safety-ablation + ≥50 verifier-ablation runs; không sửa core schema; ERPNext không chặn DoD Moodle | Nếu live collection chưa sẵn sàng, không tạo dữ liệu thay thế; ghi rõ blocked evidence và giữ RQ inconclusive | AI 6 + Infra 4 = 10 PD |
+| 13 | Moodle ablation và phân tích theo cụm scenario; sau đó mở ERPNext generalization trên host riêng | O: safety/no-gate và verifier/health-only analysis; R: phương pháp | O: thu hai tập ablation Moodle, mỗi tập ≥50 run, cùng protocol và provenance; deploy ERPNext staging sau Moodle acceptance | Stable core + frozen Moodle benchmark | Hai tập ablation Moodle và ERPNext three-scenario generalization | ≥50 safety-ablation + ≥50 verifier-ablation runs; không sửa core schema; ERPNext có ground truth, injector/reset, probe và measured results | Nếu live collection chưa sẵn sàng, không tạo dữ liệu thay thế; ghi rõ blocked evidence và giữ RQ inconclusive | AI 6 + Infra 4 = 10 PD |
 | 14 | Phân tích, báo cáo, slide, demo và rehearsal | O: statistics, RQ conclusions, limitations, thesis chapters, figures; R: infra claims | O: reproduction package, final demo, video backup, cost report, freeze; R: metrics | Frozen dataset | Thesis package | Mọi bảng truy nguyên raw data; hai rehearsal pass; backup demo ≤10m; zero P0 | AWS/demo lỗi → local replay, recorded demo, pre-generated result bundle | AI 5 + Infra 5 = 10 PD |
 
 ## 6. Scenario matrix bắt buộc
@@ -264,7 +264,7 @@ Baseline green
 1. Defer OpenStack, EKS và GitHub auto-discovery.
 2. Bỏ custom UI; dùng Grafana/API/Telegram.
 3. Giữ RAG retrieval có provenance, bỏ dynamic learning nâng cao.
-4. ERPNext là extension tùy chọn sau Moodle acceptance; nếu làm thì giới hạn ở ba scenario đại diện.
+4. ERPNext là môi trường generalization bắt buộc theo đề cương, triển khai sau Moodle acceptance và giới hạn ở ba scenario đại diện.
 5. Giảm repetition từ 5 xuống 3 nếu bắt buộc và ghi limitation.
 6. Planner có thể deterministic hoàn toàn nếu LLM không ổn định.
 
@@ -278,7 +278,7 @@ Baseline evidence; working-tree cleanup; Moodle; monitoring; unified schemas; st
 
 ### P1
 
-ERPNext three-scenario setup (optional; defer until Moodle empirical acceptance); richer Telegram approval/security (implemented: webhook secret plus numeric user allowlist); nightly experiment workflow (not automated until a fault-injection schedule is explicitly approved); cost dashboard (generator implemented in `automation/benchmark-cost-dashboard.py`, which shows only acceptance-ready empirical main rows and otherwise emits an incomplete status without metric totals).
+ERPNext three-scenario setup (required after Moodle empirical acceptance; dedicated private EC2, opt-in Terraform); richer Telegram approval/security (implemented: webhook secret plus numeric user allowlist); nightly experiment workflow (not automated until a fault-injection schedule is explicitly approved); cost dashboard (generator implemented in `automation/benchmark-cost-dashboard.py`, which shows only acceptance-ready empirical main rows and otherwise emits an incomplete status without metric totals).
 
 ### P2
 
@@ -302,7 +302,7 @@ OpenStack; EKS fixtures; GitHub tool discovery; auto-generated runbook; custom U
 
 - CI green, P0 đóng, 15 Moodle scenario và reset pass.
 - Main benchmark và hai ablation có raw data đầy đủ.
-- ERPNext three-scenario generalization is optional and starts only after Moodle acceptance; it is not a thesis DoD gate.
+- ERPNext three-scenario generalization is required after Moodle acceptance and is a thesis DoD gate.
 - Không có forbidden automatic execution.
 - Mọi bảng/figure truy nguyên được về run ID, commit SHA, image digest.
 - Báo cáo trả lời RQ1/RQ2, có limitations và failure analysis.
@@ -311,7 +311,7 @@ OpenStack; EKS fixtures; GitHub tool discovery; auto-generated runbook; custom U
 ## 14. GitHub Epics và Issue đề xuất
 
 - **E0 Baseline:** inventory/gap, working-tree stabilization, dependency lock, CI baseline, scope ADR.
-- **E1 Environments:** Moodle runtime, PostgreSQL/exporter, synthetic transaction, reset/checksum; ERPNext is an optional extension.
+- **E1 Environments:** Moodle runtime, PostgreSQL/exporter, synthetic transaction, reset/checksum; ERPNext is a required isolated generalization environment after Moodle acceptance.
 - **E2 Models:** Resource, Evidence, Incident state machine, Typed Action, compatibility.
 - **E3 Evidence:** Store, collectors, dependency graph, RAG provenance, redaction.
 - **E4 Agents:** Observer, Diagnosis, Planner, Orchestrator, structured contract.
@@ -339,12 +339,12 @@ Mỗi issue phải có owner, reviewer, dependency, acceptance criteria, test ev
 | 10 | Safe execution, audit, rollback |
 | 11 | Health-green nhưng contract-broken demo |
 | 12 | 15 Moodle scenario và benchmark progress |
-| 13 | Hai Moodle ablation và phân tích; ERPNext tùy chọn sau Moodle acceptance |
+| 13 | Hai Moodle ablation và phân tích; triển khai ERPNext generalization sau Moodle acceptance |
 | 14 | Full defense rehearsal và contingency drill |
 
 ## 16. Artifact phục vụ báo cáo khoa học
 
-Architecture/threat model; requirement traceability; schema/interface; action catalog/policy matrix; 15 ground truth; injector/reset/checksum; manual/Ansible/AI protocols; structured traces; policy/audit logs; contract probe results; raw CSV/JSONL; [benchmark data dictionary](BENCHMARK_DATA_DICTIONARY.md); metric formulas; model/prompt/image versions; LLM/AWS cost log; statistical script; confusion matrix; failure cases; both Moodle ablations; optional ERPNext result after Moodle acceptance; reproduction guide; demo runbook; slide; video backup.
+Architecture/threat model; requirement traceability; schema/interface; action catalog/policy matrix; 15 ground truth; injector/reset/checksum; manual/Ansible/AI protocols; structured traces; policy/audit logs; contract probe results; raw CSV/JSONL; [benchmark data dictionary](BENCHMARK_DATA_DICTIONARY.md); metric formulas; model/prompt/image versions; LLM/AWS cost log; statistical script; confusion matrix; failure cases; both Moodle ablations; required ERPNext generalization result after Moodle acceptance; reproduction guide; demo runbook; slide; video backup.
 
 ## 17. Mapping mục tiêu và RQ
 
@@ -354,7 +354,7 @@ Architecture/threat model; requirement traceability; schema/interface; action ca
 | Context, knowledge, evidence | S3–S4 | Evidence Store, graph, RAG provenance | Provenance coverage, retrieval quality |
 | Năm agent và coordination | S2–S4 | Agent modules, contract, Orchestrator | Stage-order, idempotency, RCA accuracy |
 | Safe execution | S5 | Catalog, Gate, RBAC, approval, audit, rollback | Block rate, forbidden execution, rollback success |
-| Independent verification và Moodle evaluation | S6–S7 | Verifier, contracts, 225-run benchmark, hai ablation | False recovery, recovery, timing, cost; ERPNext generalization là extension tùy chọn |
+| Independent verification và evaluation | S6–S7 | Verifier, contracts, 225-run benchmark, hai ablation, ba scenario ERPNext | False recovery, recovery, timing, cost; ERPNext verifies generalization after Moodle acceptance |
 
 | RQ | Experiment | Baseline/ablation | Dữ liệu cần thu |
 |---|---|---|---|

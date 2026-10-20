@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from core.moodle_contract import (
+from core.moodle.contract import (
     EXPECTED_SCENARIO_IDS,
     build_moodle_scenario_binding,
     assert_moodle_capability_contract,
@@ -16,7 +16,7 @@ from core.moodle_contract import (
     load_moodle_resource_inventory,
     validate_moodle_capability_contract,
 )
-from core.action_catalog import ActionCatalog
+from core.safety.action_catalog import ActionCatalog
 
 
 def test_s3_1_contract_is_valid_and_staging_only() -> None:

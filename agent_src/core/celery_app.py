@@ -25,6 +25,7 @@ celery_app.conf.update(
     timezone="Asia/Ho_Chi_Minh",
     enable_utc=True,
     task_track_started=True,
+    task_soft_time_limit=int(os.getenv("CELERY_TASK_SOFT_TIME_LIMIT", "270")),
     task_time_limit=300,
     worker_prefetch_multiplier=int(os.getenv("CELERY_WORKER_PREFETCH_MULTIPLIER", "1")),
 )

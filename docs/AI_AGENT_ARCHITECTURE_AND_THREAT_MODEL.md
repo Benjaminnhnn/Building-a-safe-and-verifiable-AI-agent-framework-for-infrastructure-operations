@@ -9,26 +9,41 @@ deliberately separated from the intended design.
 
 | Layer | Responsibility | Current source and boundary |
 |---|---|---|
-| 1. Alert intake | Receive, normalize, validate, deduplicate, and queue Alertmanager events. | FastAPI `/webhook`, event contract, Redis/Celery in `agent_src/core/main.py` and `tasks.py`. Bearer-token file authentication is supported; the Moodle monitoring playbook requires it and shares a host-generated token with Alertmanager. Other deployments must configure the same mechanism before exposing the endpoint. |
-| 2. Observation and evidence | Bind signals to known resources; collect time-bounded metrics, probes, and sanitized excerpts; preserve evidence provenance. | Moodle inventory and `shadow_pipeline.py`, `evidence_collectors.py`, `evidence_store.py`. Shadow mode observes. Investigate mode uses stored fresh evidence for bounded hypotheses and may produce a catalogued read-only probe proposal. Diagnosis and proposal decisions are separate hash-addressed `decision` evidence records linked to input evidence. Neither mode executes or resolves; unsupported alert types remain observe/escalate only. |
-| 3. Context and knowledge | Retrieve scoped operational knowledge and dependency context, with source/time/hash provenance. | `rag_engine.py`, Moodle runbooks under `agent_src/config/knowledge_base/moodle/`, dependency graph and evidence schemas. Staging shadow reports now include alert-scoped authored runbook context with provenance; dynamic incident memory is excluded, and runbook text does not enter diagnosis or action selection. |
-| 4. Diagnosis and planning | Form evidence-supported hypotheses and produce a typed candidate action; insufficient or conflicting evidence escalates. | `moodle_diagnosis.py` consumes fresh Prometheus evidence and `moodle_planner.py` emits only catalogued verifier-role read-only probes. The generic `DiagnosisAgent` uses the validated dependency graph to scope evidence, report potential downstream impact separately from evidence-confirmed affected resources, and bind Planner targets to the incident neighborhood. The investigate alert path connects the Moodle modules. `moodle_pipeline.py` remains fixture replay and is prohibited from executing. |
-| 5. Safety and execution | Apply action catalog, role, environment, scope, evidence, approval, idempotency, timeout, and kill-switch checks before a bounded adapter. | `action_catalog.py`, `safe_execution_gate.py`, and `safe_action_live.py` provide a reviewed S3.3 staging slice and hash-chain-bound conditional rollback orchestration for partial executor failures. The production catalog lacks qualifying reciprocal rollback pairs, the remote API has no rollback operation, and `SafeActionLiveWorkflow` is not wired to the event handler. Former ground-truth-backed live routing now escalates closed. |
-| 6. Independent verification and reporting | Read-only allowed/forbidden/related probes plus stability; only the verifier may mark an incident resolved. | `verification_agent.py`, `verifier_contract.py`, and state transition guards. Contracts and tests exist; the live alert path currently cannot execute and therefore has no end-to-end AI recovery claim. |
+| 1. Alert intake | Receive, normalize, validate, deduplicate, and queue Alertmanager events. | FastAPI `/webhook`, canonical contracts in `core/schema/event_schema.py`, Redis/Celery queue in `agent_src/core/main.py` and `tasks.py`. Bearer-token file authentication is supported; the Moodle monitoring playbook requires it and shares a host-generated token with Alertmanager. Other deployments must configure the same mechanism before exposing the endpoint. |
+| 2. Observation and evidence | Bind signals to known resources; collect time-bounded metrics, probes, and sanitized excerpts; preserve evidence provenance. | Platform-neutral core in `core/shadow_pipeline.py`, `core/evidence/evidence_collectors.py`, `core/evidence/evidence_store.py`, decoupled from domain via `core/platform_adapter.py`. Shadow mode observes. Investigate mode uses stored fresh evidence for bounded hypotheses and may produce a catalogued read-only probe proposal or staging remediation candidate. Diagnosis and proposal decisions are separate hash-addressed `decision` evidence records linked to input evidence. Neither mode executes or resolves; unsupported alert types remain observe/escalate only. |
+| 3. Context and knowledge | Retrieve scoped operational knowledge and dependency context, with source/time/hash provenance. | `core/rag/rag_engine.py` (`retrieve_runbook_with_provenance`), Moodle runbooks under `agent_src/config/knowledge_base/moodle/`, `core/evidence/dependency_graph.py` (`confirmed_affected_resources` vs. `potentially_affected_resources`), and canonical schemas in `core/schema/`. Staging shadow/investigate reports include structured `evidence_provenance`, `runbook_provenance`, `remediation_disposition`, and `explanation`; dynamic incident memory is excluded, and runbook text does not enter diagnosis or action selection. |
+| 4. Diagnosis and planning | Form evidence-supported hypotheses and produce a typed candidate action; insufficient or conflicting evidence escalates. | Platform-specific logic encapsulated in `core/moodle/` (`MoodlePlatformAdapter`) and `core/erpnext/` (`ERPNextPlatformAdapter`), registered with `PlatformAdapterRegistry`. Emits catalogued verifier-role read-only probes across all 18 Moodle alert types, explicit 15-scenario dispositions (`SCENARIO_REMEDIATION_DISPOSITION`), or bounded staging remediation candidates for human review. Offline fixture replay lives in `evaluation/agent_replay/moodle_pipeline.py` and is prohibited from executing. |
+| 5. Safety and execution | Apply action catalog, role, environment, scope, evidence, approval, idempotency, timeout, and kill-switch checks before a bounded adapter. | `core/safety/action_catalog.py` (with reciprocal `rollback_action` pairs for all catalogued mutations), `core/safety/safe_execution_gate.py`, `core/safety/safe_action_live.py`, and `core/safety/safe_action_audit.py` provide a reviewed S3.3 staging slice (`DB-01`, `RES-01`, `NET-01`, `CON-01`, `SEC-02`) and hash-chain-bound conditional rollback orchestration. Live remediation requires explicit operator handoff (`core/moodle/live_handoff.py`) with two distinct signatures (`ApprovalRecord`), completely separated from the alert intake path. |
+| 6. Independent verification and reporting | Read-only allowed/forbidden/related probes plus stability; only the verifier may mark an incident resolved. | `core/verification/verification_agent.py`, `core/verification/verifier_contract.py`, `core/verification/state_machine.py`, and `core/safety/verifier_attestation.py`. The Independent Verifier runs externally, signing results with dedicated Ed25519 key; only signed attestation accepted by Agent transitions state to `RESOLVED`. |
 
-## Data flow and operating modes
+## Data flow and single alert runtime path
 
 ```text
 Alertmanager
-  -> POST /webhook
-  -> payload validation, ingress dedup, Redis/Celery queue
-  -> process_single_alert
-       |-- AIOPS_UNIFIED_CORE_MODE=shadow: resource mapping, read-only collection,
-       |   one bounded metric hypothesis; missing/conflicting evidence escalates
-       |-- AIOPS_UNIFIED_CORE_MODE=investigate: evidence-derived diagnosis and
-       |   catalogued read-only probe proposal; no execution or resolution
-       |-- AIOPS_UNIFIED_CORE_MODE=live: explicit escalation; no action
-       |-- off/invalid/non-staging: explicit escalation; no legacy fallback
+  -> POST /webhook (FastAPI, token auth, normalize to core/schema/event_schema.py, ingress dedup)
+  -> Redis/Celery queue (CELERY_QUEUE_DEPTH check, process_alerts_task)
+  -> process_single_alert (tasks.py: concurrency limit, identity dedup, cooldown)
+       |
+       +--> resolved alert: clear cooldown, notify pending verification, exit
+       |
+       +--> firing alert: process_moodle_alert (core/moodle/alert_integration.py)
+              |
+              |-- non-Moodle or non-firing: returns None -> logged unsupported, no assistant/executor
+              |-- non-staging environment: returns status="escalated"
+              |-- AIOPS_UNIFIED_CORE_MODE=live: fail-closed escalation (handoff is separate operator path)
+              |-- off/disabled/invalid mode: fail-closed escalation (no legacy fallback)
+              |-- AIOPS_UNIFIED_CORE_MODE=shadow / investigate:
+                    -> run_shadow_if_enabled (core/shadow_pipeline.py via PlatformAdapter)
+                         |-- Identify resource via MoodlePlatformAdapter
+                         |-- Claim checkpoint run in SQLiteEvidenceStore
+                         |-- Collect fresh bounded Prometheus evidence
+                         |-- Rule-based conservative diagnosis (core/moodle/diagnosis.py)
+                         |-- Propose read-only probe plan (core/moodle/planner.py)
+                         |-- In investigate mode only: propose candidate if exact fault marker matches
+                         |-- Persist decisions as hash-addressed Evidence records
+                         |-- Retrieve authored runbook context (read-only advisory)
+                         |-- Complete checkpoint run in SQLiteEvidenceStore
+                         +-> Return observation report (execution_permitted=False, resolution_eligible=False)
 ```
 
 The default unified mode is disabled; firing Moodle alerts then escalate before

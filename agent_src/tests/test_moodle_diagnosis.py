@@ -5,9 +5,9 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from core.moodle_diagnosis import diagnose_moodle_alert
-from core.evidence_collectors import METRIC_QUERIES_BY_ALERT
-from core.moodle_diagnosis import (
+from core.moodle.diagnosis import diagnose_moodle_alert
+from core.evidence.evidence_collectors import METRIC_QUERIES_BY_ALERT
+from core.moodle.diagnosis import (
     _ALL_QUERY_IDS,
     _DIRECT_NODE_RULES,
     _DIRECT_PROBE_RULES,
@@ -307,14 +307,18 @@ def test_node_threshold_alerts_attribute_only_confirmed_affected_instances():
     )
     container = diagnose_moodle_alert(
         "MoodleWebContainerMissing",
-        [_evidence("moodle_web_container_last_seen_age_seconds", 45.0, "ev-container", instance="moodle-app-c")],
+        [
+            _evidence("moodle_node_web_running", 1.0, "ev-container-a", instance="moodle-app-a"),
+            _evidence("moodle_node_web_running", 0.0, "ev-container-b", instance="moodle-app-b"),
+        ],
     )
 
     assert cpu["status"] == "hypothesis"
     assert cpu["affected_nodes"] == ["moodle-app-b"]
     assert cpu["action_candidate"] is None
     assert container["status"] == "hypothesis"
-    assert container["affected_nodes"] == ["moodle-app-c"]
+    assert container["cause_code"] == "web_container_not_running"
+    assert container["affected_nodes"] == ["moodle-app-b"]
     assert container["action_candidate"] is None
 
 

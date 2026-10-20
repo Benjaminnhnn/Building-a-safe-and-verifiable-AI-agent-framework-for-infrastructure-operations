@@ -1,8 +1,8 @@
 # Benchmark evidence status
 
-Checked 2026-10-07. This directory contains only this status report; no empirical Moodle benchmark dataset is present. The latest default n=5 Sprint 6 acceptance audit found **0/225 empirical runs**; no RQ1/RQ2 metric or conclusion is established.
+Checked 2026-10-11. This directory contains only this status report; no empirical Moodle benchmark dataset is present. The fresh default n=5 Sprint 6 acceptance audit found **0/225 empirical runs**; no RQ1/RQ2 metric or conclusion is established.
 
-The former committed CSV/JSONL and summary were outputs of `automation/run-benchmark.py`, a randomized fixture simulation. They were removed from this active results directory because they were not observations from Moodle, human operators, Ansible, or the Independent Verifier. Two ignored SQLite evidence stores contained only synthetic Alertmanager/Prometheus/topology fixture rows; they were moved to `terraform/.artifacts/legacy-synthetic-results/` and are not empirical data. The CSV/JSONL historical row-count mismatch is recorded in `docs/MASTER_RUNBOOK.md`; no synthetic outcome rates are retained here.
+The former committed CSV/JSONL and summary were outputs of `automation/run-benchmark.py`, a randomized fixture simulation. They were removed from this active results directory because they were not observations from Moodle, human operators, Ansible, or the Independent Verifier. Two ignored SQLite evidence stores contained only synthetic Alertmanager/Prometheus/topology fixture rows; they were moved to `terraform/.artifacts/legacy-synthetic-results/` and are not empirical data. The CSV/JSONL historical row-count mismatch was recorded in the former `docs/MASTER_RUNBOOK.md` (removed 2026-10-15; see Git history); no synthetic outcome rates are retained here.
 
 For harness development only, the runner writes to ignored local artifacts by default:
 

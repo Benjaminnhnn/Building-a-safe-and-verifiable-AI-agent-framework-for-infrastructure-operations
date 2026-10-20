@@ -1,0 +1,210 @@
+---
+- name: Prepare isolated ERPNext staging host
+  hosts: erpnext
+  become: true
+  gather_facts: true
+  vars:
+    erpnext_root: /opt/erpnext
+    erpnext_node_exporter_version: 1.8.2
+  tasks:
+    - name: Require Docker Compose v2
+      ansible.builtin.command:
+        cmd: docker compose version
+      changed_when: false
+    - name: Install ERPNext container metric collector
+      ansible.builtin.copy:
+        src: ../files/erpnext/erpnext-container-metrics.sh
+        dest: /usr/local/sbin/erpnext-container-metrics
+        owner: root
+        group: root
+        mode: '0750'
+    - name: Create Node Exporter textfile directory
+      ansible.builtin.file:
+        path: /var/lib/node_exporter/textfile_collector
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Create Node Exporter system account
+      ansible.builtin.user:
+        name: node_exporter
+        system: true
+        shell: /sbin/nologin
+        create_home: false
+    - name: Download pinned Node Exporter release
+      ansible.builtin.get_url:
+        url: "https://github.com/prometheus/node_exporter/releases/download/v{{ erpnext_node_exporter_version }}/node_exporter-{{ erpnext_node_exporter_version }}.linux-amd64.tar.gz"
+        dest: "/tmp/node_exporter-{{ erpnext_node_exporter_version }}.linux-amd64.tar.gz"
+        mode: '0644'
+    - name: Unpack pinned Node Exporter release
+      ansible.builtin.unarchive:
+        src: "/tmp/node_exporter-{{ erpnext_node_exporter_version }}.linux-amd64.tar.gz"
+        dest: /opt
+        remote_src: true
+        creates: "/opt/node_exporter-{{ erpnext_node_exporter_version }}.linux-amd64"
+    - name: Install Node Exporter binary
+      ansible.builtin.copy:
+        src: "/opt/node_exporter-{{ erpnext_node_exporter_version }}.linux-amd64/node_exporter"
+        dest: /usr/local/bin/node_exporter
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Install Node Exporter systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/node_exporter.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Prometheus Node Exporter
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          User=node_exporter
+          Group=node_exporter
+          ExecStart=/usr/local/bin/node_exporter --collector.textfile --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
+          Restart=on-failure
+
+          [Install]
+          WantedBy=multi-user.target
+    - name: Enable Node Exporter
+      ansible.builtin.systemd:
+        name: node_exporter
+        enabled: true
+        state: started
+        daemon_reload: true
+    - name: Install ERPNext metric collector service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/erpnext-container-metrics.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Collect ERPNext Compose container state
+          After=docker.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/erpnext-container-metrics
+    - name: Install ERPNext metric collector timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/erpnext-container-metrics.timer
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Refresh ERPNext container metrics every 15 seconds
+
+          [Timer]
+          OnBootSec=15s
+          OnUnitActiveSec=15s
+          Unit=erpnext-container-metrics.service
+
+          [Install]
+          WantedBy=timers.target
+    - name: Enable ERPNext metric collector timer
+      ansible.builtin.systemd:
+        name: erpnext-container-metrics.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+    - name: Create ERPNext runtime directory
+      ansible.builtin.file:
+        path: "{{ erpnext_root }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0750'
+    - name: Mark this host as the dedicated ERPNext staging target
+      ansible.builtin.copy:
+        content: "erpnext-staging-01\n"
+        dest: /etc/erpnext-staging-host
+        owner: root
+        group: root
+        mode: '0600'
+    - name: Ensure the private secrets directory exists
+      ansible.builtin.file:
+        path: "{{ erpnext_root }}/secrets"
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+    - name: Install isolated Compose definition
+      ansible.builtin.copy:
+        src: ../../release/erpnext/docker-compose.yml
+        dest: "{{ erpnext_root }}/docker-compose.yml"
+        owner: root
+        group: root
+        mode: '0640'
+    - name: Install non-secret runtime defaults
+      ansible.builtin.copy:
+        src: ../../release/erpnext/.env.example
+        dest: "{{ erpnext_root }}/.env"
+        owner: root
+        group: root
+        mode: '0640'
+        force: false
+    - name: Install bounded ERPNext drill commands
+      ansible.builtin.copy:
+        src: "../../automation/{{ item }}"
+        dest: "/usr/local/sbin/{{ item }}"
+        owner: root
+        group: root
+        mode: '0750'
+      loop:
+        - erpnext-fault-inject.sh
+        - erpnext-fault-reset.sh
+    - name: Require operator-provisioned secrets
+      ansible.builtin.stat:
+        path: "{{ erpnext_root }}/secrets/{{ item }}"
+      loop:
+        - db_root_password
+        - erpnext_admin_password
+      register: erpnext_secret_files
+    - name: Stop before deploy if secrets have not been provisioned
+      ansible.builtin.assert:
+        that: erpnext_secret_files.results | map(attribute='stat.exists') | min
+        fail_msg: "Provision root-only secret files under /opt/erpnext/secrets before deployment."
+    - name: Enforce root-only secret permissions
+      ansible.builtin.file:
+        path: "{{ erpnext_root }}/secrets/{{ item }}"
+        owner: root
+        group: root
+        mode: '0600'
+      loop:
+        - db_root_password
+        - erpnext_admin_password
+    - name: Validate Compose configuration without starting services
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.yml config --quiet
+        chdir: "{{ erpnext_root }}"
+      changed_when: false
+    - name: Start ERPNext dependencies and application
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.yml up -d
+        chdir: "{{ erpnext_root }}"
+      register: erpnext_compose_up
+      changed_when: "'Started' in erpnext_compose_up.stderr or 'Created' in erpnext_compose_up.stderr"
+
+- name: Initialize ERPNext site once
+  hosts: erpnext
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Check whether site initialization is needed
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.yml exec -T backend test -f sites/erpnext-staging.local/site_config.json
+        chdir: /opt/erpnext
+      register: erpnext_site_exists
+      changed_when: false
+      failed_when: erpnext_site_exists.rc not in [0, 1]
+    - name: Create ERPNext site using the secret files
+      ansible.builtin.command:
+        cmd: docker compose --profile initialize -f docker-compose.yml run --rm create-site
+        chdir: /opt/erpnext
+      when: erpnext_site_exists.rc == 1

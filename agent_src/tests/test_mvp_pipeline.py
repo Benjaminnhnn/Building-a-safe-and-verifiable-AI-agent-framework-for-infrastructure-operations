@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from core.mvp_pipeline import (
+from evaluation.agent_replay.mvp_pipeline import (
     IncidentCore,
     _load_resource_graph,
     collect_fixture_evidence,
