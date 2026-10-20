@@ -198,7 +198,14 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(403, {"status": "awaiting_approval", "reason": "approval_missing_invalid_expired_or_wrong_action"})
             return
         if os.environ.get("EXECUTOR_LIVE_ENABLED", "false").lower() != "true":
-            self.respond(423, {"status": "disabled", "reason": "live_execution_kill_switch_off"})
+            # The kill switch fires before the idempotency claim and any SSH call,
+            # so the caller can record that nothing was mutated.
+            self.respond(423, {
+                "status": "disabled",
+                "reason": "live_execution_kill_switch_off",
+                "mutated": False,
+                "completed_nodes": [],
+            })
             return
 
         request_hash = hashlib.sha256(canonical({k: v for k, v in body.items() if k != "approval"})).hexdigest()

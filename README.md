@@ -13,15 +13,16 @@ Thesis implementation and operations tooling for an AI agent that observes Moodl
 
 | Path | Contents |
 |---|---|
-| `agent_src/core/` | Alert handling, evidence, diagnosis/planning, safety gates, execution boundaries, and verification. |
-| `evaluation/` | Scenario ground truth, resource catalogs, benchmark code, and evidence reports. |
-| `automation/` | Moodle replay, operational baselines, fault/reset drills, verification, and deployment helpers. |
-| `terraform/` | AWS resource definitions. Review state-backed plans before infrastructure changes. |
-| `ansible/` | Host configuration and deployment prerequisites. |
-| `moodle/`, `release/moodle/` | Moodle image, web probes, and Moodle Compose runtime. |
+| `terraform/` | AWS network, monitor/Moodle hosts, ALB, RDS, EFS, and security groups. Review state and plan before any apply or retirement. |
+| `ansible/` | Host bootstrap, monitoring, Moodle runtime preparation, and safe-executor configuration. |
+| `moodle/`, `release/moodle/` | Moodle image, health/synthetic probes, and Moodle Compose runtime. |
 | `release/erpnext/` | Isolated ERPNext generalization runtime; Terraform is opt-in. |
-| `.github/workflows/` | CI, image publishing, and Moodle staging deployment workflows. |
-| `docs/` | Current guides and dated architecture, operations, planning, and sprint records. |
+| `agent_src/core/` | Alert handling, evidence, diagnosis/planning, safety gates, execution boundaries, and verification. |
+| `evaluation/ground_truth/` | `moodle/` holds the 15 Moodle scenario contracts used by the Moodle pipeline, acceptance and benchmark; the top-level `<ID>-*.json` files are the unified-replay fixtures for the same scenarios. The resource inventory mirror is in `evaluation/resources/`. |
+| `evaluation/agent_replay/` | Offline replay roles, domain model, coordination, and independent verification used by the replay harnesses; not imported by the runtime image. |
+| `automation/` | Moodle baseline, fault/reset drills, replay, safe-executor workflows, evidence harvesting, and deployment helpers. |
+| `.github/workflows/` | CI validation, AI/Moodle image publishing, and Moodle staging deployment. |
+| `docs/` | Planning, runbooks, architecture, operational evidence, and sprint reports. Treat dated reports as historical snapshots. |
 
 ## Common workflows
 
@@ -34,6 +35,35 @@ Thesis implementation and operations tooling for an AI agent that observes Moodl
 
 Moodle on AWS is the thesis environment. Terraform owns cloud resources; Ansible owns host configuration. CI builds images and EC2 pulls them. Only the Independent Verifier may mark an incident `RESOLVED`; fixtures are for post-decision evaluation, never authorization.
 
+Follow the commands in `AGENTS.md`. CI runs the critical Ruff checks and agent tests, validates Moodle automation, builds the agent and Moodle images, checks the Moodle Compose configuration, and runs two 15-scenario replays (unified control plane and Sprint 2 pipeline). The replay asserts that it remains simulated and cannot authorize live execution.
+
+### Moodle staging deployment and live drills
+
+`cd-staging.yml` publishes an immutable Moodle image and deploys it to the two Moodle nodes through the configured private self-hosted runner. Live fault drills use the scripts under `automation/moodle-*`; they require the intended AWS account, staging environment, bounded scenario, baseline, and reset checks. Do not infer a live recovery from CI replay or shadow records.
+
+### Safe execution and verification
+
+The agent proposes typed actions. The Safety Gate checks policy and execution context; unknown or disallowed actions fail closed. Approval and live execution are separate from replay. Recovery requires fresh allowed, forbidden, and related probes plus the configured stability window. See `docs/MOODLE_OPERATIONS_RUNBOOK.md` and `docs/SPRINT3_S3_3_SAFE_EXECUTOR.md` for operational detail.
+
+## Evidence and benchmark status
+
+`automation/aiops-unified-replay.py` produces offline simulation artifacts. `automation/run-benchmark.py` is a synthetic harness and its generated metrics must not be presented as observed Moodle outcomes. Synthetic benchmark result files were removed from the active results directory; see the [benchmark evidence status](evaluation/benchmark/results/BENCHMARK_REPORT.md). Use raw, provenance-bearing live trial records for empirical RQ1/RQ2 results; keep fixture, shadow, deployed-runtime, and live-acceptance results distinct.
+
+The checked-in `report.md` and files under `docs/` are dated evidence snapshots, not live status pages. Confirm their artifact paths and timestamps before reusing any operational claim. In particular, a successful Moodle staging shadow drill demonstrates alert-to-agent processing and observation, not AI remediation.
+
+## ERPNext generalization
+
 The approved proposal also requires ERPNext generalization after Moodle acceptance. See [ERPNext staging runbook](docs/ERPNEXT_STAGING_RUNBOOK.md); its runtime and drill tooling are prepared, but no AWS deployment or empirical recovery evidence is claimed.
 
-Legacy banking/payment release files and Terraform-managed bank hosts are separate from the Moodle thesis deployment. Keep them intact until a state-backed retirement review establishes their impact.
+## Legacy components
+
+The banking/payment demo (bank-web-01 / bank-core-01, payment-api, frontend, its release Compose files, deploy script and Ansible stack) and the local OpenLDAP auth lab were removed on 2026-10-14. The two legacy security groups are destroyed by the next reviewed `terraform apply`. A dormant legacy alert-diagnosis branch remains in `agent_src/core/tasks.py` pending refactor. Dated documents may still describe the removed components.
+
+## Core invariants
+
+- Terraform owns cloud resources; Ansible owns host configuration.
+- CI builds images; EC2 pulls versioned images and does not build application source.
+- Keep staging and production port/environment isolation.
+- The verifier is read-only and is the sole authority for `RESOLVED`.
+- Never use ground truth to authorize actions; it is for post-decision scoring.
+- Do not claim live acceptance from plans, scripts, fixture replay, or shadow mode.

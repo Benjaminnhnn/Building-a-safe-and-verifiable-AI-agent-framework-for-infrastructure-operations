@@ -76,7 +76,8 @@ def test_unified_replay_accepts_fail_closed_pre_dispatch_escalation(stages: list
         "scenario_binding": {"execution_permitted_by_binding": False},
     }
 
-    assert aiops_replay._is_valid_offline_result(report)
+    assert not aiops_replay._is_valid_offline_result(report)
+    assert aiops_replay.replay_outcome(report) == aiops_replay.OUTCOME_ESCALATED
     assert not aiops_replay._has_forbidden_execution(report)
 
 
@@ -444,6 +445,7 @@ def test_unified_replay_accepts_escalation_only_without_any_action() -> None:
     report = _gated_report(
         incident_status="escalated", action_type=None, gate_decision=None,
         gate_reasons=[], execution_dry_run=None, execution_success=None, execution_error=None,
+        stages=["observe", "triage", "diagnose", "plan"], verification_run=False,
     )
     assert aiops_replay.replay_outcome(report) == aiops_replay.OUTCOME_ESCALATED
     report["action_type"] = "start_container"
@@ -451,7 +453,8 @@ def test_unified_replay_accepts_escalation_only_without_any_action() -> None:
 
 
 def test_catalog_checks_match_real_moodle_catalog() -> None:
-    assert aiops_replay.lacks_reciprocal_rollback("start_reviewed_compose_service") is True
+    assert aiops_replay.lacks_reciprocal_rollback("restore_moodle_apache_router") is True
+    assert aiops_replay.lacks_reciprocal_rollback("start_reviewed_compose_service") is False
     assert aiops_replay.lacks_reciprocal_rollback("not-a-catalog-action") is False
     assert aiops_replay.requires_operator("remove_tagged_database_ingress_rule") is True
     assert aiops_replay.requires_operator("start_reviewed_compose_service") is False

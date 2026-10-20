@@ -111,5 +111,6 @@ CI verifies the Moodle image's secret-file handling, PHP syntax, public web-root
 - `docs/AI_ENGINEER_STATUS.md` — AI-owned implementation, evidence status, and remaining cross-role dependencies.
 - `docs/` — Moodle deployment, infrastructure, operational baseline, runbooks, and CI/CD documentation.
 - `docs/MOODLE_OPERATIONS_RUNBOOK.md` — Terraform + Ansible provisioning, deployment, monitoring and teardown steps.
+- `docs/DEVOPS_DEPLOY_WORKFLOW_GUIDE.md` — Vietnamese end-to-end deploy walkthrough for new DevOps engineers (tools, gates, troubleshooting); defers to the runbook.
 - `agent_src/README.md` — current agent modules and evidence-mode boundaries.
 - `agent_src/RAG_SYSTEM_GUIDE.md` — RAG engine details.

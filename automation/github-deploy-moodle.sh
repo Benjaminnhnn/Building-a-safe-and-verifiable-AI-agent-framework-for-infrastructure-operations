@@ -47,9 +47,17 @@ ssh_base=(
   -p "$ssh_port"
 )
 
+# remote_deploy <host> <cron|no-cron>
+# Exactly one node may run moodle-cron, otherwise Moodle scheduled tasks run
+# twice. Naming moodle-cron on the command line starts it even though it sits
+# in the "cron" profile, so the service list is chosen per node here.
 remote_deploy() {
-  local host="$1"
+  local host="$1" cron_mode="$2"
   local quoted_image quoted_user quoted_token
+  [[ "$cron_mode" == "cron" || "$cron_mode" == "no-cron" ]] || {
+    echo "remote_deploy: cron mode must be cron or no-cron" >&2
+    return 2
+  }
   printf -v quoted_image '%q' "$MOODLE_IMAGE"
   printf -v quoted_user '%q' "$GHCR_USERNAME"
   printf -v quoted_token '%q' "$GHCR_TOKEN"
@@ -58,6 +66,7 @@ remote_deploy() {
     printf 'MOODLE_IMAGE=%s\n' "$quoted_image"
     printf 'GHCR_USERNAME=%s\n' "$quoted_user"
     printf 'GHCR_TOKEN=%s\n' "$quoted_token"
+    printf 'CRON_MODE=%s\n' "$cron_mode"
     cat <<'REMOTE'
 set -euo pipefail
 
@@ -80,17 +89,26 @@ else
   printf 'MOODLE_IMAGE=%s\n' "$MOODLE_IMAGE" | sudo tee -a "$runtime_env" >/dev/null
 fi
 
-sudo docker compose --env-file "$runtime_env" -f "$compose_file" pull moodle-web moodle-cron
-sudo docker compose --env-file "$runtime_env" -f "$compose_file" up -d --wait moodle-web moodle-cron
+if [[ "$CRON_MODE" == "cron" ]]; then
+  services=(moodle-web moodle-cron)
+else
+  services=(moodle-web)
+  # Remove a cron runner left on this node by an earlier rollout.
+  sudo docker compose --env-file "$runtime_env" -f "$compose_file" rm --stop --force moodle-cron
+fi
+
+sudo docker compose --env-file "$runtime_env" -f "$compose_file" pull "${services[@]}"
+sudo docker compose --env-file "$runtime_env" -f "$compose_file" up -d --wait "${services[@]}"
 curl --fail --silent --show-error --retry 6 --retry-delay 5 http://127.0.0.1:8080/healthz.php >/dev/null
 sudo docker compose --env-file "$runtime_env" -f "$compose_file" ps
 REMOTE
   } | "${ssh_base[@]}" "${ssh_user}@${host}" 'bash -s'
 }
 
-# Keep one healthy target behind the ALB while the other is updated.
-remote_deploy "$MOODLE_APP_B_HOST"
-remote_deploy "$MOODLE_APP_A_HOST"
+# Keep one healthy target behind the ALB while the other is updated. Node A is
+# the single cron runner (Terraform output moodle_application.nodes.a.cron_enabled).
+remote_deploy "$MOODLE_APP_B_HOST" no-cron
+remote_deploy "$MOODLE_APP_A_HOST" cron
 
 if [[ -n "${MOODLE_PUBLIC_URL:-}" ]]; then
   public_health_url="${MOODLE_PUBLIC_URL%/}/healthz.php"

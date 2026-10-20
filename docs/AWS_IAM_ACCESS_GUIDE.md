@@ -52,6 +52,7 @@ IAM user <ai-user>    ──► ┌───────────────
 | **Quyền nằm ở role, không nằm ở user** | Credential của role là **tạm thời** (≤ 4 giờ) và **bắt buộc MFA**. Credential lâu dài của user (mật khẩu, access key) một mình không đủ để làm gì |
 | **Mỗi vai trò một role riêng** (`InfraEngineer`, `AIEngineer`), dùng chung một policy | Quyền giống nhau, nhưng CloudTrail ghi rõ **ai** làm (`assumed-role/AIEngineer/...`), và thu hồi quyền một người không ảnh hưởng người kia |
 | **Chỉ cho phép `ap-southeast-1`** | Giới hạn phạm vi thiệt hại, và tránh tài nguyên "mồ côi" ở region khác, vốn khó phát hiện và vẫn tính tiền |
+| **Chỉ đọc kho tài nguyên** (`tag:GetResources`, `ssm:DescribeInstanceInformation`, `iam:ListAttachedUserPolicies`) | Xem tài nguyên theo tag, EC2 đăng ký SSM và policy gắn cho user mà không mở quyền ghi; `ListAttachedUserPolicies` chỉ đọc, không cho gắn/gỡ policy |
 | **Không có quyền quản lý IAM** | Đúng nguyên tắc dự án: thay đổi IAM là **HUMAN_ONLY**. Kể cả AI agent hay người dùng role này cũng không tự nâng quyền được |
 | **KMS chỉ dùng được "qua" RDS, Secrets Manager, EFS** (`kms:ViaService`) | Mã hóa vẫn hoạt động, nhưng không ai dùng được khóa KMS trực tiếp cho việc khác |
 | **Secrets Manager chỉ với secret `rds!*`** | Chỉ đọc được secret master do RDS tự quản lý, không đọc được secret khác trong account |
@@ -119,7 +120,11 @@ Tạo **một lần**, dùng chung cho cả hai role.
     { "Sid": "ServiceLinkedRolesOnly", "Effect": "Allow", "Action": "iam:CreateServiceLinkedRole", "Resource": "*",
       "Condition": { "StringEquals": { "iam:AWSServiceName": [
         "rds.amazonaws.com", "elasticloadbalancing.amazonaws.com",
-        "elasticfilesystem.amazonaws.com", "backup.amazonaws.com" ] } } }
+        "elasticfilesystem.amazonaws.com", "backup.amazonaws.com" ] } } },
+    { "Sid": "ReadOnlyInventory", "Effect": "Allow",
+      "Action": ["tag:GetResources", "ssm:DescribeInstanceInformation"], "Resource": "*" },
+    { "Sid": "ReadUserPolicyAttachments", "Effect": "Allow",
+      "Action": "iam:ListAttachedUserPolicies", "Resource": "arn:aws:iam::<ACCOUNT_ID>:user/*" }
   ]
 }
 ```
@@ -241,11 +246,20 @@ User `<ai-user>` → **Permissions → Add permissions → Create inline policy 
     { "Sid": "ViewOwnIdentity", "Effect": "Allow",
       "Action": ["iam:GetUser", "iam:ListMFADevices", "iam:ListVirtualMFADevices", "iam:GetAccountPasswordPolicy"],
       "Resource": "*" },
-    { "Sid": "ManageOwnPasswordAndMFA", "Effect": "Allow",
-      "Action": ["iam:ChangePassword", "iam:CreateVirtualMFADevice", "iam:EnableMFADevice",
-                 "iam:ResyncMFADevice", "iam:DeactivateMFADevice", "iam:DeleteVirtualMFADevice"],
+    { "Sid": "ChangeOwnPassword", "Effect": "Allow",
+      "Action": "iam:ChangePassword",
+      "Resource": "arn:aws:iam::<ACCOUNT_ID>:user/${aws:username}" },
+    { "Sid": "ManageOwnMFAWithMFA", "Effect": "Allow",
+      "Action": ["iam:CreateVirtualMFADevice", "iam:EnableMFADevice", "iam:ResyncMFADevice",
+                 "iam:DeactivateMFADevice", "iam:DeleteVirtualMFADevice"],
       "Resource": ["arn:aws:iam::<ACCOUNT_ID>:user/${aws:username}",
-                   "arn:aws:iam::<ACCOUNT_ID>:mfa/*"] },
+                   "arn:aws:iam::<ACCOUNT_ID>:mfa/*"],
+      "Condition": { "Bool": { "aws:MultiFactorAuthPresent": "true" } } },
+    { "Sid": "ManageOwnAccessKeysWithMFA", "Effect": "Allow",
+      "Action": ["iam:CreateAccessKey", "iam:ListAccessKeys", "iam:UpdateAccessKey",
+                 "iam:DeleteAccessKey", "iam:GetAccessKeyLastUsed"],
+      "Resource": "arn:aws:iam::<ACCOUNT_ID>:user/${aws:username}",
+      "Condition": { "Bool": { "aws:MultiFactorAuthPresent": "true" } } },
     { "Sid": "AssumeAIEngineerWithMFA", "Effect": "Allow",
       "Action": "sts:AssumeRole",
       "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/AIEngineer",
@@ -257,7 +271,9 @@ User `<ai-user>` → **Permissions → Add permissions → Create inline policy 
 | Statement | Tác dụng |
 |---|---|
 | `ViewOwnIdentity` | Xem thông tin của mình, danh sách thiết bị MFA, chính sách mật khẩu của account |
-| `ManageOwnPasswordAndMFA` | `${aws:username}` thay bằng **chính tên người đang đăng nhập**, nên user **chỉ quản lý được tài khoản của mình** |
+| `ChangeOwnPassword` | Tự đổi mật khẩu của mình. Không cần điều kiện MFA vì API bắt buộc nhập mật khẩu cũ |
+| `ManageOwnMFAWithMFA` | Tự quản lý thiết bị MFA của mình (`${aws:username}`), **chỉ khi phiên đã có MFA**. Thiếu điều kiện này, kẻ có access key bị lộ có thể gắn thiết bị MFA của họ rồi assume role. Vì vậy **lần đăng ký MFA đầu tiên do admin làm cùng AI Engineer** (mục 5.5) |
+| `ManageOwnAccessKeysWithMFA` | Tự tạo, xoay vòng, xóa **access key của chính mình** (cho CLI/Terraform), chỉ khi phiên có MFA |
 | `AssumeAIEngineerWithMFA` | Chỉ được vào role `AIEngineer`, và chỉ khi **phiên đăng nhập có MFA** |
 
 ### 5.3. Tạo role `AIEngineer`
@@ -293,7 +309,7 @@ Lý do: lộ một kênh thì kẻ xấu vẫn thiếu mảnh còn lại. Mật 
 ### 5.5. AI Engineer đăng nhập lần đầu
 
 1. Mở link, đăng nhập bằng username và mật khẩu tạm, rồi **đặt mật khẩu mới**.
-2. Góc phải → **Security credentials → Assign MFA device → Authenticator app**, quét QR.
+2. MFA đầu tiên: **admin** mở *IAM → Users → `<ai-user>` → Security credentials → Assign MFA device* khi có mặt AI Engineer, và AI Engineer quét QR bằng điện thoại của mình. (Policy cố ý không cho user tự thêm MFA khi chưa có MFA.)
 3. **Đăng xuất, đăng nhập lại có MFA.** Bắt buộc: điều kiện `aws:MultiFactorAuthPresent` chỉ đúng khi phiên đăng nhập đã qua MFA.
 4. Góc phải → **Switch role**:
    - **Account:** `<ACCOUNT_ID>`
@@ -303,7 +319,7 @@ Lý do: lộ một kênh thì kẻ xấu vẫn thiếu mảnh còn lại. Mật 
 
 ### 5.6. (Tùy chọn) AI Engineer dùng AWS CLI hoặc Terraform
 
-1. AI Engineer tự tạo **access key** cho `<ai-user>` (use case CLI) và lưu trên máy của họ.
+1. AI Engineer đăng nhập Console **bằng user, có MFA, chưa Switch role** (nếu đang ở role thì **Switch back**: role không có quyền IAM). Vào **Security credentials → Access keys → Create access key** (use case CLI) và nhập ngay vào `aws configure`; không lưu CSV, không chụp màn hình. Quyền này đến từ statement `ManageOwnAccessKeysWithMFA` ở mục 5.2.
 2. Thêm profile:
 
 ```ini

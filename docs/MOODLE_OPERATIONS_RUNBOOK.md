@@ -59,8 +59,19 @@ terraform -chdir=terraform output -json moodle_application | jq -r .url
 
 ## 3. Prerequisites and local security
 
-Install Terraform, AWS CLI v2, OpenSSH, Ansible, Docker, Docker Compose, `jq`,
-`curl`, and `openssl` on the trusted control workstation.
+Install Terraform, AWS CLI v2, OpenSSH, Ansible, `jq`, `curl`, and `openssl`
+on the trusted control workstation. `automation/stage-moodle-release.sh` runs
+`psql` either in Docker or, when no Docker daemon is available (for example
+macOS without Docker Desktop), from a local PostgreSQL client >= 15
+(`brew install libpq` and add `/opt/homebrew/opt/libpq/bin` to `PATH`).
+
+Run every command in this runbook **from the repository root**. The scripts and
+paths are relative to it; running from `automation/` creates files such as
+`automation/terraform/.artifacts/...` outside the Git-ignored location.
+
+AWS access uses an MFA-protected role profile named `target-account` (the
+default `AWS_PROFILE` of the automation scripts). Set it up as described in
+`docs/AWS_IAM_ACCESS_GUIDE.md`; never put long-lived keys in that profile.
 
 ```bash
 export AWS_PROFILE=target-account
@@ -96,7 +107,22 @@ bash automation/update-infrastructure.sh --var-file terraform/deployment.tfvars
 
 Review `terraform/deployment.tfvars`. At minimum set the key paths, a pinned
 Amazon Linux 2023 x86_64 AMI, administrator CIDR, and the desired HTTP/TLS
-mode. Do not put the content in Git.
+mode. Do not put the content in Git. `deployment.tfvars` is the only operator
+variable file; there is no tracked `terraform.tfvars`.
+
+Always pin `ec2_ami_id`. When it is unset, Terraform reads the latest AL2023 AMI
+from SSM, and every new AWS AMI release makes the next plan **replace all three
+EC2 instances**. Read the current AMI once and keep it pinned; change it only
+through a reviewed replacement plan:
+
+```bash
+aws ssm get-parameter --profile target-account --region ap-southeast-1 \
+  --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
+  --query Parameter.Value --output text
+```
+
+Re-run `bash automation/update-infrastructure.sh` whenever your public IP
+changes; otherwise SSH and Grafana access are blocked by the security groups.
 
 ```hcl
 aws_region                    = "ap-southeast-1"
@@ -137,6 +163,18 @@ bash automation/authorize-ai-engineer.sh ~/.ssh/ai-engineer.pub
 
 ## 5. Provision or reconcile AWS infrastructure
 
+The Terraform AWS provider cannot prompt for an MFA code. Obtain MFA-backed
+role credentials with the AWS CLI and pass them to Terraform through the
+environment (repeat when they expire; the role session lasts at most its
+`Maximum session duration`):
+
+```bash
+aws sts get-caller-identity --profile target-account      # prompts for MFA
+eval "$(aws configure export-credentials --profile target-account --format env)"
+unset AWS_PROFILE                                           # avoid AssumeRoleTokenProvider errors
+export AWS_REGION=ap-southeast-1
+```
+
 Initialize and validate the code first:
 
 ```bash
@@ -165,6 +203,23 @@ terraform -chdir=terraform apply .artifacts/deployment.tfplan
 If Terraform rejects a saved plan as stale, code, inputs, or state changed
 after planning. Generate and review a new plan; do not bypass the check.
 
+Do not interrupt `terraform apply`. If it is interrupted or the provider
+crashes, AWS may already have created a resource that never reached the state
+file (observed with `aws_db_instance.moodle`). Before re-planning, compare AWS
+with the state and import any orphan instead of deleting it by hand, for
+example:
+
+```bash
+aws rds describe-db-instances --query 'DBInstances[].DBInstanceIdentifier'
+terraform -chdir=terraform state list | grep aws_db_instance \
+  || terraform -chdir=terraform import -var-file=deployment.tfvars \
+       aws_db_instance.moodle moodle-staging-postgres
+```
+
+A new AWS account may fail `RunInstances` with `PendingVerification`. That is
+an AWS account check, not an IAM or code problem: wait for the AWS validation
+e-mail, then plan and apply again; the resources already created stay in state.
+
 Export generated connection artifacts and inspect the topology:
 
 ```bash
@@ -176,11 +231,35 @@ terraform -chdir=terraform output -raw moodle_ansible_inventory \
 chmod 600 terraform/.artifacts/moodle-ssh.config
 
 ansible-inventory -i terraform/.artifacts/moodle-inventory.yml --graph
-ansible -i terraform/.artifacts/moodle-inventory.yml all -m ping
 terraform -chdir=terraform output -json moodle_application
 terraform -chdir=terraform output -json moodle_database
 terraform -chdir=terraform output -json moodle_filesystem
 ```
+
+The generated SSH config uses `StrictHostKeyChecking yes`, so new instances are
+rejected (`Host key verification failed`, surfaced by Ansible as
+`Connection closed by UNKNOWN port 65535`) until their host keys are trusted.
+Do not disable the check. Remove stale entries for reused IPs, read each
+instance's ED25519 fingerprint from the EC2 console output (a channel that does
+not go through SSH), and add a scanned key only when it matches:
+
+```bash
+for ip in $(terraform -chdir=terraform output -json moodle_application | jq -r '.nodes[].private_ip') \
+          $(terraform -chdir=terraform output -raw monitor_public_ip); do
+  ssh-keygen -R "$ip" >/dev/null 2>&1 || true
+done
+
+aws ec2 get-console-output --latest --instance-id <instance-id> --output text --query Output \
+  | sed -n '/BEGIN SSH HOST KEY FINGERPRINTS/,/END SSH HOST KEY FINGERPRINTS/p' | grep ED25519
+# Monitor (public): scan directly. Moodle nodes (private): scan through the monitor.
+ssh-keyscan -t ed25519 <monitor-public-ip> | ssh-keygen -lf -
+ssh -F terraform/.artifacts/moodle-ssh.config monitor-ai-01 'ssh-keyscan -t ed25519 <node-private-ip>' | ssh-keygen -lf -
+# Append the scanned key line to ~/.ssh/known_hosts only if the SHA256 values match.
+
+ansible -i terraform/.artifacts/moodle-inventory.yml all -m ping
+```
+
+Repeat this whenever Terraform replaces an instance.
 
 Before Moodle is deployed, ALB targets are expected to be unhealthy because no
 service is listening on port 8080. This is expected and must not be hidden by a
@@ -237,13 +316,32 @@ The workflow rolls node B then node A through
 the other node updates. GitHub-hosted runners must not be granted SSH access to
 the private Moodle nodes.
 
+If no runner with those labels is online, the `deploy-moodle` job stays
+`queued` and is eventually cancelled; the image is still published. Deploy it
+manually with §8 in that case.
+
+To select the image for a manual rollout, take the newest `develop` commit that
+changed `moodle/` and confirm the tag exists (the package is public):
+
+```bash
+SHA="$(git log -1 --format=%H origin/develop -- moodle/)"
+TOKEN="$(curl -s 'https://ghcr.io/token?scope=repository:benjaminnhnn/moodle:pull' | jq -r .token)"
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
+  -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
+  "https://ghcr.io/v2/benjaminnhnn/moodle/manifests/$SHA"   # expect 200
+export MOODLE_IMAGE="ghcr.io/benjaminnhnn/moodle:$SHA"
+```
+
 For a first deployment or a deliberately reviewed manual rollout, continue
 with the next sections.
 
 ## 8. Configure GHCR, RDS role, runtime secrets, and Moodle release
 
-If the package is private, configure a GitHub classic PAT limited to
-`read:packages` interactively. The PAT is not written in this repository.
+The `moodle` package is currently public, so `configure-moodle-ghcr-access.sh`
+is only needed if it becomes private; `moodle-preflight.sh` verifies that both
+nodes can pull the image either way. For a private package, configure a GitHub
+classic PAT limited to `read:packages` interactively. The PAT is not written in
+this repository.
 
 ```bash
 export MOODLE_IMAGE='ghcr.io/benjaminnhnn/moodle:REPLACE_WITH_40_CHAR_SHA'
@@ -320,6 +418,24 @@ aws elbv2 describe-target-health \
 Acceptance is HTTP 200 from `/healthz.php` and two `healthy` ALB targets. The
 Moodle login is at `$MOODLE_URL/login/index.php`, with administrator account
 `admin` and the locally protected password file created above.
+
+### 8.1 Restore Okta OIDC sign-in after a fresh install
+
+A new RDS database has no OAuth 2 issuer, and a new ALB has a new DNS name.
+After every rebuild:
+
+1. In Okta (`https://trial-3489054-admin.okta.com`, not the display name
+   `galaxyfinx-trial-3489054`), update the `Moodle` app's sign-in redirect URI
+   to `$MOODLE_URL/admin/oauth2callback.php` and the sign-out URI to
+   `$MOODLE_URL/`.
+2. In Moodle, recreate the `Okta` OAuth 2 service, endpoints, field mappings
+   (including `sub` -> `username`), enable the OAuth 2 plugin and lock the
+   name/email fields exactly as in `docs/MOODLE_ENTRA_OKTA_OIDC_IMPLEMENTATION.md`
+   step 10. A pre-destroy export may exist in the Git-ignored
+   `terraform/.artifacts/preserve/moodle-oauth2-okta.json` (it contains the
+   client secret; keep it mode 600).
+3. Verify: the login page shows the Okta button and it redirects to
+   `trial-3489054.okta.com` with a sign-in page, not a 400 error.
 
 ## 9. Deploy monitoring and the AI Agent
 
@@ -604,11 +720,26 @@ After explicit review, apply precisely that plan:
 terraform -chdir=terraform apply .artifacts/moodle-destroy.tfplan
 ```
 
-Verify Terraform no longer tracks resources:
+Verify Terraform no longer tracks resources, restore the EFS `lifecycle` block
+(`git diff terraform/efs.tf` must be empty), and confirm in AWS itself that
+nothing billable remains; an interrupted apply can leave resources outside the
+state (see §5):
 
 ```bash
 terraform -chdir=terraform state list
+git diff --exit-code terraform/efs.tf
+aws rds describe-db-instances --query 'DBInstances[].DBInstanceIdentifier'
+aws ec2 describe-nat-gateways --filter Name=state,Values=pending,available --query 'NatGateways[].NatGatewayId'
+aws elbv2 describe-load-balancers --query 'LoadBalancers[].LoadBalancerName'
+aws efs describe-file-systems --query 'FileSystems[].FileSystemId'
+aws ec2 describe-addresses --query 'Addresses[].PublicIp'
+aws ec2 describe-vpcs --filters Name=is-default,Values=false --query 'Vpcs[].VpcId'
 ```
+
+Resources that were never in this Terraform state (for example a manually
+launched instance in the default VPC) are outside this runbook; report them to
+their owner instead of deleting them. Remove stale `~/.ssh/known_hosts` entries
+for the destroyed hosts before the next rebuild (see §5).
 
 ### Remove snapshots and recovery points for a complete teardown
 
