@@ -4,7 +4,7 @@ import pytest
 
 from core.schema.incident import Incident
 from core.schema.verification import ProbeResult, StabilityObservation
-from core.verification_agent import DryRunProbe, VerificationAgent
+from core.verification.verification_agent import DryRunProbe, VerificationAgent
 from datetime import datetime, timedelta, timezone
 
 

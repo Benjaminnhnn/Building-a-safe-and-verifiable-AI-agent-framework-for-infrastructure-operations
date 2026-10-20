@@ -1,0 +1,662 @@
+"""Unified incident contracts, append-only evidence, and deterministic agent stages.
+
+These components are deliberately provider-neutral and safe for fixture replay. They
+do not execute infrastructure actions; executable actions remain behind the existing
+Moodle safety gate and adapter boundary.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import sqlite3
+from datetime import datetime, timezone
+from enum import Enum
+from pathlib import Path
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+from core.schema.verification import VerificationResult
+
+
+class IncidentState(str, Enum):
+    OPEN = "OPEN"
+    OBSERVED = "OBSERVED"
+    DIAGNOSED = "DIAGNOSED"
+    PLANNED = "PLANNED"
+    GATED = "GATED"
+    AWAITING_APPROVAL = "AWAITING_APPROVAL"
+    EXECUTING = "EXECUTING"
+    VERIFYING = "VERIFYING"
+    VERIFIED_DRY_RUN = "VERIFIED_DRY_RUN"
+    RESOLVED = "RESOLVED"
+    ESCALATED = "ESCALATED"
+    FAILED = "FAILED"
+
+
+TRANSITIONS: dict[IncidentState, set[IncidentState]] = {
+    IncidentState.OPEN: {IncidentState.OBSERVED, IncidentState.ESCALATED, IncidentState.FAILED},
+    IncidentState.OBSERVED: {IncidentState.DIAGNOSED, IncidentState.ESCALATED, IncidentState.FAILED},
+    IncidentState.DIAGNOSED: {IncidentState.PLANNED, IncidentState.ESCALATED, IncidentState.FAILED},
+    IncidentState.PLANNED: {IncidentState.GATED, IncidentState.ESCALATED, IncidentState.FAILED},
+    IncidentState.GATED: {IncidentState.AWAITING_APPROVAL, IncidentState.EXECUTING, IncidentState.VERIFIED_DRY_RUN, IncidentState.ESCALATED, IncidentState.FAILED},
+    IncidentState.AWAITING_APPROVAL: {IncidentState.EXECUTING, IncidentState.ESCALATED, IncidentState.FAILED},
+    IncidentState.EXECUTING: {IncidentState.VERIFYING, IncidentState.FAILED, IncidentState.ESCALATED},
+    IncidentState.VERIFYING: {IncidentState.RESOLVED, IncidentState.VERIFIED_DRY_RUN, IncidentState.FAILED, IncidentState.ESCALATED},
+    IncidentState.VERIFIED_DRY_RUN: set(),
+    IncidentState.RESOLVED: set(),
+    IncidentState.ESCALATED: set(),
+    IncidentState.FAILED: set(),
+}
+
+
+class Contract(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class Resource(Contract):
+    resource_id: str = Field(min_length=1)
+    kind: str = Field(min_length=1)
+    environment: str = Field(min_length=1)
+    service: str = Field(min_length=1)
+    capabilities: set[str] = Field(default_factory=set)
+    attributes: dict[str, str | int | float | bool] = Field(default_factory=dict)
+
+
+class Evidence(Contract):
+    evidence_id: str = Field(min_length=1)
+    incident_id: str = Field(min_length=1)
+    source: str = Field(min_length=1)
+    observed_at: datetime
+    resource_id: str = Field(min_length=1)
+    kind: str = Field(min_length=1)
+    payload: dict[str, Any]
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("observed_at")
+    @classmethod
+    def timezone_required(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("observed_at must include a timezone")
+        return value
+
+
+class Incident(Contract):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    incident_id: str = Field(min_length=1)
+    fingerprint: str = Field(min_length=1)
+    environment: str = Field(min_length=1)
+    resource_ids: list[str] = Field(min_length=1)
+    state: IncidentState = IncidentState.OPEN
+    evidence_ids: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class TypedAction(Contract):
+    action_id: str = Field(min_length=1)
+    incident_id: str = Field(min_length=1)
+    action: str = Field(min_length=1)
+    target_resource_id: str = Field(min_length=1)
+    environment: str = Field(min_length=1)
+    evidence_ids: list[str] = Field(min_length=1)
+    idempotency_key: str = Field(min_length=1)
+    lifecycle: Literal["PROPOSED", "GATED", "APPROVED", "RUNNING", "SUCCEEDED", "FAILED", "ROLLED_BACK"] = "PROPOSED"
+    rollback_action: str | None = None
+
+
+ACTION_TRANSITIONS: dict[str, set[str]] = {
+    "PROPOSED": {"GATED", "FAILED"},
+    "GATED": {"APPROVED", "FAILED"},
+    "APPROVED": {"RUNNING", "FAILED"},
+    "RUNNING": {"SUCCEEDED", "FAILED", "ROLLED_BACK"},
+    "SUCCEEDED": set(),
+    "FAILED": {"ROLLED_BACK"},
+    "ROLLED_BACK": set(),
+}
+
+
+def transition_action(action: TypedAction, lifecycle: str) -> TypedAction:
+    if lifecycle not in ACTION_TRANSITIONS.get(action.lifecycle, set()):
+        raise ValueError(f"invalid action lifecycle transition: {action.lifecycle} -> {lifecycle}")
+    return action.model_copy(update={"lifecycle": lifecycle})
+
+
+class AgentMessage(Contract):
+    message_id: str = Field(min_length=1)
+    incident_id: str = Field(min_length=1)
+    stage: Literal["observer", "diagnosis", "planner", "gate", "execution", "verification"]
+    status: Literal["ok", "retry", "escalate", "failed"]
+    input_refs: list[str] = Field(default_factory=list)
+    output: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+def transition(incident: Incident, new_state: IncidentState, *, actor: str) -> Incident:
+    if actor == "verifier" and new_state != IncidentState.RESOLVED:
+        raise ValueError("verifier authority is reserved for the RESOLVED transition")
+    if new_state in {IncidentState.RESOLVED, IncidentState.VERIFIED_DRY_RUN}:
+        raise ValueError("verifier terminal states require resolve_verified with verifier evidence")
+    if new_state not in TRANSITIONS[incident.state]:
+        raise ValueError(f"invalid incident transition: {incident.state.value} -> {new_state.value}")
+    return incident.model_copy(update={"state": new_state})
+
+
+def resolve_verified(incident: Incident, verification: VerificationResult) -> Incident:
+    """Resolve only from non-simulated, eligible verifier evidence for this incident."""
+    try:
+        verification = VerificationResult.model_validate(
+            verification.model_dump(mode="python", warnings=False)
+        )
+    except (ValidationError, TypeError, ValueError) as exc:
+        raise ValueError("verifier evidence failed schema validation") from exc
+    observations = verification.stability_observations
+    timestamps = [item.observed_at for item in observations]
+    latest_age = (
+        datetime.now(timezone.utc)
+        - observations[-1].observed_at.astimezone(timezone.utc)
+    ).total_seconds() if observations else float("inf")
+    stable_window = (
+        len(observations) >= 2
+        and timestamps == sorted(timestamps)
+        and all(item.healthy for item in observations)
+        and (observations[-1].observed_at - observations[0].observed_at).total_seconds() >= 120
+        and int((observations[-1].observed_at - observations[0].observed_at).total_seconds()) == verification.stability_seconds
+        and -30 <= latest_age <= 60
+        and all(
+            0 < (later.observed_at - earlier.observed_at).total_seconds() <= 60
+            for earlier, later in zip(observations, observations[1:])
+        )
+    )
+    probe_sets = (
+        verification.allowed_probes,
+        verification.forbidden_probes,
+        verification.related_probes,
+    )
+    complete_probe_sets = all(
+        probes
+        and all(probe.passed and probe.name.strip() for probe in probes)
+        and len({probe.name for probe in probes}) == len(probes)
+        for probes in probe_sets
+    )
+    if (
+        incident.state != IncidentState.VERIFYING
+        or verification.incident_id != incident.incident_id
+        or verification.verdict != "resolved"
+        or not verification.resolution_eligible
+        or not verification.health_passed
+        or not verification.communication_contract_passed
+        or not complete_probe_sets
+        or (not verification.simulated and any(
+            item.simulated
+            for item in (
+                *verification.stability_observations,
+                *verification.allowed_probes,
+                *verification.forbidden_probes,
+                *verification.related_probes,
+            )
+        ))
+        or not stable_window
+    ):
+        raise ValueError("verifier evidence is missing, ineligible, or failed")
+    final_state = (
+        IncidentState.VERIFIED_DRY_RUN
+        if verification.simulated
+        else IncidentState.RESOLVED
+    )
+    return incident.model_copy(update={"state": final_state})
+
+
+def _canonical(data: Any) -> str:
+    return json.dumps(data, sort_keys=True, separators=(",", ":"), default=str, ensure_ascii=False)
+
+
+class SQLiteEvidenceStore:
+    """Append-only SQLite evidence ledger with indexed queries and dependency edges."""
+
+    def __init__(self, path: str | Path):
+        self.path = str(path)
+        with self._connect() as db:
+            db.executescript("""
+                CREATE TABLE IF NOT EXISTS evidence (
+                    evidence_id TEXT PRIMARY KEY, incident_id TEXT NOT NULL,
+                    source TEXT NOT NULL, observed_at TEXT NOT NULL, resource_id TEXT NOT NULL,
+                    kind TEXT NOT NULL, payload_json TEXT NOT NULL, sha256 TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS evidence_incident_time ON evidence(incident_id, observed_at);
+                CREATE INDEX IF NOT EXISTS evidence_resource_time ON evidence(resource_id, observed_at);
+                CREATE TABLE IF NOT EXISTS dependency_edges (
+                    source_id TEXT NOT NULL, target_id TEXT NOT NULL, relation TEXT NOT NULL,
+                    PRIMARY KEY(source_id, target_id, relation)
+                );
+                CREATE TABLE IF NOT EXISTS checkpoints (
+                    incident_id TEXT NOT NULL, stage TEXT NOT NULL, idempotency_key TEXT NOT NULL,
+                    status TEXT NOT NULL, attempt INTEGER NOT NULL, payload_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL, PRIMARY KEY(incident_id, stage)
+                );
+                CREATE TRIGGER IF NOT EXISTS evidence_no_update BEFORE UPDATE ON evidence
+                    BEGIN SELECT RAISE(ABORT, 'evidence is append-only'); END;
+                CREATE TRIGGER IF NOT EXISTS evidence_no_delete BEFORE DELETE ON evidence
+                    BEGIN SELECT RAISE(ABORT, 'evidence is append-only'); END;
+            """)
+
+    def _connect(self) -> sqlite3.Connection:
+        db = sqlite3.connect(self.path, timeout=10)
+        db.row_factory = sqlite3.Row
+        return db
+
+    def append(self, *, incident_id: str, source: str, resource_id: str, kind: str, payload: dict[str, Any], observed_at: datetime | None = None) -> Evidence:
+        timestamp = observed_at or datetime.now(timezone.utc)
+        if timestamp.tzinfo is None:
+            raise ValueError("evidence timestamps must be timezone-aware")
+        body = {"incident_id": incident_id, "source": source, "observed_at": timestamp.isoformat(), "resource_id": resource_id, "kind": kind, "payload": payload}
+        digest = hashlib.sha256(_canonical(body).encode()).hexdigest()
+        record = Evidence(evidence_id=f"ev-{digest[:24]}", sha256=digest, **body)
+        with self._connect() as db:
+            db.execute("INSERT OR IGNORE INTO evidence VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (record.evidence_id, incident_id, source, timestamp.isoformat(), resource_id, kind, _canonical(payload), digest))
+        return record
+
+    def query(self, *, incident_id: str | None = None, resource_id: str | None = None, kind: str | None = None, limit: int = 100) -> list[Evidence]:
+        clauses, params = [], []
+        for column, value in (("incident_id", incident_id), ("resource_id", resource_id), ("kind", kind)):
+            if value is not None:
+                clauses.append(f"{column} = ?")
+                params.append(value)
+        sql = "SELECT * FROM evidence" + (" WHERE " + " AND ".join(clauses) if clauses else "") + " ORDER BY observed_at, rowid LIMIT ?"
+        params.append(max(1, min(limit, 1000)))
+        with self._connect() as db:
+            rows = db.execute(sql, params).fetchall()
+        return [Evidence(evidence_id=r["evidence_id"], incident_id=r["incident_id"], source=r["source"], observed_at=r["observed_at"], resource_id=r["resource_id"], kind=r["kind"], payload=json.loads(r["payload_json"]), sha256=r["sha256"]) for r in rows]
+
+    def add_dependency(self, source_id: str, target_id: str, relation: str = "depends_on") -> None:
+        with self._connect() as db:
+            db.execute("INSERT OR IGNORE INTO dependency_edges VALUES (?, ?, ?)", (source_id, target_id, relation))
+
+    def dependencies(self, resource_id: str) -> list[dict[str, str]]:
+        with self._connect() as db:
+            rows = db.execute("SELECT source_id, target_id, relation FROM dependency_edges WHERE source_id = ? OR target_id = ? ORDER BY source_id, target_id", (resource_id, resource_id)).fetchall()
+        return [dict(row) for row in rows]
+
+    def record_checkpoint(self, *, incident_id: str, stage: str, idempotency_key: str, status: str, attempt: int, payload: dict[str, Any]) -> None:
+        with self._connect() as db:
+            db.execute("INSERT INTO checkpoints VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(incident_id, stage) DO UPDATE SET status=excluded.status, attempt=excluded.attempt, payload_json=excluded.payload_json, updated_at=excluded.updated_at", (incident_id, stage, idempotency_key, status, attempt, _canonical(payload), datetime.now(timezone.utc).isoformat()))
+
+    def get_checkpoint(self, incident_id: str, stage: str) -> dict[str, Any] | None:
+        with self._connect() as db:
+            row = db.execute("SELECT * FROM checkpoints WHERE incident_id=? AND stage=?", (incident_id, stage)).fetchone()
+        if not row:
+            return None
+        return {**dict(row), "payload": json.loads(row["payload_json"])}
+
+    @staticmethod
+    def rag_provenance(*, source: str, observed_at: datetime, content: str, resource_id: str, source_type: str) -> dict[str, str]:
+        if observed_at.tzinfo is None:
+            raise ValueError("RAG source time must include timezone")
+        return {"source": source, "source_type": source_type, "observed_at": observed_at.isoformat(), "resource_id": resource_id, "sha256": hashlib.sha256(content.encode()).hexdigest()}
+
+
+class ObserverAgent:
+    def __init__(self, store: SQLiteEvidenceStore, window_seconds: int = 300):
+        self.store, self.window_seconds = store, window_seconds
+
+    def observe(self, event: dict[str, Any], *, resource_id: str) -> dict[str, Any]:
+        fingerprint = str(event.get("fingerprint") or event.get("event_id") or "")
+        if not fingerprint:
+            raise ValueError("event requires fingerprint or event_id")
+        known = self.store.query(resource_id=resource_id, kind="alert_observation", limit=1000)
+        duplicates = [e for e in known if e.payload.get("fingerprint") == fingerprint]
+        now = datetime.now(timezone.utc)
+        within_window = [e for e in duplicates if abs((now - e.observed_at).total_seconds()) <= self.window_seconds]
+        if within_window:
+            return {"group_id": within_window[0].payload["group_id"], "duplicate": True, "suppressed_count": len(within_window) + 1, "evidence_refs": [e.evidence_id for e in within_window]}
+        group_id = "grp-" + hashlib.sha256(fingerprint.encode()).hexdigest()[:16]
+        evidence = self.store.append(incident_id=str(event.get("incident_id") or group_id), source=str(event.get("source") or "alertmanager"), resource_id=resource_id, kind="alert_observation", payload={"fingerprint": fingerprint, "group_id": group_id, "event_type": event.get("event_type"), "severity": event.get("severity")})
+        return {"group_id": group_id, "duplicate": False, "suppressed_count": 0, "evidence_refs": [evidence.evidence_id]}
+
+
+class DiagnosisAgent:
+    def diagnose(self, *, signals: list[str], hypotheses: list[dict[str, Any]], evidence_refs: list[str]) -> dict[str, Any]:
+        if not evidence_refs:
+            return {"status": "escalate", "reason": "no evidence references", "hypotheses": []}
+        signal_set = {s.casefold() for s in signals}
+        ranked = []
+        for hypothesis in hypotheses:
+            matched = [s for s in hypothesis.get("signals", []) if str(s).casefold() in signal_set]
+            score = len(matched) / max(1, len(hypothesis.get("signals", [])))
+            ranked.append({"root_cause": hypothesis.get("root_cause"), "confidence": round(score, 4), "matched_signals": matched, "evidence_refs": list(dict.fromkeys(evidence_refs))})
+        ranked.sort(key=lambda h: (-h["confidence"], str(h["root_cause"])))
+        return {"status": "ok" if ranked and ranked[0]["confidence"] > 0 else "escalate", "top1": ranked[0] if ranked else None, "hypotheses": ranked}
+
+
+class PlannerAgent:
+    def plan(self, *, incident_id: str, environment: str, resource_id: str, allowed_actions: list[dict[str, str]], evidence_refs: list[str]) -> list[TypedAction]:
+        if not evidence_refs:
+            raise ValueError("planner requires evidence-backed diagnosis")
+        actions = []
+        for item in allowed_actions:
+            semantic = item["action"]
+            action_id = "act-" + hashlib.sha256(f"{incident_id}:{semantic}:{item['target']}".encode()).hexdigest()[:20]
+            actions.append(TypedAction(action_id=action_id, incident_id=incident_id, action=semantic, target_resource_id=item["target"], environment=environment, evidence_ids=list(dict.fromkeys(evidence_refs)), idempotency_key=action_id))
+        return actions
+
+
+class SequentialOrchestrator:
+    """Stage runner with persistent checkpoints, bounded retry, and escalation."""
+
+    STAGES = ("observer", "diagnosis", "planner", "gate", "execution", "verification")
+
+    def __init__(self, store: SQLiteEvidenceStore, *, max_attempts: int = 2):
+        self.store, self.max_attempts = store, max(1, min(max_attempts, 5))
+
+    def run(self, *, incident_id: str, handlers: dict[str, Any], context: dict[str, Any]) -> list[AgentMessage]:
+        messages: list[AgentMessage] = []
+        for stage in self.STAGES:
+            handler = handlers.get(stage)
+            if handler is None:
+                message = AgentMessage(message_id=f"{incident_id}:{stage}:missing", incident_id=incident_id, stage=stage, status="escalate", output={"reason": "stage handler unavailable"})
+                messages.append(message)
+                break
+            prior = self.store.get_checkpoint(incident_id, stage)
+            if prior and prior["status"] == "ok":
+                message = AgentMessage.model_validate(prior["payload"])
+                messages.append(message)
+                context[stage] = message.output
+                continue
+            result = None
+            for attempt in range(1, self.max_attempts + 1):
+                try:
+                    result = handler(context)
+                    status = "ok"
+                    break
+                except Exception as exc:  # fail closed; details are summarized, not persisted
+                    status = "retry" if attempt < self.max_attempts else "escalate"
+                    result = {"reason": type(exc).__name__}
+                    self.store.record_checkpoint(incident_id=incident_id, stage=stage, idempotency_key=f"{incident_id}:{stage}", status=status, attempt=attempt, payload={"error_type": type(exc).__name__})
+            message = AgentMessage(message_id=f"{incident_id}:{stage}", incident_id=incident_id, stage=stage, status=status, input_refs=list(context.get("evidence_refs", [])), output=result or {})
+            self.store.record_checkpoint(incident_id=incident_id, stage=stage, idempotency_key=f"{incident_id}:{stage}", status=status, attempt=attempt, payload=message.model_dump(mode="json"))
+            messages.append(message)
+            if status != "ok":
+                break
+            context[stage] = message.output
+        return messages
+
+
+class IncidentCoordinator:
+    """Platform-neutral coordinator for the unified incident lifecycle:
+    alert -> evidence -> diagnosis -> plan -> safety gate -> dry-run/verifier.
+
+    Coordinates exclusively via PlatformAdapter and neutral domain contracts.
+    Does not import any platform-specific modules directly.
+    """
+
+    def __init__(
+        self,
+        *,
+        adapter: Any | None = None,
+        store: SQLiteEvidenceStore | None = None,
+        gate: Any | None = None,
+    ) -> None:
+        self.adapter = adapter
+        self.store = store
+        self.gate = gate
+
+    def coordinate(
+        self,
+        alert: dict[str, Any],
+        *,
+        adapter: Any | None = None,
+        store: SQLiteEvidenceStore | None = None,
+        gate: Any | None = None,
+        execute_dry_run: bool = True,
+        actor: str = "orchestrator",
+    ) -> dict[str, Any]:
+        """Run the end-to-end incident cycle across all stages."""
+        from core.platform_adapter import PlatformAdapterRegistry
+
+        effective_adapter = (
+            adapter
+            or self.adapter
+            or PlatformAdapterRegistry.find_for_alert(alert)
+        )
+        if effective_adapter is None:
+            return {"status": "skipped", "reason": "no_adapter_available", "incident": None}
+
+        # 1. OBSERVE & IDENTIFY RESOURCE
+        labels = alert.get("labels") or {}
+        alert_name = str(labels.get("alertname") or "unknown")
+        resource_id = effective_adapter.identify_resource(alert)
+        if resource_id is None:
+            return {"status": "skipped", "reason": "unknown_resource", "incident": None}
+
+        fingerprint = str(alert.get("fingerprint") or f"fp-{alert_name}-{resource_id}")
+        incident_id = str(alert.get("incident_id") or f"inc-{fingerprint[:16]}")
+        environment = str(labels.get("environment") or "staging")
+
+        incident = Incident(
+            incident_id=incident_id,
+            fingerprint=fingerprint,
+            environment=environment,
+            resource_ids=[resource_id],
+            state=IncidentState.OPEN,
+        )
+        incident = transition(incident, IncidentState.OBSERVED, actor=actor)
+
+        evidence_store = store or self.store
+
+        # 2. EVIDENCE COLLECTION
+        try:
+            collection = effective_adapter.collect_evidence(
+                alert,
+                incident_id=incident_id,
+                resource_id=resource_id,
+                evidence_store=evidence_store,
+            )
+        except Exception as exc:
+            incident = transition(incident, IncidentState.FAILED, actor=actor)
+            return {
+                "status": "failed",
+                "stage": "evidence_collection",
+                "reason": f"adapter error during collection: {exc}",
+                "incident": incident,
+                "error": str(exc),
+            }
+
+        evidence_refs = collection.get("evidence_refs", [])
+        if not evidence_refs:
+            incident = transition(incident, IncidentState.ESCALATED, actor=actor)
+            return {
+                "status": "escalated",
+                "stage": "evidence_collection",
+                "reason": "missing_or_empty_evidence",
+                "incident": incident,
+                "collection": collection,
+            }
+
+        evidence_items = collection.get("evidence_items", [])
+        if not evidence_items and evidence_store is not None and hasattr(evidence_store, "get_by_id"):
+            evidence_items = [evidence_store.get_by_id(ref) for ref in evidence_refs]
+            evidence_items = [e for e in evidence_items if e is not None]
+
+        for ev in evidence_items:
+            if hasattr(ev, "is_valid") and not ev.is_valid():
+                incident = transition(incident, IncidentState.ESCALATED, actor=actor)
+                return {
+                    "status": "escalated",
+                    "stage": "evidence_validation",
+                    "reason": f"evidence {getattr(ev, 'evidence_id', 'unknown')} is invalid or expired",
+                    "incident": incident,
+                }
+
+        incident = incident.model_copy(update={"evidence_ids": evidence_refs})
+
+        # 3. DIAGNOSIS
+        try:
+            diagnosis = effective_adapter.diagnose(alert_name, evidence_items)
+        except Exception as exc:
+            incident = transition(incident, IncidentState.FAILED, actor=actor)
+            return {
+                "status": "failed",
+                "stage": "diagnosis",
+                "reason": f"adapter error during diagnosis: {exc}",
+                "incident": incident,
+                "error": str(exc),
+            }
+
+        if diagnosis.get("status") != "hypothesis":
+            incident = transition(incident, IncidentState.ESCALATED, actor=actor)
+            return {
+                "status": "awaiting_evidence",
+                "stage": "diagnosis",
+                "reason": diagnosis.get("reason", "diagnosis_did_not_produce_hypothesis"),
+                "diagnosis": diagnosis,
+                "incident": incident,
+            }
+
+        incident = transition(incident, IncidentState.DIAGNOSED, actor=actor)
+
+        # 4. PLANNING
+        try:
+            plan_candidate = effective_adapter.plan_investigation(
+                incident_id=incident_id, diagnosis=diagnosis
+            )
+            remediation_candidate = effective_adapter.plan_remediation(
+                incident_id=incident_id,
+                alert_name=alert_name,
+                diagnosis=diagnosis,
+                evidence=evidence_items,
+            )
+        except Exception as exc:
+            incident = transition(incident, IncidentState.FAILED, actor=actor)
+            return {
+                "status": "failed",
+                "stage": "planning",
+                "reason": f"adapter error during planning: {exc}",
+                "incident": incident,
+                "error": str(exc),
+            }
+
+        if not plan_candidate and not remediation_candidate:
+            incident = transition(incident, IncidentState.ESCALATED, actor=actor)
+            return {
+                "status": "escalated",
+                "stage": "planning",
+                "reason": "no_plan_candidate_produced",
+                "diagnosis": diagnosis,
+                "incident": incident,
+            }
+
+        incident = transition(incident, IncidentState.PLANNED, actor=actor)
+
+        # 5. SAFETY GATE
+        from core.safety.safe_execution_gate import SafeExecutionGate
+        from evaluation.agent_replay.domain.action_plan import ActionPlan
+
+        effective_gate = gate or self.gate or SafeExecutionGate(
+            adapter=effective_adapter,
+            approved_actors={"alice", "operator", "admin"},
+            approval_signing_key="gate-test-key",
+        )
+
+        chosen_plan = remediation_candidate or plan_candidate
+        gate_decision = "DENY"
+        gate_reason = "gate_not_evaluated"
+        action_plan_obj: ActionPlan | None = None
+
+        if isinstance(chosen_plan, ActionPlan):
+            action_plan_obj = chosen_plan
+            catalog = effective_adapter.get_action_catalog()
+            entry = catalog.lookup(chosen_plan.operation) or catalog.lookup(str(chosen_plan.action_type.value))
+            target_scopes = effective_adapter.get_target_scopes()
+            target_in_scope = any(
+                chosen_plan.target_resource_id in rids
+                for rids in target_scopes.values()
+            )
+            if entry is not None and target_in_scope:
+                gate_decision = "ALLOW" if entry.permission.read_only else "REQUIRE_APPROVAL"
+                gate_reason = "action within allowed catalog and scope"
+            else:
+                gate_decision = "DENY"
+                gate_reason = "action outside catalog or target not in scope"
+        elif isinstance(chosen_plan, dict):
+            catalog_action_id = str(chosen_plan.get("catalog_action_id") or "")
+            target_scope = str(chosen_plan.get("target_scope") or "")
+            scenario_id = str(chosen_plan.get("scenario_id") or "UNKNOWN")
+            action_type_val = chosen_plan.get("action_type")
+            from core.schema.common import ActionType as CommonActionType, Environment as CommonEnv
+            from core.schema.action import TypedAction as SchemaTypedAction, RollbackPlan
+            from core.evidence.adapters import SafeActionRequest
+
+            try:
+                schema_action = SchemaTypedAction(
+                    action_id=f"act-{incident_id[:8]}",
+                    incident_id=incident_id,
+                    action_type=CommonActionType(action_type_val) if isinstance(action_type_val, str) else CommonActionType.READ_HEALTH,
+                    target_resource_id=resource_id,
+                    environment=CommonEnv.STAGING if environment == "staging" else CommonEnv.PRODUCTION,
+                    reason=diagnosis.get("reason", "remediation"),
+                    evidence_refs=evidence_refs,
+                    expected_outcome="recovery",
+                    reversible=True,
+                    rollback_plan=RollbackPlan(available=True, method="rollback"),
+                )
+                safe_req = SafeActionRequest(
+                    request_id=f"req-{incident_id[:8]}",
+                    idempotency_key=f"idem-{incident_id[:8]}",
+                    catalog_action_id=catalog_action_id,
+                    scenario_id=scenario_id,
+                    target_scope=target_scope,
+                    action=schema_action,
+                )
+                verdict = effective_gate.evaluate(safe_req, actor_role="executor", confidence=float(diagnosis.get("confidence", 0.9)))
+                gate_decision = verdict.decision
+                gate_reason = verdict.reason
+            except Exception as exc:
+                gate_decision = "DENY"
+                gate_reason = f"gate evaluation error: {exc}"
+
+        if gate_decision == "DENY":
+            incident = transition(incident, IncidentState.FAILED, actor=actor)
+            return {
+                "status": "denied",
+                "stage": "gate",
+                "reason": gate_reason,
+                "gate_decision": gate_decision,
+                "diagnosis": diagnosis,
+                "plan": chosen_plan,
+                "incident": incident,
+            }
+
+        incident = transition(incident, IncidentState.GATED, actor=actor)
+
+        # 6. DRY-RUN / VERIFIER
+        dry_run_result = None
+        if execute_dry_run:
+            read_only_client = effective_adapter.get_read_only_client()
+            if read_only_client and action_plan_obj is not None:
+                from evaluation.agent_replay.domain.dry_run import DryRunner, DryRunDecision
+
+                dry_runner = DryRunner()
+                dry_run_result = dry_runner.run(action_plan_obj, read_only_client)
+                if dry_run_result.decision == DryRunDecision.DENY:
+                    incident = transition(incident, IncidentState.FAILED, actor=actor)
+                    return {
+                        "status": "dry_run_failed",
+                        "stage": "dry_run",
+                        "reason": dry_run_result.reason,
+                        "dry_run_result": dry_run_result,
+                        "incident": incident,
+                    }
+                incident = incident.model_copy(update={"state": IncidentState.VERIFIED_DRY_RUN})
+
+        return {
+            "status": "success",
+            "stage": "dry_run_verified" if (execute_dry_run and dry_run_result) else "gated",
+            "incident": incident,
+            "diagnosis": diagnosis,
+            "plan_candidate": plan_candidate,
+            "remediation_candidate": remediation_candidate,
+            "gate_decision": gate_decision,
+            "dry_run_result": dry_run_result,
+            "evidence_refs": evidence_refs,
+        }

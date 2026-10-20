@@ -16,11 +16,12 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "agent_src"))
 
-from core.action_catalog import ActionCatalog  # noqa: E402
-from core.ground_truth import validate_ground_truth  # noqa: E402
-from core.verifier_contract import ContractProbeRunner  # noqa: E402
+from core.safety.action_catalog import ActionCatalog  # noqa: E402
+from evaluation.agent_replay.ground_truth import validate_ground_truth  # noqa: E402
+from core.verification.verifier_contract import ContractProbeRunner  # noqa: E402
 
 
 SCENARIOS = {

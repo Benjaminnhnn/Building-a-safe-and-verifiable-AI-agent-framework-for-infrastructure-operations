@@ -29,6 +29,9 @@ mock_provider "aws" {
       }]
     }
   }
+  mock_resource "aws_route53_health_check" {
+    defaults = { id = "mock-r53-health-check" }
+  }
 }
 
 variables {
@@ -97,6 +100,17 @@ run "custom_runtime_identity" {
   assert {
     condition     = one(aws_efs_access_point.moodledata.posix_user).uid == 1001 && one(one(aws_efs_access_point.moodledata.root_directory).creation_info).owner_uid == 1001 && output.moodle_filesystem.uid == 1001 && output.moodle_filesystem.gid == 1001
     error_message = "Changing the runtime identity must update access-point ownership and deployment metadata together."
+  }
+}
+
+run "external_rds_probe_contract" {
+  command = apply
+  variables {
+    moodle_external_rds_probe_enabled = true
+  }
+  assert {
+    condition     = length(aws_route53_health_check.moodle_rds_external_tcp) == 1 && one(aws_route53_health_check.moodle_rds_external_tcp).fqdn == aws_db_instance.moodle.address && one(aws_route53_health_check.moodle_rds_external_tcp).port == 5432 && one(aws_route53_health_check.moodle_rds_external_tcp).type == "TCP" && one(aws_route53_health_check.moodle_rds_external_tcp).request_interval == 30 && length(one(aws_route53_health_check.moodle_rds_external_tcp).reference_name) <= 27 && output.moodle_database.external_tcp_health_check_id == one(aws_route53_health_check.moodle_rds_external_tcp).id
+    error_message = "The optional external verifier probe must test the actual RDS endpoint on TCP 5432 and export its health-check ID."
   }
 }
 

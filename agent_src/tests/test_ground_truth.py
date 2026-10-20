@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from core.ground_truth import load_ground_truth, validate_ground_truth
+from evaluation.agent_replay.ground_truth import load_ground_truth, validate_ground_truth
 
 
 def _ground_truth_paths() -> list[Path]:

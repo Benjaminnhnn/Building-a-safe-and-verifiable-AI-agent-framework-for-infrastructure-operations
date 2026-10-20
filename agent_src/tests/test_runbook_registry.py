@@ -2,7 +2,7 @@ import os
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from core import runbook_registry
+from core.rag import runbook_registry
 from core import tasks
 
 
@@ -76,3 +76,15 @@ def test_review_tool_change_task_sends_telegram_approval_buttons() -> None:
         buttons = reply_markup["inline_keyboard"][0]
         assert buttons[0]["callback_data"].startswith("runbook:approve:")
         assert buttons[1]["callback_data"].startswith("runbook:reject:")
+
+
+def test_runbook_draft_rejects_path_traversal() -> None:
+    import pytest
+    for bad_id in ["../../evil", "..\\evil", "bad/id", "bad\\id", "id with spaces", ""]:
+        with pytest.raises(ValueError):
+            runbook_registry.get_runbook_draft(bad_id)
+        with pytest.raises(ValueError):
+            runbook_registry.update_draft_status(bad_id, "rejected", actor="admin")
+        with pytest.raises(ValueError):
+            runbook_registry.publish_runbook_draft(bad_id, actor="admin")
+

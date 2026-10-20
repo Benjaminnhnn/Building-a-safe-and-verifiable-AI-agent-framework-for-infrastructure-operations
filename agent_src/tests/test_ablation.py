@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from core.ablation import health_only_counterfactual, no_safety_gate_counterfactual
+from evaluation.agent_replay.ablation import health_only_counterfactual, no_safety_gate_counterfactual
 from core.schema.action import RollbackPlan, TypedAction
 from core.schema.common import ActionDecision, ActionType, Environment
 from core.schema.safety import SafetyDecision

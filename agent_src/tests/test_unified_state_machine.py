@@ -4,7 +4,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from core.contract_validation import (
+from core.schema.contract_validation import (
     ContractValidationError,
     validate_pipeline_references,
 )
@@ -25,7 +25,7 @@ from core.schema.verification import (
     StabilityObservation,
     VerificationResult,
 )
-from core.state_machine import (
+from core.verification.state_machine import (
     IncidentStateMachine,
     StateTransitionError,
     apply_gate_decision,

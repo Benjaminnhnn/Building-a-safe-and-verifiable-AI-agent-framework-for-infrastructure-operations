@@ -1,7 +1,7 @@
 """Tests for the Execution Agent."""
 
 import pytest
-from core.execution_agent import (
+from evaluation.agent_replay.coordination.execution_agent import (
     ActionResult,
     ExecutionAgent,
     ExecutionAgentError,

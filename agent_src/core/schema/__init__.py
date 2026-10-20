@@ -14,6 +14,18 @@ from core.schema.verification import ProbeResult, VerificationResult
 from core.schema.scenario import ScenarioGroundTruth, CommunicationContract
 from core.schema.audit import AuditEvent
 
+from core.schema.contract_validation import (
+    ContractValidationError,
+    validate_pipeline_references,
+)
+from core.schema.event_schema import (
+    is_valid_normalized_event,
+    normalize_alert,
+    normalize_alertmanager_payload,
+    validate_alertmanager_payload,
+    validate_normalized_event,
+)
+
 SCHEMA_VERSION = "2.1"
 
 __all__ = [
@@ -26,5 +38,12 @@ __all__ = [
     "ProbeResult", "VerificationResult",
     "ScenarioGroundTruth", "CommunicationContract",
     "AuditEvent",
+    "ContractValidationError",
+    "validate_pipeline_references",
+    "is_valid_normalized_event",
+    "normalize_alert",
+    "normalize_alertmanager_payload",
+    "validate_alertmanager_payload",
+    "validate_normalized_event",
     "SCHEMA_VERSION",
 ]

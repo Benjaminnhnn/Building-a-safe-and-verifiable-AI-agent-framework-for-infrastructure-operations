@@ -27,6 +27,12 @@ variable "moodle_db_backup_retention_days" {
   }
 }
 
+variable "moodle_external_rds_probe_enabled" {
+  description = "Create an external Route 53 TCP health check for the private Moodle RDS endpoint. This is a billable staging-only verification resource."
+  type        = bool
+  default     = false
+}
+
 variable "moodle_efs_uid" {
   description = "Non-root runtime UID; the Moodle image and EFS client configuration must match."
   type        = number

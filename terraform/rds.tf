@@ -62,3 +62,19 @@ resource "aws_db_instance" "moodle" {
 
   tags = merge(local.moodle_tags, { Name = "${local.moodle_prefix}-postgres" })
 }
+
+# Route 53 checkers run outside this VPC. A successful TCP connection is a
+# forbidden exposure; the independent verifier expects fresh failures from
+# multiple checker IPs. Opt-in to avoid adding a billable resource implicitly.
+resource "aws_route53_health_check" "moodle_rds_external_tcp" {
+  count = var.moodle_external_rds_probe_enabled ? 1 : 0
+
+  fqdn              = aws_db_instance.moodle.address
+  port              = aws_db_instance.moodle.port
+  type              = "TCP"
+  request_interval  = 30
+  failure_threshold = 3
+  reference_name    = substr("${local.moodle_prefix}-rds-ext-tcp", 0, 27)
+
+  tags = merge(local.moodle_tags, { Name = "${local.moodle_prefix}-rds-external-tcp" })
+}

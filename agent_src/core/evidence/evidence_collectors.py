@@ -1,0 +1,429 @@
+"""Bounded read-only evidence collectors used by the shadow observer."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit
+
+import httpx
+
+from core.evidence.evidence_store import evidence_content_hash
+from core.safety.sanitization import sanitize_log_excerpt
+from core.schema.evidence import Evidence
+
+@dataclass(frozen=True)
+class EvidenceDraft:
+    source: str
+    resource_id: str
+    kind: str
+    observed_at: datetime
+    payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class CollectionBatch:
+    evidence: list[EvidenceDraft]
+    errors: list[str]
+
+
+def alert_context_evidence(
+    alert: dict[str, Any], *, resource_id: str, incident_id: str
+) -> EvidenceDraft:
+    labels = alert.get("labels") or {}
+    annotations = alert.get("annotations") or {}
+    alert_name = str(labels.get("alertname") or "unknown")[:120]
+    is_log_alert = alert_name == "LogFileErrorDetected"
+    description = annotations.get("description")
+    context = description if is_log_alert and description else annotations.get("summary")
+    source = "log_watcher" if is_log_alert and description else "alertmanager"
+    kind = "sanitized_log_excerpt" if source == "log_watcher" else "alert_context"
+    payload = {
+        "alertname": alert_name,
+        "status": str(alert.get("status") or "unknown")[:24],
+        "severity": str(labels.get("severity") or "unknown")[:24],
+        "context": sanitize_log_excerpt(context),
+        "redaction_policy": "sprint4-redaction-v1",
+    }
+    starts_at = alert.get("startsAt")
+    observed_at = datetime.now(timezone.utc)
+    if isinstance(starts_at, str):
+        try:
+            parsed = datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
+            if parsed.tzinfo is not None:
+                observed_at = parsed.astimezone(timezone.utc)
+        except ValueError:
+            pass
+    return EvidenceDraft(source, resource_id, kind, observed_at, payload)
+
+
+METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
+    "MoodleNodeExporterDown": (("moodle_node_up", 'up{job="moodle_node"}'),),
+    "MoodleCAdvisorDown": (("moodle_cadvisor_up", 'up{job="moodle_cadvisor"}'),),
+    "MoodlePublicProbeFailed": (
+        ("moodle_public_probe", 'probe_success{job="blackbox_moodle_public"}'),
+    ),
+    "MoodleRdsTcpProbeFailed": (
+        ("moodle_rds_tcp_probe", 'probe_success{job="blackbox_moodle_rds"}'),
+    ),
+    "MoodleNodeRdsTcpFailed": (
+        ("moodle_node_rds_tcp_success", 'moodle_node_rds_tcp_success{job="moodle_node"}'),
+        ("moodle_fault_db01_tagged_rule", 'moodle_fault_db01_tagged_rule{job="moodle_node"}'),
+    ),
+    "MoodleNodeRdsTcpLatencyHigh": (
+        (
+            "moodle_node_rds_tcp_duration_seconds",
+            '(moodle_node_rds_tcp_duration_seconds{job="moodle_node"} > 0.2) and on(instance) (moodle_node_rds_tcp_success{job="moodle_node"} == 1)',
+        ),
+    ),
+    "MoodleApacheRouterMissing": (
+        (
+            "moodle_node_apache_router_enabled",
+            '(moodle_node_apache_router_enabled{job="moodle_node"} == 0) and on(instance) (moodle_node_web_running{job="moodle_node"} == 1)',
+        ),
+    ),
+    "MoodleNodeRouterFallbackFailed": (
+        (
+            "moodle_node_router_fallback_success",
+            '(moodle_node_router_fallback_success{job="moodle_node"} == 0) and on(instance) (moodle_node_web_running{job="moodle_node"} == 1)',
+        ),
+    ),
+    "MoodleTrustedProxyConfigDrift": (
+        (
+            "moodle_node_reverse_proxy_enabled",
+            '(moodle_node_reverse_proxy_enabled{job="moodle_node"} == 1) and on(instance) (moodle_node_web_running{job="moodle_node"} == 1)',
+        ),
+    ),
+    "MoodleNodeMemoryPressure": (
+        (
+            "moodle_node_memory_available_drop_bytes",
+            '-delta(node_memory_MemAvailable_bytes{job="moodle_node"}[1m])',
+        ),
+    ),
+    "MoodleEfsMountMissing": (
+        ("moodle_efs_mount", 'moodle_efs_mount_available{job="moodle_node"}'),
+    ),
+    "MoodleSyntheticTransactionFailed": (
+        (
+            "moodle_synthetic_success",
+            'moodle_synthetic_success{job="moodle_synthetic",instance="monitor-ai-01"}',
+        ),
+        ("moodle_rds_tcp_probe", 'probe_success{job="blackbox_moodle_rds"}'),
+        ("moodle_public_probe", 'probe_success{job="blackbox_moodle_public"}'),
+        ("moodle_efs_mount", 'moodle_efs_mount_available{job="moodle_node"}'),
+        ("moodle_fault_net01_hosts_override", 'moodle_fault_net01_hosts_override{job="moodle_node"}'),
+        ("moodle_fault_sec02_fixture_mode_zero", 'moodle_fault_sec02_fixture_mode_zero{job="moodle_node"}'),
+    ),
+    "MoodleSyntheticTransactionStale": (
+        (
+            "moodle_synthetic_last_run_age_seconds",
+            'time() - moodle_synthetic_last_run_timestamp_seconds{job="moodle_synthetic",instance="monitor-ai-01"}',
+        ),
+    ),
+    "MoodleNodeCpuHigh": (
+        (
+            "moodle_node_cpu_busy_percent",
+            '100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job="moodle_node",mode="idle"}[30s])))',
+        ),
+        ("moodle_fault_res01_cpu_fixture_running", 'moodle_fault_res01_cpu_fixture_running{job="moodle_node"}'),
+        ("moodle_node_web_running", 'moodle_node_web_running{job="moodle_node"}'),
+    ),
+    "MoodleWebContainerMissing": (
+        (
+            "moodle_web_container_last_seen_age_seconds",
+            'time() - max by (instance) (container_last_seen{job="moodle_cadvisor",name="release-moodle-web-1"})',
+        ),
+        ("moodle_fault_con01_web_stopped", 'moodle_fault_con01_web_stopped{job="moodle_node"}'),
+        ("moodle_node_web_running", 'moodle_node_web_running{job="moodle_node"}'),
+        ("moodle_node_up", 'up{job="moodle_node"}'),
+        ("moodle_cadvisor_up", 'up{job="moodle_cadvisor"}'),
+    ),
+    "MoodleScratchEnospc": (
+        ("moodle_node_scratch_enospc", 'moodle_node_scratch_enospc{job="moodle_node"}'),
+    ),
+    "MoodleWebContainerRestarting": (
+        ("moodle_node_web_restart_count_2m", 'changes(moodle_node_web_restart_count{job="moodle_node"}[2m])'),
+    ),
+    "MoodleNodeProbeStale": (
+        ("moodle_node_probe_age_seconds", 'time() - moodle_node_probe_timestamp_seconds{job="moodle_node"}'),
+    ),
+}
+
+_SAFE_LABELS = frozenset({"job", "instance", "resource_id", "environment"})
+
+
+class PrometheusEvidenceCollector:
+    """Query a finite set of pre-reviewed PromQL expressions; never accepts user PromQL."""
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        timeout_seconds: float = 1.5,
+        max_sample_age_seconds: int = 120,
+        client: httpx.Client | None = None,
+    ) -> None:
+        parsed = urlsplit(base_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("Prometheus URL must be an absolute HTTP(S) URL")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError("Prometheus URL must not contain credentials or query data")
+        self.base_url = base_url.rstrip("/")
+        self.timeout_seconds = timeout_seconds
+        self.max_sample_age_seconds = max_sample_age_seconds
+        self.client = client
+
+    def collect(
+        self,
+        alert_name: str,
+        *,
+        resource_id: str,
+        queries: tuple[tuple[str, str], ...] | None = None,
+    ) -> CollectionBatch:
+        definitions = queries if queries is not None else METRIC_QUERIES_BY_ALERT.get(alert_name)
+        if definitions is None:
+            return CollectionBatch([], ["unsupported_alert_metric_contract"])
+
+        collected: list[EvidenceDraft] = []
+        errors: list[str] = []
+        for query_id, expression in definitions:
+            try:
+                collected.extend(self._collect_query(query_id, expression, resource_id))
+            except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+                errors.append(f"{query_id}:{type(exc).__name__}")
+        return CollectionBatch(collected, errors)
+
+    def _collect_query(
+        self, query_id: str, expression: str, resource_id: str
+    ) -> list[EvidenceDraft]:
+        if self.client is None:
+            response = httpx.get(
+                f"{self.base_url}/api/v1/query",
+                params={"query": expression},
+                timeout=self.timeout_seconds,
+            )
+        else:
+            response = self.client.get(
+                f"{self.base_url}/api/v1/query",
+                params={"query": expression},
+                timeout=self.timeout_seconds,
+            )
+        response.raise_for_status()
+        body = response.json()
+        if not isinstance(body, dict) or body.get("status") != "success":
+            raise ValueError("prometheus_query_failed")
+        data = body.get("data")
+        if not isinstance(data, dict):
+            raise ValueError("prometheus_data_malformed")
+        results = data.get("result")
+        if not isinstance(results, list):
+            raise ValueError("prometheus_result_malformed")
+        if len(results) > 20:
+            raise ValueError("prometheus_result_exceeds_sample_limit")
+
+        now = datetime.now(timezone.utc)
+        evidence: list[EvidenceDraft] = []
+        if not results:
+            evidence.append(
+                EvidenceDraft(
+                    "prometheus",
+                    resource_id,
+                    "metric_absence",
+                    now,
+                    {"query_id": query_id, "sample_status": "series_absent"},
+                )
+            )
+            return evidence
+
+        for item in results:
+            if not isinstance(item, dict) or not isinstance(item.get("metric", {}), dict):
+                raise ValueError("prometheus_sample_malformed")
+            sample = item.get("value")
+            if not isinstance(sample, list) or len(sample) != 2:
+                raise ValueError("prometheus_sample_malformed")
+            timestamp, raw_value = sample
+            if isinstance(timestamp, bool) or isinstance(raw_value, bool):
+                raise ValueError("prometheus_sample_invalid_or_stale")
+            try:
+                sample_time = float(timestamp)
+                value = float(raw_value)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("prometheus_sample_malformed") from exc
+            age = now.timestamp() - sample_time
+            if (
+                not math.isfinite(sample_time)
+                or not math.isfinite(value)
+                or age < -30
+                or age > self.max_sample_age_seconds
+            ):
+                raise ValueError("prometheus_sample_invalid_or_stale")
+            raw_labels = item.get("metric", {})
+            labels = {
+                str(key): sanitize_log_excerpt(val, max_chars=120)
+                for key, val in raw_labels.items()
+                if key in _SAFE_LABELS
+            }
+            evidence.append(
+                EvidenceDraft(
+                    "prometheus",
+                    resource_id,
+                    "metric_sample",
+                    datetime.fromtimestamp(sample_time, tz=timezone.utc),
+                    {
+                        "query_id": query_id,
+                        "sample_value": value,
+                        "sample_age_seconds": round(max(age, 0.0), 3),
+                        "labels": labels,
+                    },
+                )
+            )
+        return evidence
+
+
+def static_inventory_evidence(
+    resource_id: str,
+    *,
+    inventory_path: Path | None = None,
+) -> CollectionBatch:
+    path = inventory_path or Path(__file__).resolve().parents[2] / "config" / "moodle_resource_inventory.json"
+    try:
+        raw = path.read_bytes()
+        inventory = json.loads(raw)
+        resources = inventory["resources"]
+        resource = next(item for item in resources if item["resource_id"] == resource_id)
+    except (OSError, ValueError, KeyError, StopIteration, TypeError) as exc:
+        return CollectionBatch([], [f"inventory:{type(exc).__name__}"])
+
+    now = datetime.now(timezone.utc)
+    inventory_hash = hashlib.sha256(raw).hexdigest()
+    config = EvidenceDraft(
+        "resource_inventory",
+        resource_id,
+        "static_config_snapshot",
+        now,
+        {
+            "inventory_sha256": inventory_hash,
+            "resource_type": str(resource.get("type", "unknown")),
+            "environment": str(resource.get("environment", "unknown")),
+            "service_name": str(resource.get("service_name") or "unknown"),
+            "snapshot_scope": "packaged_logical_inventory_not_runtime_host_config",
+        },
+    )
+    topology = EvidenceDraft(
+        "resource_inventory",
+        resource_id,
+        "topology_snapshot",
+        now,
+        {
+            "inventory_sha256": inventory_hash,
+            "depends_on": sorted(str(item) for item in resource.get("depends_on", [])),
+            "snapshot_scope": "packaged_logical_topology_not_runtime_discovery",
+        },
+    )
+    return CollectionBatch([config, topology], [])
+
+
+def collect_shadow_evidence(
+    alert: dict[str, Any],
+    *,
+    incident_id: str,
+    resource_id: str,
+    evidence_store: Any,
+    prometheus_url: str | None,
+    queries: tuple[tuple[str, str], ...] | None = None,
+) -> dict[str, Any]:
+    labels = alert.get("labels") or {}
+    alert_name = str(labels.get("alertname") or "unknown")
+    batches = [
+        CollectionBatch(
+            [alert_context_evidence(alert, resource_id=resource_id, incident_id=incident_id)],
+            [],
+        ),
+        static_inventory_evidence(resource_id),
+    ]
+    if prometheus_url:
+        try:
+            batches.append(
+                PrometheusEvidenceCollector(prometheus_url).collect(
+                    alert_name, resource_id=resource_id, queries=queries
+                )
+            )
+        except ValueError as exc:
+            batches.append(CollectionBatch([], [f"prometheus_config:{type(exc).__name__}"]))
+    else:
+        batches.append(CollectionBatch([], ["prometheus_config:missing"]))
+
+    evidence_refs: list[str] = []
+    errors: list[str] = []
+    sources: set[str] = set()
+    existing_inventory_snapshots: set[tuple[str, str]] = set()
+    for existing in evidence_store.list_for_incident(incident_id):
+        if existing.source != "resource_inventory":
+            continue
+        try:
+            payload = json.loads(existing.metadata.get("payload_json", "{}"))
+        except (TypeError, ValueError):
+            continue
+        inventory_hash = str(payload.get("inventory_sha256") or "")
+        if inventory_hash:
+            existing_inventory_snapshots.add(
+                (str(existing.metadata.get("kind") or ""), inventory_hash)
+            )
+    for batch in batches:
+        errors.extend(batch.errors)
+        for draft in batch.evidence:
+            payload_json = json.dumps(
+                draft.payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            )
+            identity = hashlib.sha256(
+                ":".join(
+                    (
+                        incident_id,
+                        draft.source,
+                        draft.resource_id,
+                        draft.kind,
+                        draft.observed_at.isoformat(),
+                        payload_json,
+                    )
+                ).encode("utf-8")
+            ).hexdigest()
+            if draft.source == "resource_inventory" and (
+                draft.kind,
+                str(draft.payload.get("inventory_sha256") or ""),
+            ) in existing_inventory_snapshots:
+                continue
+            evidence = Evidence(
+                evidence_id=f"ev-{identity[:24]}",
+                incident_id=incident_id,
+                resource_id=draft.resource_id,
+                source=draft.source,
+                observed_at=draft.observed_at,
+                collected_at=draft.observed_at,
+                summary=payload_json[:4096],
+                raw_ref=f"{draft.source}:{draft.kind}",
+                content_hash="pending",
+                metadata={"kind": draft.kind, "payload_json": payload_json[:4096]},
+                redacted=True,
+            )
+            evidence = evidence.model_copy(
+                update={"content_hash": evidence_content_hash(evidence)}
+            )
+            evidence_store.append(evidence)
+            evidence_refs.append(evidence.evidence_id)
+            sources.add(draft.source)
+            if draft.source == "resource_inventory":
+                existing_inventory_snapshots.add(
+                    (draft.kind, str(draft.payload.get("inventory_sha256") or ""))
+                )
+
+    return {
+        "evidence_refs": list(dict.fromkeys(evidence_refs)),
+        "sources": sorted(sources),
+        "errors": errors,
+        "status": "complete" if not errors else "partial",
+    }

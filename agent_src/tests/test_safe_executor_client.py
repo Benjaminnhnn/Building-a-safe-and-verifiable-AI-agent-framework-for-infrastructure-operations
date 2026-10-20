@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from urllib.request import Request
 
-from core import safe_executor_client as client
+from core.safety import safe_executor_client as client
 
 
 def test_action_digest_is_bound_to_staging_action() -> None:

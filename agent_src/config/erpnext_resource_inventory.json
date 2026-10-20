@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0",
+  "environment": "staging",
+  "source": "Logical resource contract for ERPNext multi-platform validation; contains no live IPs or secrets.",
+  "resources": [
+    {
+      "resource_id": "erpnext-web-endpoint",
+      "name": "ERPNext web endpoint",
+      "type": "endpoint",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "erpnext-alb",
+      "service_name": "erpnext-alb",
+      "endpoint": "https://erpnext-staging.internal",
+      "depends_on": ["erpnext-nginx"],
+      "tags": {"system": "erpnext", "component": "probe"}
+    },
+    {
+      "resource_id": "erpnext-nginx",
+      "name": "ERPNext Nginx reverse proxy",
+      "type": "application",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "erpnext-app-01",
+      "service_name": "erpnext-frontend",
+      "endpoint": "http://erpnext-nginx:8080",
+      "depends_on": ["erpnext-app"],
+      "tags": {"system": "erpnext", "component": "reverse-proxy"}
+    },
+    {
+      "resource_id": "erpnext-app",
+      "name": "ERPNext Frappe application",
+      "type": "application",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "erpnext-app-01",
+      "service_name": "erpnext-backend",
+      "endpoint": "http://erpnext-backend:8000",
+      "depends_on": ["erpnext-mariadb", "erpnext-redis-queue", "erpnext-sites-volume"],
+      "tags": {"system": "erpnext", "component": "backend"}
+    },
+    {
+      "resource_id": "erpnext-mariadb",
+      "name": "ERPNext MariaDB database",
+      "type": "database",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "erpnext-db-01",
+      "service_name": "erpnext-mariadb",
+      "endpoint": "terraform:erpnext_database.endpoint",
+      "depends_on": [],
+      "tags": {"system": "erpnext", "component": "database"}
+    },
+    {
+      "resource_id": "erpnext-redis-queue",
+      "name": "ERPNext Redis queue service",
+      "type": "application",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "erpnext-app-01",
+      "service_name": "erpnext-redis-queue",
+      "endpoint": "terraform:erpnext_redis.endpoint",
+      "depends_on": [],
+      "tags": {"system": "erpnext", "component": "queue"}
+    },
+    {
+      "resource_id": "erpnext-sites-volume",
+      "name": "ERPNext shared sites volume",
+      "type": "volume",
+      "environment": "staging",
+      "owner_role": "infrastructure_engineer",
+      "host": "erpnext-app-01",
+      "service_name": null,
+      "endpoint": "terraform:erpnext_filesystem.file_system_id",
+      "depends_on": [],
+      "tags": {"system": "erpnext", "component": "storage"}
+    }
+  ]
+}

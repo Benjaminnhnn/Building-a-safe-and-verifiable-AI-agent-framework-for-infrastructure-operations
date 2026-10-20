@@ -16,6 +16,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Validate Moodle Terraform contracts
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      - name: Validate and test mocked Terraform plans
+        run: |
+          terraform -chdir=terraform init -backend=false -input=false
+          terraform fmt -check \
+            terraform/rds.tf \
+            terraform/storage-variables.tf \
+            terraform/storage-outputs.tf \
+            terraform/erpnext.tf \
+            terraform/tests/storage.tftest.hcl \
+            terraform/tests/erpnext.tftest.hcl
+          terraform -chdir=terraform validate
+          terraform -chdir=terraform test
+
       - name: Setup Python
         uses: actions/setup-python@v7
         with:
@@ -44,6 +63,9 @@ jobs:
             automation/aiops-unified-replay.py \
             automation/moodle-safe-executor-api.py \
             automation/moodle-safe-approval.py \
+            automation/moodle-safe-gate-approval.py \
+            automation/moodle-independent-verifier.py \
+            automation/export-moodle-safe-action-audit.py \
             automation/moodle-safe-executor-request.py \
             automation/harvest-benchmark-results.py \
             automation/inspect_live_db.py \
@@ -53,6 +75,7 @@ jobs:
             automation/sprint6-acceptance.py \
             automation/sso-identity-drill.py \
             automation/benchmark-cost-dashboard.py \
+            automation/erpnext-synthetic-transaction.py \
             evaluation/benchmark/statistical_analysis.py
           bash -n \
             automation/lib/moodle-fault-common.sh \
@@ -77,7 +100,9 @@ jobs:
             automation/update-infrastructure.sh \
             automation/authorize-ai-engineer.sh \
             automation/capture-moodle-baseline.sh \
-            automation/moodle-rds-restore-drill.sh
+            automation/moodle-rds-restore-drill.sh \
+            automation/erpnext-fault-inject.sh \
+            automation/erpnext-fault-reset.sh
           if bash automation/moodle-scenario-verify.sh SEC-01 >/dev/null 2>&1; then
             echo "HUMAN_ONLY scenario was unexpectedly accepted for live verification" >&2
             exit 1
@@ -97,14 +122,24 @@ jobs:
           with open(sys.argv[1], encoding="utf-8") as source:
               report = json.load(source)
           assert report["scenario_count"] == 15
-          assert report["passed_count"] == 15
+          assert report["accepted_count"] == 15
+          assert (
+              report["verified_dry_run_count"]
+              + report["safely_gated_count"]
+              + report["safely_escalated_count"]
+              == 15
+          )
           assert report["failed_count"] == 0
           # Pinned per-scenario outcomes. The Safety Gate fails closed for any
           # catalogued mutation without a reciprocal rollback; a change here
           # (e.g. a new rollback entry or planner fix) must be reviewed.
           expected = {sid: "fail_closed_missing_rollback" for sid in (
-              "CON-01", "CON-02", "CON-03", "DB-02", "DB-03", "NET-01", "NET-02",
-              "NET-03", "RES-01", "RES-02", "RES-03", "SEC-02", "SEC-03")}
+              "CON-02", "CON-03", "DB-02", "DB-03", "NET-01", "NET-02",
+              "NET-03", "RES-02", "RES-03", "SEC-02", "SEC-03")}
+          # Their catalog actions have a verified reciprocal rollback (checked
+          # independently by the replay), so the gate may allow a dry-run.
+          expected["CON-01"] = "verified_dry_run"
+          expected["RES-01"] = "verified_dry_run"
           expected["DB-01"] = "escalated_without_action"
           expected["SEC-01"] = "fail_closed_human_only"
           actual = {s["scenario_id"]: s["outcome"] for s in report["reports"]}
@@ -112,6 +147,8 @@ jobs:
           assert report["fail_closed_denial_count"] == report["missing_reciprocal_rollback_count"] - report["human_only_count"]
           assert report["forbidden_live_execution_count"] == 0
           assert report["live_verification_executed"] is False
+          assert report["recovery_claim_count"] == 0
+          assert report["accepted_outcomes_are_not_recovery_results"] is True
           assert report["staging_live_allowlisted_scenario_count"] == 5
           assert report["offline_or_shadow_only_scenario_count"] == 10
           for scenario in report["reports"]:
@@ -180,6 +217,8 @@ jobs:
           MOODLE_RUNTIME_ENV_FILE=./moodle-runtime.env.example \
           docker compose --env-file release/moodle/moodle-runtime.env.example \
             -f release/moodle/docker-compose.yml config > /dev/null
+          docker compose --env-file release/erpnext/.env.example \
+            -f release/erpnext/docker-compose.yml config > /dev/null
 
       - name: Notify admins on failure
         if: failure()

@@ -11,10 +11,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from core.evidence_collectors import collect_shadow_evidence, sanitize_log_excerpt
-from core.moodle_diagnosis import diagnose_moodle_alert
-from core.moodle_planner import plan_moodle_investigation
-from core.evidence_store import SQLiteEvidenceStore, evidence_content_hash
+from core.evidence.evidence_collectors import collect_shadow_evidence
+from core.safety.sanitization import sanitize_log_excerpt
+from core.evidence.evidence_store import SQLiteEvidenceStore, evidence_content_hash
+from core.platform_adapter import PlatformAdapter, PlatformAdapterRegistry
 from core.schema.evidence import Evidence
 from core.schema.common import EvidenceType
 from core.schema.resource import Resource
@@ -23,29 +23,6 @@ logger = logging.getLogger(__name__)
 
 VALID_UNIFIED_CORE_MODES = {"off", "shadow", "investigate"}
 DEFAULT_EVIDENCE_DB_PATH = "/app/data/evidence.db"
-
-# Stable mappings for the alert labels emitted by the Moodle monitoring
-# playbook.  Alerts may omit ``resource_id`` because Prometheus expressions
-# aggregate labels; the alert name is still a reviewed, finite contract.
-MOODLE_ALERT_RESOURCE_MAP = {
-    "MoodleNodeExporterDown": "moodle-app",
-    "MoodleCAdvisorDown": "moodle-app",
-    "MoodlePublicProbeFailed": "moodle-web-endpoint",
-    "MoodleRdsTcpProbeFailed": "postgres-db",
-    "MoodleNodeRdsTcpFailed": "moodle-app",
-    "MoodleEfsMountMissing": "moodledata-volume",
-    "MoodleSyntheticTransactionFailed": "moodle-app",
-    "MoodleSyntheticTransactionStale": "moodle-app",
-    "MoodleNodeCpuHigh": "moodle-app",
-    "MoodleWebContainerMissing": "moodle-app",
-    "LogFileErrorDetected": "ai-agent",
-}
-
-RESOURCE_ALIASES = {
-    "moodle": "moodle-app",
-    "moodle-rds": "postgres-db",
-    "moodle-efs": "moodledata-volume",
-}
 
 
 def get_unified_core_mode(value: str | None = None) -> str:
@@ -57,14 +34,28 @@ def get_unified_core_mode(value: str | None = None) -> str:
     return mode
 
 
-def _load_resources() -> list[Resource]:
-    path = (
-        Path(__file__).resolve().parents[1]
-        / "config"
-        / "moodle_resource_inventory.json"
-    )
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return [Resource(**item) for item in data["resources"]]
+def _load_resources(*, adapter: PlatformAdapter | None = None) -> list[Resource]:
+    ad = adapter or PlatformAdapterRegistry.get("moodle")
+    if ad:
+        return ad.get_resources()
+    return []
+
+
+def _compute_dependency_impact(
+    resource_id: str, adapter: PlatformAdapter
+) -> tuple[list[str], list[str]]:
+    confirmed = [resource_id]
+    try:
+        if hasattr(adapter, "get_dependency_graph"):
+            graph = adapter.get_dependency_graph()
+        else:
+            from core.evidence.dependency_graph import DependencyGraph
+
+            graph = DependencyGraph(adapter.get_resources())
+        potentially_affected = graph.downstream(resource_id)
+    except Exception:
+        potentially_affected = []
+    return confirmed, potentially_affected
 
 
 def _stable_id(prefix: str, *parts: str) -> str:
@@ -88,6 +79,7 @@ def _fresh_cached_result(
     *,
     incident_id: str,
     alert_name: str,
+    adapter: PlatformAdapter | None = None,
 ) -> dict[str, Any] | None:
     if not cached or cached.get("stage") != "shadow_complete":
         return None
@@ -107,51 +99,89 @@ def _fresh_cached_result(
     evidence = [store.get_by_id(ref) for ref in evidence_refs if isinstance(ref, str)]
     if len(evidence) != len(evidence_refs) or any(item is None for item in evidence):
         return None
-    current_diagnosis = diagnose_moodle_alert(alert_name, evidence)
+
+    ad = adapter or PlatformAdapterRegistry.get("moodle")
+    if not ad:
+        return None
+
+    current_diagnosis = ad.diagnose(alert_name, evidence)
     if (
         current_diagnosis.get("status") != "hypothesis"
         or current_diagnosis.get("cause_code") != diagnosis.get("cause_code")
         or current_diagnosis.get("hypothesis") != diagnosis.get("hypothesis")
     ):
         return None
+    current_candidate = ad.plan_remediation(
+        incident_id=incident_id,
+        alert_name=alert_name,
+        diagnosis=current_diagnosis,
+        evidence=evidence,
+    )
+    if current_candidate != payload.get("remediation_candidate"):
+        return None
     return payload
 
 
-def _resolve_resource_id(alert: dict[str, Any], resources: list[Resource]) -> str | None:
-    labels = alert.get("labels") or {}
-    known = {resource.resource_id for resource in resources}
-    alert_resource = MOODLE_ALERT_RESOURCE_MAP.get(str(labels.get("alertname") or ""))
-    if alert_resource in known:
-        return alert_resource
-    for candidate in (
-        labels.get("resource_id"),
-        labels.get("component"),
-        labels.get("service"),
-        labels.get("target"),
-    ):
-        normalized = RESOURCE_ALIASES.get(str(candidate), str(candidate))
-        if candidate and normalized in known:
-            return normalized
+def _resolve_resource_id(
+    alert: dict[str, Any],
+    resources: list[Resource] | None = None,
+    *,
+    adapter: PlatformAdapter | None = None,
+) -> str | None:
+    ad = (
+        adapter
+        or PlatformAdapterRegistry.find_for_alert(alert)
+        or PlatformAdapterRegistry.get("moodle")
+    )
+    if ad is not None:
+        return ad.identify_resource(alert)
     return None
+
+
+def _retrieve_runbook_with_provenance(
+    alert: dict[str, Any],
+) -> tuple[str, list[dict[str, Any]]]:
+    """Fetch alert-scoped authored runbook context and structured provenance."""
+    if not os.getenv("VECTOR_DB_PATH"):
+        return "", []
+    labels = alert.get("labels") or {}
+    alert_name = str(labels.get("alertname") or "")
+    if not alert_name:
+        return "", []
+    from core.rag.rag_engine import get_rag_instance
+
+    rag = get_rag_instance()
+    if rag is None:
+        return "", []
+    summary = sanitize_log_excerpt(
+        (alert.get("annotations") or {}).get("summary") or alert_name
+    )
+    if hasattr(rag, "retrieve_runbook_with_provenance"):
+        data = rag.retrieve_runbook_with_provenance(summary, alert_name=alert_name)
+        if isinstance(data, dict):
+            return str(data.get("text") or ""), list(data.get("provenance") or [])
+    text = rag.query_standard_runbooks(summary, alert_name=alert_name)
+    provenance: list[dict[str, Any]] = []
+    if text:
+        import re
+
+        for match in re.finditer(
+            r"\[(?:Nguồn|Source):\s*([^;\]]+)(?:;\s*thời điểm:\s*([^;\]]+))?;\s*SHA-256:\s*([^\]]+)\]",
+            text,
+        ):
+            provenance.append(
+                {
+                    "source_file": match.group(1).strip(),
+                    "source_observed_at": (match.group(2) or "unknown").strip(),
+                    "source_sha256": match.group(3).strip(),
+                }
+            )
+    return text, provenance
 
 
 def _retrieve_runbook_context(alert: dict[str, Any]) -> str:
     """Fetch alert-scoped authored runbook context, separate from decision inputs."""
-    if not os.getenv("VECTOR_DB_PATH"):
-        return ""
-    labels = alert.get("labels") or {}
-    alert_name = str(labels.get("alertname") or "")
-    if not alert_name:
-        return ""
-    from core.rag_engine import get_rag_instance
-
-    rag = get_rag_instance()
-    if rag is None:
-        return ""
-    summary = sanitize_log_excerpt(
-        (alert.get("annotations") or {}).get("summary") or alert_name
-    )
-    return rag.query_standard_runbooks(summary, alert_name=alert_name)
+    return _retrieve_runbook_with_provenance(alert)[0]
 
 
 def _persist_decision(
@@ -195,13 +225,22 @@ def _persist_decision(
     return evidence_id
 
 
-def run_shadow_if_enabled(alert: dict[str, Any]) -> dict[str, Any] | None:
+def run_shadow_if_enabled(
+    alert: dict[str, Any], *, adapter: PlatformAdapter | None = None
+) -> dict[str, Any] | None:
     """Collect evidence in shadow or read-only investigate mode; never execute."""
     if get_unified_core_mode() not in {"shadow", "investigate"}:
         return None
-    resources = _load_resources()
+    effective_adapter = (
+        adapter
+        or PlatformAdapterRegistry.find_for_alert(alert)
+        or PlatformAdapterRegistry.get("moodle")
+    )
+    if effective_adapter is None:
+        logger.info("Unified-core shadow skipped: alert has no known adapter")
+        return {"status": "skipped", "reason": "unknown_resource"}
     labels = alert.get("labels") or {}
-    resource_id = _resolve_resource_id(alert, resources)
+    resource_id = effective_adapter.identify_resource(alert)
     if resource_id is None:
         logger.info("Unified-core shadow skipped: alert has no known resource mapping")
         return {"status": "skipped", "reason": "unknown_resource"}
@@ -249,6 +288,7 @@ def run_shadow_if_enabled(alert: dict[str, Any]) -> dict[str, Any] | None:
             cached,
             incident_id=incident_id,
             alert_name=str(labels.get("alertname") or "unknown"),
+            adapter=effective_adapter,
         )
         if cached_result is not None:
             return cached_result
@@ -264,6 +304,7 @@ def run_shadow_if_enabled(alert: dict[str, Any]) -> dict[str, Any] | None:
                 cached,
                 incident_id=incident_id,
                 alert_name=str(labels.get("alertname") or "unknown"),
+                adapter=effective_adapter,
             )
             if cached_result is not None:
                 return cached_result
@@ -286,20 +327,86 @@ def run_shadow_if_enabled(alert: dict[str, Any]) -> dict[str, Any] | None:
                 resource_id=resource_id,
                 evidence_store=store,
                 prometheus_url=os.getenv("PROMETHEUS_URL"),
+                queries=effective_adapter.get_alert_queries(
+                    str(labels.get("alertname") or "unknown")
+                ),
             )
             current_evidence_refs = [evidence.evidence_id, *collection["evidence_refs"]]
-            diagnosis = diagnose_moodle_alert(
-                str(labels.get("alertname") or "unknown"),
-                [
-                    item
-                    for evidence_id in current_evidence_refs
-                    if (item := store.get_by_id(evidence_id)) is not None
-                ],
+            evidence_items = [
+                item
+                for evidence_id in current_evidence_refs
+                if (item := store.get_by_id(evidence_id)) is not None
+            ]
+            alert_name_str = str(labels.get("alertname") or "unknown")
+            diagnosis = effective_adapter.diagnose(
+                alert_name_str,
+                evidence_items,
             )
-            plan_candidate = plan_moodle_investigation(
+            plan_candidate = effective_adapter.plan_investigation(
                 incident_id=incident_id,
                 diagnosis=diagnosis,
             )
+            remediation_candidate = None
+            if get_unified_core_mode() == "investigate":
+                remediation_candidate = effective_adapter.plan_remediation(
+                    incident_id=incident_id,
+                    alert_name=alert_name_str,
+                    diagnosis=diagnosis,
+                    evidence=evidence_items,
+                )
+            confirmed_affected_resources, potentially_affected_resources = (
+                _compute_dependency_impact(resource_id, effective_adapter)
+            )
+            evidence_provenance = [
+                {
+                    "evidence_id": item.evidence_id,
+                    "source": item.source,
+                    "collected_at": item.collected_at.astimezone(timezone.utc).isoformat(),
+                    "resource_id": item.resource_id,
+                }
+                for item in sorted(evidence_items, key=lambda e: e.evidence_id)
+            ]
+            supporting_refs_set = set(diagnosis.get("evidence_refs", []))
+            supporting_provenance = [
+                item
+                for item in evidence_provenance
+                if item["evidence_id"] in supporting_refs_set
+            ]
+            runbook_context, runbook_provenance = _retrieve_runbook_with_provenance(alert)
+            if hasattr(effective_adapter, "describe_remediation_disposition"):
+                remediation_disposition = effective_adapter.describe_remediation_disposition(
+                    alert_name=alert_name_str,
+                    diagnosis=diagnosis,
+                    remediation_candidate=remediation_candidate,
+                )
+            else:
+                remediation_disposition = {
+                    "disposition": (
+                        "candidate_proposed"
+                        if remediation_candidate is not None
+                        else (
+                            "escalated_awaiting_operator_isolation"
+                            if diagnosis.get("status") == "hypothesis"
+                            else "awaiting_valid_evidence"
+                        )
+                    ),
+                    "reason": str(diagnosis.get("reason") or ""),
+                    "execution_permitted": False,
+                    "approval_required": bool(remediation_candidate),
+                }
+            explanation = {
+                "status": str(diagnosis.get("status", "unknown")),
+                "cause_code": diagnosis.get("cause_code"),
+                "hypothesis": diagnosis.get("hypothesis"),
+                "reason": diagnosis.get("reason"),
+                "confidence": float(diagnosis.get("confidence", 0.0)),
+                "confirmed_affected_resources": confirmed_affected_resources,
+                "potentially_affected_resources": potentially_affected_resources,
+                "supporting_evidence_provenance": supporting_provenance,
+                "all_evidence_provenance": evidence_provenance,
+                "runbook_provenance": runbook_provenance,
+                "remediation_disposition": remediation_disposition,
+            }
             diagnosis_record = {
                 "status": str(diagnosis.get("status", "unknown")),
                 "cause_code": diagnosis.get("cause_code"),
@@ -307,7 +414,12 @@ def run_shadow_if_enabled(alert: dict[str, Any]) -> dict[str, Any] | None:
                 "hypothesis": sanitize_log_excerpt(diagnosis.get("hypothesis", ""), max_chars=240),
                 "confidence": float(diagnosis.get("confidence", 0.0)),
                 "evidence_refs": sorted(set(current_evidence_refs)),
-                "supporting_evidence_refs": sorted(set(diagnosis.get("evidence_refs", []))),
+                "supporting_evidence_refs": sorted(supporting_refs_set),
+                "confirmed_affected_resources": confirmed_affected_resources,
+                "potentially_affected_resources": potentially_affected_resources,
+                "supporting_evidence_provenance": supporting_provenance,
+                "runbook_provenance": runbook_provenance,
+                "disposition": str(remediation_disposition.get("disposition", "unknown")),
             }
             if diagnosis.get("missing_queries"):
                 diagnosis_record["missing_queries"] = [
@@ -328,6 +440,16 @@ def run_shadow_if_enabled(alert: dict[str, Any]) -> dict[str, Any] | None:
                     payload=diagnosis_record,
                 )
             ]
+            remediation_candidate_evidence_id = None
+            if remediation_candidate is not None:
+                remediation_candidate_evidence_id = _persist_decision(
+                    store,
+                    incident_id=incident_id,
+                    resource_id=resource_id,
+                    kind="remediation_candidate",
+                    payload=remediation_candidate,
+                )
+                decision_evidence_refs.append(remediation_candidate_evidence_id)
             if plan_candidate is not None:
                 decision_evidence_refs.append(
                     _persist_decision(
@@ -338,7 +460,6 @@ def run_shadow_if_enabled(alert: dict[str, Any]) -> dict[str, Any] | None:
                         payload=plan_candidate.model_dump(mode="json"),
                     )
                 )
-            runbook_context = _retrieve_runbook_context(alert)
             result = {
                 "status": "observed",
                 "incident_id": incident_id,
@@ -346,7 +467,15 @@ def run_shadow_if_enabled(alert: dict[str, Any]) -> dict[str, Any] | None:
                 "simulated": False,
                 "reason": diagnosis["reason"],
                 "diagnosis": diagnosis,
+                "confirmed_affected_resources": confirmed_affected_resources,
+                "potentially_affected_resources": potentially_affected_resources,
+                "evidence_provenance": evidence_provenance,
+                "runbook_provenance": runbook_provenance,
+                "remediation_disposition": remediation_disposition,
+                "explanation": explanation,
                 "plan_candidate": plan_candidate.model_dump(mode="json") if plan_candidate else None,
+                "remediation_candidate": remediation_candidate,
+                "remediation_candidate_evidence_id": remediation_candidate_evidence_id,
                 "decision_evidence_refs": decision_evidence_refs,
                 "runbook_context": runbook_context,
                 "evidence_status": collection["status"],
@@ -376,3 +505,15 @@ def run_shadow_if_enabled(alert: dict[str, Any]) -> dict[str, Any] | None:
         collection["status"],
     )
     return result
+
+
+def __getattr__(name: str) -> Any:
+    if name in {"MOODLE_ALERT_RESOURCE_MAP", "RESOURCE_ALIASES"}:
+        import importlib
+
+        try:
+            mod = importlib.import_module("core.moodle.adapter")
+        except (ImportError, ModuleNotFoundError):
+            mod = importlib.import_module("core.moodle_adapter")
+        return getattr(mod, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

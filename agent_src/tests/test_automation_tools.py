@@ -3,7 +3,12 @@ from __future__ import annotations
 import importlib.util
 import json
 import sqlite3
+import shutil
+import subprocess
+import sys
+import threading
 from pathlib import Path
+from http.server import ThreadingHTTPServer
 
 import pytest
 
@@ -29,8 +34,13 @@ def test_unified_replay_accepts_safe_simulated_verification_only() -> None:
     report = {
         "error": None,
         "incident_status": "verified_dry_run",
+        "gate_decision": "allow",
         "resolved_by_verifier": False,
         "execution_dry_run": True,
+        "execution_executed": False,
+        "execution_succeeded": True,
+        "verification_run": True,
+        "verification_simulated": True,
         "simulated": True,
         "pipeline_mode": "offline_simulation",
         "live_verification_executed": False,
@@ -40,6 +50,58 @@ def test_unified_replay_accepts_safe_simulated_verification_only() -> None:
 
     assert aiops_replay._is_valid_offline_result(report)
     assert not aiops_replay._has_forbidden_execution(report)
+
+
+@pytest.mark.parametrize(
+    "stages",
+    [["observe", "triage", "diagnose"], ["observe", "triage", "diagnose", "plan"]],
+)
+def test_unified_replay_accepts_fail_closed_pre_dispatch_escalation(stages: list[str]) -> None:
+    report = {
+        "error": None,
+        "incident_status": "escalated",
+        "stages": stages,
+        "action_type": None,
+        "gate_decision": None,
+        "resolved_by_verifier": False,
+        "execution_dry_run": None,
+        "execution_executed": False,
+        "execution_succeeded": False,
+        "verification_run": False,
+        "verification_simulated": None,
+        "simulated": True,
+        "pipeline_mode": "offline_simulation",
+        "live_verification_executed": False,
+        "recovery_claim_scope": "simulated_fixture_only",
+        "scenario_binding": {"execution_permitted_by_binding": False},
+    }
+
+    assert not aiops_replay._is_valid_offline_result(report)
+    assert aiops_replay.replay_outcome(report) == aiops_replay.OUTCOME_ESCALATED
+    assert not aiops_replay._has_forbidden_execution(report)
+
+
+def test_unified_replay_rejects_escalation_after_action_or_gate() -> None:
+    report = {
+        "error": None,
+        "incident_status": "escalated",
+        "stages": ["observe", "triage", "diagnose", "plan"],
+        "action_type": "remove_scoped_db_reject",
+        "gate_decision": None,
+        "resolved_by_verifier": False,
+        "execution_dry_run": None,
+        "execution_executed": False,
+        "execution_succeeded": False,
+        "verification_run": False,
+        "verification_simulated": None,
+        "simulated": True,
+        "pipeline_mode": "offline_simulation",
+        "live_verification_executed": False,
+        "recovery_claim_scope": "simulated_fixture_only",
+        "scenario_binding": {"execution_permitted_by_binding": False},
+    }
+
+    assert not aiops_replay._is_valid_offline_result(report)
 
 
 @pytest.mark.parametrize(
@@ -58,8 +120,13 @@ def test_unified_replay_rejects_live_or_resolution_claims(
     report = {
         "error": None,
         "incident_status": "verified_dry_run",
+        "gate_decision": "allow",
         "resolved_by_verifier": False,
         "execution_dry_run": True,
+        "execution_executed": False,
+        "execution_succeeded": True,
+        "verification_run": True,
+        "verification_simulated": True,
         "simulated": True,
         "pipeline_mode": "offline_simulation",
         "live_verification_executed": False,
@@ -148,6 +215,145 @@ def test_trigger_only_allows_plain_loopback_webhook() -> None:
     assert not trigger.loopback_webhook("http://example.com/webhook")
     assert not trigger.loopback_webhook("http://user:pass@localhost/webhook")
     assert not trigger.loopback_webhook("http://localhost/webhook/other")
+
+
+def test_safe_executor_compensation_ids_match_operator_approval_and_forced_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent_key = tmp_path / "agent-hmac.key"
+    agent_key.write_bytes(b"test-key-with-more-than-32-bytes-long")
+    monkeypatch.setenv("EXECUTOR_STATE_DB", str(tmp_path / "state.db"))
+    monkeypatch.setenv("EXECUTOR_SSH_KEY", str(tmp_path / "id_ed25519"))
+    monkeypatch.setenv("EXECUTOR_KNOWN_HOSTS", str(tmp_path / "known_hosts"))
+    monkeypatch.setenv("EXECUTOR_AGENT_KEY_FILE", str(agent_key))
+    monkeypatch.setenv("EXECUTOR_APPROVAL_PUBLIC_KEY_FILE", str(tmp_path / "approval.pub"))
+    monkeypatch.setenv("MOODLE_NODE_A_IP", "192.0.2.10")
+    monkeypatch.setenv("MOODLE_NODE_B_IP", "192.0.2.11")
+
+    api = load_script("safe_executor_api_allowlist", "automation/moodle-safe-executor-api.py")
+    approval = load_script("safe_executor_approval_allowlist", "automation/moodle-safe-approval.py")
+    expected = {
+        "DB-01": {
+            "remove_scoped_db_reject": ("staging_moodle_nodes", ("a", "b")),
+            "reconcile_db01_safe_baseline": ("staging_moodle_nodes", ("a", "b")),
+        },
+        "RES-01": {
+            "remove_named_cpu_load_container": ("moodle-app-b", ("b",)),
+            "reconcile_res01_safe_baseline": ("moodle-app-b", ("b",)),
+        },
+        "NET-01": {
+            "recreate_moodle_web_from_reviewed_compose": ("staging_moodle_nodes", ("a", "b")),
+            "reconcile_net01_safe_baseline": ("staging_moodle_nodes", ("a", "b")),
+        },
+        "CON-01": {
+            "start_reviewed_compose_service": ("moodle-app-b", ("b",)),
+            "reconcile_con01_safe_baseline": ("moodle-app-b", ("b",)),
+        },
+        "SEC-02": {
+            "restore_fixture_directory_mode": ("moodledata_synthetic_fixture_directory", ("a",)),
+            "reconcile_sec02_safe_baseline": ("moodledata_synthetic_fixture_directory", ("a",)),
+        },
+    }
+    assert api.CATALOG == {
+        (scenario, action_id, scope): nodes
+        for scenario, actions in expected.items()
+        for action_id, (scope, nodes) in actions.items()
+    }
+    assert approval.CATALOG == {
+        scenario: {action_id: scope for action_id, (scope, _) in actions.items()}
+        for scenario, actions in expected.items()
+    }
+
+    forced_command = (ROOT / "ansible/playbooks/configure-moodle-safe-executor.yml").read_text(
+        encoding="utf-8"
+    )
+    api_source = (ROOT / "automation/moodle-safe-executor-api.py").read_text(encoding="utf-8")
+    assert 'f"aiops-executor@{NODES[node]}", action_id,' in api_source
+    for scenario, actions in expected.items():
+        assert f"{scenario}|" in forced_command
+        for action_id in actions:
+            assert action_id in forced_command
+    assert "rules=$(iptables -S DOCKER-USER)" in forced_command
+    assert "DB-01 tagged rule exists but its ownership marker is missing" in forced_command
+    assert 'containers=$(docker ps -a --format' in forced_command
+    assert 'docker rm -f moodle-fault-res-01 >/dev/null' in forced_command
+    assert 'docker rm -f moodle-fault-res-01 >/dev/null 2>&1 || true' not in forced_command
+
+
+def test_signed_compensation_approval_reaches_executor_kill_switch_without_ssh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    if shutil.which("openssl") is None:
+        pytest.skip("OpenSSL is required to exercise the production Ed25519 approval verifier")
+    agent_key = tmp_path / "agent-hmac.key"
+    agent_key.write_bytes(b"test-key-with-more-than-32-bytes-long")
+    private_key = tmp_path / "operator-ed25519.pem"
+    public_key = tmp_path / "operator-ed25519.pub"
+    subprocess.run(
+        ["openssl", "genpkey", "-algorithm", "ED25519", "-out", str(private_key)],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["openssl", "pkey", "-in", str(private_key), "-pubout", "-out", str(public_key)],
+        check=True,
+        capture_output=True,
+    )
+    monkeypatch.setenv("EXECUTOR_STATE_DB", str(tmp_path / "executor-state.db"))
+    monkeypatch.setenv("EXECUTOR_SSH_KEY", str(tmp_path / "executor-ssh-key"))
+    monkeypatch.setenv("EXECUTOR_KNOWN_HOSTS", str(tmp_path / "known_hosts"))
+    monkeypatch.setenv("EXECUTOR_AGENT_KEY_FILE", str(agent_key))
+    monkeypatch.setenv("EXECUTOR_APPROVAL_PUBLIC_KEY_FILE", str(public_key))
+    monkeypatch.setenv("MOODLE_NODE_A_IP", "192.0.2.10")
+    monkeypatch.setenv("MOODLE_NODE_B_IP", "192.0.2.11")
+    monkeypatch.setenv("EXECUTOR_LIVE_ENABLED", "false")
+
+    api = load_script("safe_executor_api_disabled_integration", "automation/moodle-safe-executor-api.py")
+    api.init_db()
+    server = ThreadingHTTPServer(("127.0.0.1", 0), api.Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        approval_script = load_script(
+            "safe_executor_approval_disabled_integration", "automation/moodle-safe-approval.py"
+        )
+        idempotency_key = "reconcile-DB-01-run-0001"
+        monkeypatch.setattr(sys, "argv", [
+            "moodle-safe-approval.py",
+            "DB-01",
+            "--action-id",
+            "reconcile_db01_safe_baseline",
+            "--private-key",
+            str(private_key),
+            "--idempotency-key",
+            idempotency_key,
+            "--actor",
+            "operator",
+        ])
+        assert approval_script.main() == 0
+        signed_approval = json.loads(capsys.readouterr().out)
+
+        monkeypatch.setenv(
+            "SAFE_EXECUTOR_URL", f"http://127.0.0.1:{server.server_address[1]}"
+        )
+        monkeypatch.setenv("SAFE_EXECUTOR_HMAC_KEY_FILE", str(agent_key))
+        from core.safety.safe_executor_client import execute_approved_staging_action
+
+        result = execute_approved_staging_action(
+            scenario_id=signed_approval["scenario_id"],
+            catalog_action_id=signed_approval["catalog_action_id"],
+            target_scope=signed_approval["target_scope"],
+            idempotency_key=idempotency_key,
+            approval=signed_approval["approval"],
+        )
+
+        assert result["status"] == "disabled"
+        assert result["mutated"] is False
+        assert result["completed_nodes"] == []
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def test_repeated_simulated_campaigns_get_distinct_run_ids() -> None:
@@ -239,6 +445,7 @@ def test_unified_replay_accepts_escalation_only_without_any_action() -> None:
     report = _gated_report(
         incident_status="escalated", action_type=None, gate_decision=None,
         gate_reasons=[], execution_dry_run=None, execution_success=None, execution_error=None,
+        stages=["observe", "triage", "diagnose", "plan"], verification_run=False,
     )
     assert aiops_replay.replay_outcome(report) == aiops_replay.OUTCOME_ESCALATED
     report["action_type"] = "start_container"
@@ -246,7 +453,8 @@ def test_unified_replay_accepts_escalation_only_without_any_action() -> None:
 
 
 def test_catalog_checks_match_real_moodle_catalog() -> None:
-    assert aiops_replay.lacks_reciprocal_rollback("start_reviewed_compose_service") is True
+    assert aiops_replay.lacks_reciprocal_rollback("restore_moodle_apache_router") is True
+    assert aiops_replay.lacks_reciprocal_rollback("start_reviewed_compose_service") is False
     assert aiops_replay.lacks_reciprocal_rollback("not-a-catalog-action") is False
     assert aiops_replay.requires_operator("remove_tagged_database_ingress_rule") is True
     assert aiops_replay.requires_operator("start_reviewed_compose_service") is False

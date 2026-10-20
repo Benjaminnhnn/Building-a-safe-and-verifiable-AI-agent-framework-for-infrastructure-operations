@@ -5,7 +5,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from core import main
-from core import runbook_registry
+from core.rag import runbook_registry
 
 
 client = TestClient(main.app)

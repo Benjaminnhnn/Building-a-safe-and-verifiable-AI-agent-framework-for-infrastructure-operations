@@ -18,6 +18,9 @@ moodle_root_volume_size         = 30
 # backed tests; it is not a high-availability database deployment.
 moodle_db_engine_version  = "16.10"
 moodle_db_instance_class  = "db.t4g.micro"
+# Required for resolution-eligible live verification; adds a billable external
+# Route 53 TCP health check. Review current Route 53 pricing before applying.
+moodle_external_rds_probe_enabled = true
 
 # Pin the regional AL2023 x86_64 AMI before deployment.
 # ec2_ami_id = "ami-REPLACE"

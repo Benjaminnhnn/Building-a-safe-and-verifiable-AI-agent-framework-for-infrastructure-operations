@@ -284,6 +284,28 @@
         fail_msg: Pass --agent-image with an immutable GHCR commit tag.
       when: moodle_agent_enabled | bool
 
+    - name: Require the public Independent Verifier key before deploying the Agent
+      ansible.builtin.stat:
+        path: /etc/aiops-safe-executor/verifier-ed25519.pub
+      register: moodle_verifier_public_key
+      when: moodle_agent_enabled | bool
+
+    - name: Validate the installed Independent Verifier key
+      ansible.builtin.assert:
+        that:
+          - moodle_verifier_public_key.stat.exists
+          - moodle_verifier_public_key.stat.isreg
+          - moodle_verifier_public_key.stat.size > 0
+        fail_msg: Run configure-moodle-safe-executor-api.sh to install the verifier public key first.
+      when: moodle_agent_enabled | bool
+
+    - name: Require explicit staging confirmation before enabling Agent dispatch
+      ansible.builtin.assert:
+        that:
+          - moodle_safe_action_live_confirm | default('') == 'staging'
+        fail_msg: Set moodle_safe_action_live_confirm=staging only during a reviewed staging drill.
+      when: moodle_safe_action_live_enabled | default(false) | bool
+
   tasks:
     - name: Install Docker
       ansible.builtin.dnf:
@@ -530,6 +552,7 @@
                   - targets: ['alertmanager:9093']
           rule_files:
             - /etc/prometheus/rules/moodle.yml
+            - /etc/prometheus/rules/erpnext.yml
           scrape_configs:
             - job_name: prometheus
               static_configs:
@@ -546,6 +569,12 @@
                   labels: {instance: moodle-app-a}
                 - targets: ['{{ hostvars["moodle-app-b"].ansible_host }}:8088']
                   labels: {instance: moodle-app-b}
+          {% if 'erpnext' in groups and 'erpnext-staging-01' in hostvars %}
+            - job_name: erpnext_node
+              static_configs:
+                - targets: ['{{ hostvars["erpnext-staging-01"].ansible_host }}:9100']
+                  labels: {instance: erpnext-staging-01, service: erpnext}
+          {% endif %}
             - job_name: moodle_synthetic
               static_configs:
                 - targets: ['monitor-node-exporter:9100']
@@ -595,9 +624,26 @@
         group: root
         mode: '0644'
 
+    - name: Install ERPNext staging alert rules
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../config/erpnext_alert_rules.yml"
+        dest: "{{ moodle_observability_root }}/prometheus/rules/erpnext.yml"
+        owner: root
+        group: root
+        mode: '0644'
+
     # Validate with a throwaway container from the same pinned image: on a fresh
     # monitor host moodle-prometheus does not exist until the stack is started
     # further below, so `docker exec` into it cannot be used here.
+    - name: Validate ERPNext alert rules with the pinned Prometheus image
+      ansible.builtin.command:
+        cmd: >-
+          docker run --rm --entrypoint promtool
+          -v {{ moodle_observability_root }}/prometheus/rules:/etc/prometheus/rules:ro
+          prom/prometheus:v2.53.3
+          check rules /etc/prometheus/rules/erpnext.yml
+      changed_when: false
+
     - name: Validate Moodle alert rules with the pinned Prometheus image
       tags: [moodle_node_alerts]
       ansible.builtin.command:
@@ -732,19 +778,29 @@
                 REDIS_DB: "0"
                 PROMETHEUS_URL: http://prometheus:9090
                 VECTOR_DB_PATH: /app/vector_db
-                AIOPS_UNIFIED_CORE_MODE: shadow
+                AIOPS_UNIFIED_CORE_MODE: investigate
                 ALERTMANAGER_WEBHOOK_AUTH_REQUIRED: "true"
                 ALERTMANAGER_WEBHOOK_TOKEN_FILE: /run/secrets/alertmanager_webhook_token
                 AIOPS_EVIDENCE_DB: /app/data/evidence.sqlite3
                 AIOPS_EVIDENCE_DB_PATH: /app/data/evidence.db
-                GEMINI_MAX_ATTEMPTS: "1"
-                GEMINI_MAX_REMOTE_CALLS: "1"
+                AIOPS_GATE_APPROVAL_PUBLIC_KEY_FILE: /run/secrets/gate_approval_public_key
+                AIOPS_GATE_APPROVED_ACTORS: safety-officer
+                AIOPS_SAFE_ACTION_API_TOKEN_FILE: /run/secrets/safe_action_api_token
+                AIOPS_SAFE_ACTION_AUDIT_DB: /app/data/safe_action_audit.sqlite3
+                AIOPS_VERIFIER_PUBLIC_KEY_FILE: /run/secrets/verifier_public_key
+                AIOPS_SAFE_ACTION_LIVE_ENABLED: "{{ moodle_safe_action_live_enabled | default(false) | bool | lower }}"
+                SAFE_EXECUTOR_URL: http://host.docker.internal:8765
+                SAFE_EXECUTOR_HMAC_KEY_FILE: /run/secrets/safe_executor_hmac_key
                 PYTHONUNBUFFERED: "1"
               ports: ["127.0.0.1:8000:8000"]
               volumes:
                 - agent-vector-db:/app/vector_db
                 - agent-evidence:/app/data
                 - ./secrets/alertmanager-webhook-token:/run/secrets/alertmanager_webhook_token:ro
+                - /etc/aiops-safe-executor/gate-approval-ed25519.pub:/run/secrets/gate_approval_public_key:ro
+                - /etc/aiops-safe-executor/verifier-ed25519.pub:/run/secrets/verifier_public_key:ro
+                - /etc/aiops-safe-executor/safe-action-api-token:/run/secrets/safe_action_api_token:ro
+                - /etc/aiops-safe-executor/agent-hmac.key:/run/secrets/safe_executor_hmac_key:ro
               healthcheck:
                 test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
                 interval: 15s
@@ -754,6 +810,8 @@
               depends_on:
                 agent-redis:
                   condition: service_healthy
+              extra_hosts:
+                - "host.docker.internal:host-gateway"
             celery-worker:
               image: {{ moodle_agent_image }}
               container_name: moodle-agent-worker
@@ -764,13 +822,11 @@
                 REDIS_DB: "0"
                 PROMETHEUS_URL: http://prometheus:9090
                 VECTOR_DB_PATH: /app/vector_db
-                AIOPS_UNIFIED_CORE_MODE: shadow
+                AIOPS_UNIFIED_CORE_MODE: investigate
                 AIOPS_EVIDENCE_DB: /app/data/evidence.sqlite3
                 AIOPS_EVIDENCE_DB_PATH: /app/data/evidence.db
                 SAFE_EXECUTOR_URL: http://host.docker.internal:8765
                 SAFE_EXECUTOR_HMAC_KEY_FILE: /run/secrets/safe_executor_hmac_key
-                GEMINI_MAX_ATTEMPTS: "1"
-                GEMINI_MAX_REMOTE_CALLS: "1"
                 PYTHONUNBUFFERED: "1"
               command: [celery, -A, core.celery_app.celery_app, worker, --loglevel=INFO, --concurrency=1]
               volumes:

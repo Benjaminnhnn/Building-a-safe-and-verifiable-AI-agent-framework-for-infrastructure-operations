@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from core.action_catalog import ActionCatalog
-from core.moodle_contract import (
+from core.safety.action_catalog import ActionCatalog
+from core.moodle.contract import (
     MoodleContractError,
     load_moodle_capability_contract,
     load_moodle_ground_truth,

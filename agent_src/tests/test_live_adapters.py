@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from core.live_adapters import MoodleAuthVerificationAdapter, _read_secret
+from core.evidence.live_adapters import MoodleAuthVerificationAdapter, _read_secret
 
 
 def test_read_secret_rejects_empty_file(tmp_path: Path) -> None:
@@ -40,7 +40,7 @@ def test_adapter_emits_only_redacted_boolean_probe_results(tmp_path: Path, monke
                 "observations": [{"valid_login": True}],
             }
 
-    monkeypatch.setattr("core.live_adapters.MoodleAuthVerifier", FakeVerifier)
+    monkeypatch.setattr("core.evidence.live_adapters.MoodleAuthVerifier", FakeVerifier)
     result = adapter.verify(stability_seconds=120)
     serialized = str(result)
     assert "synthetic-private-account" not in serialized

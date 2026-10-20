@@ -5,13 +5,13 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest
-from core.adapters import ActionResult, SafeActionRequest, SafeDockerDryRunAdapter
-from core.safe_action_audit import SafeActionAuditStore, SafeDryRunOrchestrator
-from core.safe_execution_gate import GateVerdict, SafeExecutionGate
+from core.evidence.adapters import ActionResult, SafeActionRequest, SafeDockerDryRunAdapter
+from core.safety.safe_action_audit import SafeActionAuditStore, SafeDryRunOrchestrator
+from core.safety.safe_execution_gate import GateVerdict, SafeExecutionGate
 from core.schema.action import RollbackPlan, TypedAction
 from core.schema.common import ActionType, Environment
 
-import core.safe_action_audit as safe_action_audit
+import core.safety.safe_action_audit as safe_action_audit
 
 
 def _request(suffix: str = "1") -> SafeActionRequest:
