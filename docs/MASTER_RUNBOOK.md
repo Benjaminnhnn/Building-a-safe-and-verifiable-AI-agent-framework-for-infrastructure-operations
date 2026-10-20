@@ -2,6 +2,8 @@
 
 > **Status reviewed 2026-10-05:** This document is a historical procedure collection, not a verified end-to-end reproduction guide. The planned Manual/Ansible/AI matrix remains 0/225 empirical cells; synthetic and shadow records are excluded. Use the current Moodle operations and AI Engineer recovery runbooks, and verify every command against the current script/config before running it.
 >
+> **Update 2026-10-14:** the legacy bank/payment lane is removed, so commands here that use `automation/app-release-deploy.sh`, `ansible/inventory.ini`, `release/docker-compose.*.yml`, `release/erpnext/` or `automation/prepare-test-fixtures.sh` no longer apply (those paths do not exist). Deploy Moodle with `docs/MOODLE_OPERATIONS_RUNBOOK.md` §5–§9.
+>
 > The 3 methods x 15 scenarios x 3 repetitions are a target design, not completed results. Infrastructure provisioning, live fault injection, and teardown require separate review and are outside AI-only code work.
 
 ---

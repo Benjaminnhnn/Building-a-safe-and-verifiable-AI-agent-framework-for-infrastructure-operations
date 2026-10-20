@@ -5,7 +5,7 @@ variable "aws_region" {
 
 variable "project_name" {
   type    = string
-  default = "aiops-bank"
+  default = "moodle-aiops"
 }
 
 variable "environment" {
@@ -75,16 +75,6 @@ variable "ssh_user" {
 variable "monitor_instance_type" {
   type    = string
   default = "t3.small"
-}
-
-variable "web_instance_type" {
-  type    = string
-  default = "t2.micro"
-}
-
-variable "core_instance_type" {
-  type    = string
-  default = "t2.micro"
 }
 
 variable "root_volume_size" {

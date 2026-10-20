@@ -1,9 +1,3 @@
-variable "enable_legacy_demo" {
-  description = "Keep existing payment EC2/EIPs by default. Set false only for a new Moodle environment or a reviewed decommission."
-  type        = bool
-  default     = true
-}
-
 variable "monitor_use_management_subnet" {
   description = "New deployments can put monitor in management subnet. Changing this replaces an existing monitor EC2."
   type        = bool

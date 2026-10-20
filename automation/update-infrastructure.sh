@@ -3,13 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DEPLOYMENT_TF_VARS="$REPO_ROOT/terraform/deployment.tfvars"
-DEFAULT_TF_VARS="$REPO_ROOT/terraform/terraform.tfvars"
-if [[ -f "$DEPLOYMENT_TF_VARS" ]]; then
-    TF_VARS="$DEPLOYMENT_TF_VARS"
-else
-    TF_VARS="$DEFAULT_TF_VARS"
-fi
+# deployment.tfvars is the only operator tfvars file (Git-ignored); create it
+# from terraform/deployment.tfvars.example before running this script.
+TF_VARS="$REPO_ROOT/terraform/deployment.tfvars"
 CHECK_ONLY=false
 
 usage() {
@@ -20,8 +16,7 @@ Usage:
 
 Options:
   --var-file <path>  File tfvars to update.
-                     Default: terraform/deployment.tfvars when it exists;
-                     otherwise terraform/terraform.tfvars.
+                     Default: terraform/deployment.tfvars.
   --check            Check whether my_ip_cidr needs updating, without writing.
   -h, --help         Show this help.
 

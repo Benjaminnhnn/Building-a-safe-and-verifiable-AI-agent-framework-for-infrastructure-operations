@@ -382,3 +382,76 @@ def test_benchmark_cli_can_include_erpnext_explicitly() -> None:
     assert parser.parse_args([]).moodle_only is True
     assert parser.parse_args(["--include-erpnext"]).moodle_only is False
     assert parser.parse_args(["--moodle-only"]).moodle_only is True
+
+
+def _gated_report(**overrides: object) -> dict[str, object]:
+    report: dict[str, object] = {
+        "error": None,
+        "incident_status": "gated",
+        "resolved_by_verifier": False,
+        "action_type": "start_container",
+        "gate_decision": "deny",
+        "gate_reasons": [aiops_replay.ROLLBACK_DENIAL_REASON],
+        "catalog_action_lacks_reciprocal_rollback": True,
+        "catalog_action_requires_operator": False,
+        "execution_dry_run": True,
+        "execution_success": False,
+        "execution_error": "pipeline_denied",
+        "simulated": True,
+        "pipeline_mode": "offline_simulation",
+        "live_verification_executed": False,
+        "recovery_claim_scope": "simulated_fixture_only",
+        "scenario_binding": {"execution_permitted_by_binding": False},
+    }
+    report.update(overrides)
+    return report
+
+
+def test_unified_replay_accepts_catalog_confirmed_fail_closed_denial() -> None:
+    assert aiops_replay.replay_outcome(_gated_report()) == aiops_replay.OUTCOME_FAIL_CLOSED
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"gate_reasons": ["action is missing incident-bound diagnosis evidence"]},
+        {"gate_reasons": [aiops_replay.ROLLBACK_DENIAL_REASON, "extra reason"]},
+        {"catalog_action_lacks_reciprocal_rollback": False},
+        {"execution_success": True},
+        {"execution_error": None},
+        {"error": "boom"},
+        {"live_verification_executed": True},
+        {"scenario_binding": {"execution_permitted_by_binding": True}},
+    ],
+)
+def test_unified_replay_rejects_unjustified_or_unsafe_denials(overrides: dict[str, object]) -> None:
+    assert aiops_replay.replay_outcome(_gated_report(**overrides)) == aiops_replay.OUTCOME_INVALID
+
+
+def test_unified_replay_accepts_catalog_confirmed_human_only_pause() -> None:
+    report = _gated_report(
+        gate_decision="human_only",
+        gate_reasons=[aiops_replay.HUMAN_ONLY_REASON],
+        catalog_action_requires_operator=True,
+        execution_error="pipeline_paused:human_only",
+    )
+    assert aiops_replay.replay_outcome(report) == aiops_replay.OUTCOME_HUMAN_ONLY
+    report["catalog_action_requires_operator"] = False
+    assert aiops_replay.replay_outcome(report) == aiops_replay.OUTCOME_INVALID
+
+
+def test_unified_replay_accepts_escalation_only_without_any_action() -> None:
+    report = _gated_report(
+        incident_status="escalated", action_type=None, gate_decision=None,
+        gate_reasons=[], execution_dry_run=None, execution_success=None, execution_error=None,
+    )
+    assert aiops_replay.replay_outcome(report) == aiops_replay.OUTCOME_ESCALATED
+    report["action_type"] = "start_container"
+    assert aiops_replay.replay_outcome(report) == aiops_replay.OUTCOME_INVALID
+
+
+def test_catalog_checks_match_real_moodle_catalog() -> None:
+    assert aiops_replay.lacks_reciprocal_rollback("start_reviewed_compose_service") is True
+    assert aiops_replay.lacks_reciprocal_rollback("not-a-catalog-action") is False
+    assert aiops_replay.requires_operator("remove_tagged_database_ingress_rule") is True
+    assert aiops_replay.requires_operator("start_reviewed_compose_service") is False

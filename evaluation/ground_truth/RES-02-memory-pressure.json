@@ -23,6 +23,6 @@
   "difficulty_level": "hard",
   "expected_detection_time_seconds": 30,
   "expected_recovery_time_seconds": 300,
-  "injector_script": "scripts/inject/RES-02.sh",
-  "reset_script": "scripts/reset/RES-02.sh"
+  "injector_script": "automation/moodle-fault-inject.sh RES-02",
+  "reset_script": "automation/moodle-fault-reset.sh RES-02"
 }

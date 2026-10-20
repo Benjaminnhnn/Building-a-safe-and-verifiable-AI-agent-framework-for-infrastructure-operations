@@ -47,14 +47,6 @@ def test_ground_truth_causal_order_nonempty_unique() -> None:
             assert isinstance(item, str) and item.strip(), f"{p}: causal_order item must be non-empty string"
 
 
-def test_postgresql_chain_causal_order() -> None:
-    paths = _ground_truth_paths()
-    pg = next(p for p in paths if "postgresql" in str(p))
-    data = _load(pg)
-    if data["scenario_id"] == "postgres-chain":
-        assert data["causal_order"] == ["postgresql_down", "payment_api_endpoint_down", "frontend_api_proxy_down"]
-
-
 def test_allowed_forbidden_no_overlap() -> None:
     for p in _ground_truth_paths():
         data = _load(p)

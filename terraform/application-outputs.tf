@@ -14,7 +14,7 @@ output "moodle_application" {
       a = { id = aws_instance.moodle_a.id, private_ip = aws_instance.moodle_a.private_ip, cron_enabled = true }
       b = { id = aws_instance.moodle_b.id, private_ip = aws_instance.moodle_b.private_ip, cron_enabled = false }
     }
-    legacy_demo_enabled = var.enable_legacy_demo
+    legacy_demo_enabled = false # legacy bank stack removed; automation guards still check this
   }
 }
 

@@ -23,6 +23,6 @@
   "difficulty_level": "hard",
   "expected_detection_time_seconds": 90,
   "expected_recovery_time_seconds": 300,
-  "injector_script": "scripts/inject/SEC-01.sh",
-  "reset_script": "scripts/reset/SEC-01.sh"
+  "injector_script": null,
+  "reset_script": null
 }
