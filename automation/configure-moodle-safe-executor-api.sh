@@ -57,7 +57,7 @@ if [[ "${SAFE_EXECUTOR_LIVE_ENABLED:-false}" == true ]]; then
 fi
 ansible-playbook -i "$inventory" \
   "$root/ansible/playbooks/configure-moodle-safe-executor-api.yml" \
-  "${ansible_args[@]}"
+  ${ansible_args[@]+"${ansible_args[@]}"}
 
 printf 'Safe Executor API installed. Live execution remains disabled.\n'
 printf 'Operator private key (keep local; never upload): %s\n' \
