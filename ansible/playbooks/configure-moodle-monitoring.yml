@@ -595,16 +595,34 @@
         group: root
         mode: '0644'
 
-    - name: Validate Moodle alert rules in the running Prometheus image
+    # Validate with a throwaway container from the same pinned image: on a fresh
+    # monitor host moodle-prometheus does not exist until the stack is started
+    # further below, so `docker exec` into it cannot be used here.
+    - name: Validate Moodle alert rules with the pinned Prometheus image
       tags: [moodle_node_alerts]
       ansible.builtin.command:
-        cmd: docker exec moodle-prometheus promtool check rules /etc/prometheus/rules/moodle.yml
+        cmd: >-
+          docker run --rm --entrypoint promtool
+          -v {{ moodle_observability_root }}/prometheus/rules:/etc/prometheus/rules:ro
+          prom/prometheus:v2.53.3
+          check rules /etc/prometheus/rules/moodle.yml
       changed_when: false
+
+    # Only an already running Prometheus needs a reload; a first deployment loads
+    # the rules when "Start Moodle monitoring stack" creates the container.
+    - name: Check whether Prometheus is already running
+      tags: [moodle_node_alerts]
+      ansible.builtin.command:
+        cmd: docker inspect --format '{{ '{{' }}.State.Running{{ '}}' }}' moodle-prometheus
+      register: moodle_prometheus_running
+      changed_when: false
+      failed_when: false
 
     - name: Reload Prometheus after Moodle alert rule validation
       tags: [moodle_node_alerts]
       ansible.builtin.command:
         cmd: docker kill --signal=HUP moodle-prometheus
+      when: moodle_prometheus_running.stdout | trim == 'true'
       changed_when: true
 
     - name: Install Blackbox Exporter configuration

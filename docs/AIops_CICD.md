@@ -118,6 +118,7 @@ push develop (đúng path filter)
           mỗi node: docker login GHCR → cập nhật MOODLE_IMAGE trong
                     /opt/moodle/release/moodle-runtime.env → compose pull
                     → compose up -d --wait → curl http://127.0.0.1:8080/healthz.php
+          node B: chỉ moodle-web (gỡ moodle-cron nếu còn); node A: moodle-web + moodle-cron
       → curl $MOODLE_PUBLIC_URL/healthz.php qua ALB
 ```
 
@@ -166,13 +167,13 @@ Terraform.
   §8 (cập nhật `MOODLE_IMAGE`, `compose up -d --wait` lần lượt node B rồi A).
 - Khi một node lỗi: giữ node còn healthy trong ALB, xem
   `docker compose ps` và log của node lỗi, xác minh image SHA.
-- **Cần xác minh: cron có thể chạy trên cả hai node.** Script gọi
-  `compose up -d --wait moodle-web moodle-cron` trên **cả** node B và A. Service
-  `moodle-cron` thuộc profile `cron`, nhưng Docker Compose vẫn khởi động một
-  service khi nó được gọi đích danh. Nếu đúng như vậy, sau một lần CD sẽ có
-  **hai** cron runner, trái với quy tắc "chỉ node A chạy cron" của runbook §8.
-  Kiểm tra bằng `docker compose ps` trên node B sau lần CD tiếp theo; nếu thấy
-  `moodle-cron`, sửa script để chỉ node A chạy cron.
+- **Chỉ node A chạy cron (đã sửa 19/10/2026).** Docker Compose khởi động một
+  service được gọi đích danh trên dòng lệnh **bất kể profile**: kiểm chứng bằng
+  `docker compose --dry-run up -d moodle-web moodle-cron` trên node B, lệnh này
+  tạo `release-moodle-cron-1`. Trước đây script gọi lệnh đó cho cả hai node, nên
+  mỗi lần CD sẽ sinh hai cron runner. Nay `remote_deploy` nhận chế độ theo node:
+  node B (`no-cron`) chỉ pull/up `moodle-web` và gỡ `moodle-cron` nếu còn sót;
+  node A (`cron`) chạy `moodle-web` và `moodle-cron`.
 - Không dùng CD để khôi phục RDS, sửa quyền EFS, tạo lỗi diễn tập hay xóa hạ
   tầng. Các việc này làm theo runbook, có baseline và bằng chứng riêng.
 
