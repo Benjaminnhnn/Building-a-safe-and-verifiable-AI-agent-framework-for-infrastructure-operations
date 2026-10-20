@@ -164,7 +164,7 @@ jobs:
       - name: Verify runtime image excludes evaluation ground truth
         run: |
           docker run --rm local/ai-agent:ci-${{ github.sha }} python -c \
-            'import os; from pathlib import Path; from core.moodle_alert_integration import process_moodle_alert; assert not Path("/app/evaluation/ground_truth").exists(); os.environ["AIOPS_UNIFIED_CORE_MODE"]="live"; r=process_moodle_alert({"status":"firing","labels":{"service":"moodle","environment":"staging","alertname":"MoodleSyntheticTransactionFailed","scenario_id":"DB-01"}}); assert r["status"]=="escalated" and "ground-truth" in r["reason"] and r["execution_permitted"] is False; print("runtime fixture boundary and live fail-closed verified")'
+            'import os; from pathlib import Path; from core.moodle.alert_integration import process_moodle_alert; assert not Path("/app/evaluation/ground_truth").exists(); os.environ["AIOPS_UNIFIED_CORE_MODE"]="live"; r=process_moodle_alert({"status":"firing","labels":{"service":"moodle","environment":"staging","alertname":"MoodleSyntheticTransactionFailed","scenario_id":"DB-01"}}); assert r["status"]=="escalated" and "ground-truth" in r["reason"] and r["execution_permitted"] is False; print("runtime fixture boundary and live fail-closed verified")'
 
       - name: Build Moodle image
         run: docker build -t local/moodle:ci-${{ github.sha }} moodle
