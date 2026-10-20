@@ -81,7 +81,7 @@
               done
               rm -f /var/lib/moodle-faults/DB-01.ip ;;
             RES-01)
-              containers=$(docker ps -a --format '{{.Names}}')
+              containers=$(docker ps -a --format '{{ '{{' }}.Names{{ '}}' }}')
               if printf '%s\n' "$containers" | grep -Fxq moodle-fault-res-01; then
                 docker rm -f moodle-fault-res-01 >/dev/null
               fi ;;
