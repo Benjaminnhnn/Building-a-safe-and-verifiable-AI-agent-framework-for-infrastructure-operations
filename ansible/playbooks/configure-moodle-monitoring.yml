@@ -967,7 +967,9 @@
 
     - name: Recreate metric and alert services after bind-mounted configuration changes
       ansible.builtin.command:
-        cmd: docker compose -f {{ moodle_observability_root }}/docker-compose.yml up -d --force-recreate monitor-node-exporter prometheus alertmanager
+        # blackbox-exporter reads its bind-mounted modules only at start; without
+        # recreating it, new probe modules are rejected as "Unknown module".
+        cmd: docker compose -f {{ moodle_observability_root }}/docker-compose.yml up -d --force-recreate monitor-node-exporter prometheus alertmanager blackbox-exporter
       changed_when: true
 
     - name: Restart Grafana to apply provisioned configuration
