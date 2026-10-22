@@ -40,6 +40,7 @@ RUNBOOK_ALERT_NAMES = {
     ),
     "moodle/runbook_moodle_security.md": (
         "MoodleDatabasePortExposure", "MoodleTrustedProxyMisconfigured", "MoodleTrustedProxyConfigDrift",
+        "MoodleSsoLoginOptionMissing",
     ),
 }
 

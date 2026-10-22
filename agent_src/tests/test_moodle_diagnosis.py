@@ -9,6 +9,7 @@ from core.moodle.diagnosis import diagnose_moodle_alert
 from core.evidence.evidence_collectors import METRIC_QUERIES_BY_ALERT
 from core.moodle.diagnosis import (
     _ALL_QUERY_IDS,
+    _AUTH_RULES,
     _DIRECT_NODE_RULES,
     _DIRECT_PROBE_RULES,
     _DIRECT_THRESHOLD_RULES,
@@ -50,6 +51,7 @@ def test_every_configured_moodle_alert_has_a_fixed_query_and_diagnosis_contract(
         set(_DIRECT_NODE_RULES)
         | set(_DIRECT_PROBE_RULES)
         | set(_DIRECT_THRESHOLD_RULES)
+        | set(_AUTH_RULES)
         | {"MoodleSyntheticTransactionFailed"}
     )
 
