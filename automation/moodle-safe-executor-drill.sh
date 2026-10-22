@@ -126,7 +126,7 @@ wait_for_prometheus_alert "$alert_name" 150
 
 candidate_id=""
 for _ in {1..30}; do
-  candidate_id="$(remote monitor-ai-01 "sudo docker exec moodle-ai-agent python -c 'import sqlite3,sys; db=sqlite3.connect(\"/app/data/evidence.db\"); row=db.execute(\"select id from evidence where source=? and json_extract(metadata_json, ?) = ? and json_extract(json_extract(metadata_json, ?), ?) = ? and julianday(collected_at) >= julianday(?) order by collected_at desc limit 1\", (\"ai_decision\", \"$.decision_kind\", \"remediation_candidate\", \"$.decision_json\", \"$.scenario_id\", \"CON-01\", sys.argv[1])).fetchone(); print(row[0] if row else \"\")' '$drill_started_at'")"
+  candidate_id="$(remote monitor-ai-01 "sudo docker exec moodle-ai-agent python -c 'import sqlite3,sys; db=sqlite3.connect(\"/app/data/evidence.db\"); row=db.execute(\"select evidence_id from evidence where source=? and json_extract(metadata_json, ?) = ? and json_extract(json_extract(metadata_json, ?), ?) = ? and julianday(collected_at) >= julianday(?) order by collected_at desc limit 1\", (\"ai_decision\", \"$.decision_kind\", \"remediation_candidate\", \"$.decision_json\", \"$.scenario_id\", \"CON-01\", sys.argv[1])).fetchone(); print(row[0] if row else \"\")' '$drill_started_at'")"
   [[ -n "$candidate_id" ]] && break
   sleep 5
 done

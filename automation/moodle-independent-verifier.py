@@ -174,7 +174,10 @@ def verify_window(
     result = VerificationAgent().verify(
         incident, contract, stability_window_seconds=window_seconds, dry_run=False,
         probes=typed_probes, stability_observations=observations,
-        max_stability_gap_seconds=interval_seconds,
+        # The contract limit is 60 s (verifier_attestation rejects larger gaps).
+        # Using interval_seconds here made a 30 s schedule fail as soon as probe
+        # runtime pushed one gap to 30.005 s.
+        max_stability_gap_seconds=60,
     )
     sample_payloads = [
         {"observed_at": observation.observed_at.isoformat(), "checks": sample}
