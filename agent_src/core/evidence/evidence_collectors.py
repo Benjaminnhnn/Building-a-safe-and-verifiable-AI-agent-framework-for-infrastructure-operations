@@ -68,6 +68,10 @@ METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
     "MoodlePublicProbeFailed": (
         ("moodle_public_probe", 'probe_success{job="blackbox_moodle_public"}'),
     ),
+    "MoodleSsoLoginOptionMissing": (
+        ("moodle_sso_login_option", 'probe_success{job="blackbox_moodle_sso"}'),
+        ("moodle_login_page_probe", 'probe_success{job="blackbox_moodle_public",probe="login"}'),
+    ),
     "MoodleRdsTcpProbeFailed": (
         ("moodle_rds_tcp_probe", 'probe_success{job="blackbox_moodle_rds"}'),
     ),

@@ -116,14 +116,20 @@ check_internet_to_postgresql_blocked() {
   local observations
   observations="$(AWS_PROFILE="${AWS_PROFILE:-target-account}" aws route53 get-health-check-status \
     --health-check-id "$external_rds_health_check_id" --output json)" || return 1
+  # Route 53 reports CheckedTime as e.g. 2026-10-21T14:29:56.998000+00:00, but
+  # jq's fromdateiso8601 accepts only YYYY-MM-DDTHH:MM:SSZ. Drop fractional
+  # seconds and map the UTC offset to Z; any other offset still fails to parse,
+  # which keeps the check fail-closed.
   jq -e '
+    def checked_epoch: .StatusReport.CheckedTime
+      | sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | fromdateiso8601;
     .HealthCheckObservations as $observations
     | ($observations | length >= 3)
       and (($observations | map(.IPAddress) | unique | length) >= 3)
       and all($observations[];
         (.StatusReport.Status | startswith("Failure"))
-        and ((now - (.StatusReport.CheckedTime | fromdateiso8601)) >= 0)
-        and ((now - (.StatusReport.CheckedTime | fromdateiso8601)) <= 180)
+        and ((now - checked_epoch) >= 0)
+        and ((now - checked_epoch) <= 180)
       )
   ' <<<"$observations" >/dev/null
 }

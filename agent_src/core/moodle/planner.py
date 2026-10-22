@@ -196,6 +196,26 @@ SCENARIO_REMEDIATION_DISPOSITION: dict[str, dict[str, str]] = {
 }
 
 
+# Authentication-layer dispositions are kept apart from the 15 Moodle fault
+# scenarios. Identity configuration changes are human-only: the catalog action
+# is operator-role, has no reviewed rollback, and is absent from the S3.3
+# execution catalog and the executor wrapper, so every automated path fails
+# closed.
+AUTH_REMEDIATION_DISPOSITION: dict[str, dict[str, str]] = {
+    "MoodleSsoLoginOptionMissing": {
+        "cause_code": "sso_login_option_missing",
+        "disposition": "human_only_escalation",
+        "scenario_id": "SSO-13",
+        "catalog_action_id": "restore_moodle_oauth2_issuer",
+        "target_scope": "staging_moodle_oauth2_issuer",
+        "reason": (
+            "Human-only escalation: an operator must re-enable or repair the Moodle OAuth 2 (Okta) "
+            "issuer; identity configuration is never agent-executable."
+        ),
+    },
+}
+
+
 def plan_moodle_s3_3_remediation(
     *, incident_id: str, alert_name: str, diagnosis: dict[str, Any], evidence: list[Any]
 ) -> dict[str, Any] | None:
@@ -482,6 +502,19 @@ def describe_moodle_remediation_disposition(
             ),
             "execution_permitted": False,
             "approval_required": False,
+        }
+
+    auth_info = AUTH_REMEDIATION_DISPOSITION.get(alert_name)
+    if auth_info is not None and cause_code == auth_info["cause_code"]:
+        return {
+            "disposition": auth_info["disposition"],
+            "scenario_id": auth_info["scenario_id"],
+            "catalog_action_id": auth_info["catalog_action_id"],
+            "target_scope": auth_info["target_scope"],
+            "cause_code": cause_code,
+            "reason": auth_info["reason"],
+            "execution_permitted": False,
+            "approval_required": True,
         }
 
     if alert_name == "MoodleDatabasePortExposure":

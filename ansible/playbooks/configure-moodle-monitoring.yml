@@ -601,6 +601,19 @@
                   replacement: blackbox-exporter:9115
                 - source_labels: [__param_target]
                   target_label: target
+            - job_name: blackbox_moodle_sso
+              metrics_path: /probe
+              params: {module: [http_moodle_sso_option]}
+              static_configs:
+                - targets: ['{{ moodle_monitor_public_url }}/login/index.php']
+                  labels: {service: moodle, probe: sso_login_option}
+              relabel_configs:
+                - source_labels: [__address__]
+                  target_label: __param_target
+                - target_label: __address__
+                  replacement: blackbox-exporter:9115
+                - source_labels: [__param_target]
+                  target_label: target
             - job_name: blackbox_moodle_rds
               metrics_path: /probe
               params: {module: [tcp_connect]}
@@ -689,6 +702,17 @@
             tcp_connect:
               prober: tcp
               timeout: 10s
+            # Read-only: the login page must render and still offer the OAuth 2
+            # (Okta) sign-in link. No credentials are sent.
+            http_moodle_sso_option:
+              prober: http
+              timeout: 10s
+              http:
+                method: GET
+                preferred_ip_protocol: ip4
+                valid_status_codes: [200]
+                fail_if_body_not_matches_regexp:
+                  - 'auth/oauth2/login\.php\?id=[0-9]+'
 
     - name: Install Alertmanager baseline configuration
       ansible.builtin.copy:
@@ -943,7 +967,9 @@
 
     - name: Recreate metric and alert services after bind-mounted configuration changes
       ansible.builtin.command:
-        cmd: docker compose -f {{ moodle_observability_root }}/docker-compose.yml up -d --force-recreate monitor-node-exporter prometheus alertmanager
+        # blackbox-exporter reads its bind-mounted modules only at start; without
+        # recreating it, new probe modules are rejected as "Unknown module".
+        cmd: docker compose -f {{ moodle_observability_root }}/docker-compose.yml up -d --force-recreate monitor-node-exporter prometheus alertmanager blackbox-exporter
       changed_when: true
 
     - name: Restart Grafana to apply provisioned configuration

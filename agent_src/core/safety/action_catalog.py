@@ -51,6 +51,7 @@ _ACTION_TYPES: dict[str, ActionType] = {
     "restore_nginx_upstream": ActionType.RUN_ANSIBLE_PLAYBOOK,
     "restore_previous_approved_release": ActionType.RUN_ANSIBLE_PLAYBOOK,
     "remove_tagged_database_ingress_rule": ActionType.RUN_ANSIBLE_PLAYBOOK,
+    "restore_moodle_oauth2_issuer": ActionType.RUN_ANSIBLE_PLAYBOOK,
     "restore_moodledata_ownership": ActionType.RESTORE_MOODLEDATA_PERMISSION,
     "restore_moodle_security_config": ActionType.RUN_ANSIBLE_PLAYBOOK,
     "verify_tls_database_connection": ActionType.READ_HEALTH,
@@ -101,6 +102,7 @@ _TARGET_RESOURCE_TYPES: dict[str, set[ResourceType]] = {
     "restore_nginx_upstream": {ResourceType.APPLICATION, ResourceType.ENDPOINT},
     "restore_previous_approved_release": {ResourceType.APPLICATION},
     "remove_tagged_database_ingress_rule": {ResourceType.NETWORK},
+    "restore_moodle_oauth2_issuer": {ResourceType.ENDPOINT, ResourceType.APPLICATION},
     "restore_moodledata_ownership": {ResourceType.VOLUME},
     "restore_moodle_security_config": {ResourceType.APPLICATION},
     "verify_tls_database_connection": {ResourceType.DATABASE},
@@ -381,6 +383,20 @@ class ActionCatalog:
             CatalogEntry(
                 action_id="remove_tagged_database_ingress_rule",
                 description="Human-only removal of the exact tagged unauthorized RDS security-group ingress rule.",
+                adapter="ansible",
+                permission=_operator_staging,
+                blast_radius="HIGH",
+                is_reversible=True,
+                rollback_action=None,
+                idempotent=True,
+                forbidden_in_production=True,
+            ),
+            CatalogEntry(
+                action_id="restore_moodle_oauth2_issuer",
+                description=(
+                    "Human-only re-enable or repair of the reviewed Moodle OAuth 2 (Okta) issuer; "
+                    "identity configuration is never agent-executable."
+                ),
                 adapter="ansible",
                 permission=_operator_staging,
                 blast_radius="HIGH",

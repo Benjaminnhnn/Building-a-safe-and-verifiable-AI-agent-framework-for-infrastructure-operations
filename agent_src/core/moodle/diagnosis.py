@@ -40,8 +40,16 @@ _ALL_QUERY_IDS = (
     "moodle_fault_net01_hosts_override",
     "moodle_fault_con01_web_stopped",
     "moodle_fault_sec02_fixture_mode_zero",
+    "moodle_sso_login_option",
+    "moodle_login_page_probe",
 )
 _MAX_SAMPLE_AGE_SECONDS = 120
+# Authentication-layer rules: (signal that must fail, healthy page that must
+# still pass). Both are required so an infrastructure outage is never
+# misattributed to identity configuration.
+_AUTH_RULES = {
+    "MoodleSsoLoginOptionMissing": ("moodle_sso_login_option", "moodle_login_page_probe"),
+}
 _MAX_FUTURE_SKEW_SECONDS = 30
 _DIRECT_PROBE_RULES = {
     "MoodleRdsTcpProbeFailed": ("moodle_rds_tcp_probe", "rds_path_probe_failed"),
@@ -159,7 +167,14 @@ def diagnose_moodle_alert(alert_name: str, evidence: list[Any]) -> dict[str, Any
     direct_rule = _DIRECT_PROBE_RULES.get(alert_name)
     direct_node_rule = _DIRECT_NODE_RULES.get(alert_name)
     threshold_rule = _DIRECT_THRESHOLD_RULES.get(alert_name)
-    if alert_name != "MoodleSyntheticTransactionFailed" and direct_rule is None and direct_node_rule is None and threshold_rule is None:
+    auth_rule = _AUTH_RULES.get(alert_name)
+    if (
+        alert_name != "MoodleSyntheticTransactionFailed"
+        and direct_rule is None
+        and direct_node_rule is None
+        and threshold_rule is None
+        and auth_rule is None
+    ):
         return {
             "status": "insufficient_evidence",
             "reason": "no evidence-derived decision rule is approved for this alert",
@@ -204,11 +219,12 @@ def diagnose_moodle_alert(alert_name: str, evidence: list[Any]) -> dict[str, Any
                 (float(value), item.evidence_id, collected_at, str(instance) if instance else None)
             )
 
-    required_queries = (
-        _REQUIRED_QUERY_IDS
-        if alert_name == "MoodleSyntheticTransactionFailed"
-        else (direct_rule or direct_node_rule or threshold_rule)[0:1]
-    )
+    if alert_name == "MoodleSyntheticTransactionFailed":
+        required_queries = _REQUIRED_QUERY_IDS
+    elif auth_rule is not None:
+        required_queries = auth_rule
+    else:
+        required_queries = (direct_rule or direct_node_rule or threshold_rule)[0:1]
     missing = [query_id for query_id in required_queries if not samples[query_id]]
     if missing:
         return {
@@ -300,6 +316,30 @@ def diagnose_moodle_alert(alert_name: str, evidence: list[Any]) -> dict[str, Any
 
     def exact_instances(query_id: str, expected: dict[str, float]) -> bool:
         return instance_values(query_id) == expected
+
+    if auth_rule is not None:
+        signal_query, healthy_page_query = auth_rule
+        if status[signal_query] != 0 or status[healthy_page_query] != 1:
+            return {
+                "status": "conflicting_evidence",
+                "reason": "the SSO alert requires a failing sign-in option probe while the login page probe passes",
+                "evidence_refs": sorted(set(refs_by_query[signal_query] + refs_by_query[healthy_page_query])),
+                "hypothesis": None,
+                "confidence": 0.0,
+                "action_candidate": None,
+            }
+        return {
+            "status": "hypothesis",
+            "cause_code": "sso_login_option_missing",
+            "reason": (
+                "fresh probes show the login page renders while its OAuth 2 sign-in option is absent; "
+                "the identity configuration is implicated, the exact setting is not proven"
+            ),
+            "evidence_refs": sorted(set(refs_by_query[signal_query] + refs_by_query[healthy_page_query])),
+            "hypothesis": "The Moodle OAuth 2 (Okta) sign-in option is missing while the login page is healthy",
+            "confidence": 0.65,
+            "action_candidate": None,
+        }
 
     if direct_rule is not None:
         query_id, cause_code = direct_rule

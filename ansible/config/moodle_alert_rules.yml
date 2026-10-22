@@ -17,6 +17,15 @@ groups:
         for: 30s
         labels: {severity: critical, service: moodle, environment: staging, resource_id: moodle-web-endpoint, runbook: moodle-public-probe}
         annotations: {summary: "Moodle public {{ $labels.probe }} probe failed"}
+      # Authentication-layer signal: fires only while the login page itself is
+      # healthy, so it does not duplicate MoodlePublicProbeFailed.
+      - alert: MoodleSsoLoginOptionMissing
+        expr: |
+          (probe_success{job="blackbox_moodle_sso"} == 0)
+          and on() (probe_success{job="blackbox_moodle_public",probe="login"} == 1)
+        for: 1m
+        labels: {severity: critical, service: moodle, environment: staging, resource_id: moodle-web-endpoint, runbook: moodle-sso-login-option}
+        annotations: {summary: Moodle login page is up but the Okta SSO sign-in option is missing}
       - alert: MoodleRdsTcpProbeFailed
         expr: probe_success{job="blackbox_moodle_rds"} == 0
         for: 1m
