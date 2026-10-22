@@ -55,7 +55,7 @@ thường là hậu quả của bước trước.
 | **Safety Gate** | **ALLOW sau 2 chữ ký độc lập** (Safety Officer + Operator) | **HUMAN_ONLY**: Agent không được tự sửa cấu hình định danh |
 | **Ai sửa** | Safe Executor (forced-command, allowlist) | Operator làm tay theo runbook |
 | **Verifier** | `moodle-independent-verifier.py`, ký attestation, đưa incident sang `RESOLVED` | Probe OIDC lặp 5 mẫu trong cửa sổ 120 s. **Chưa ký attestation, chưa đưa incident sang `RESOLVED`** (xem 5.1). Thêm `moodle-auth-verify.py` khi staging có HTTPS |
-| **Trạng thái** | ✅ **Đạt đủ 11 bước** ngày 22/10/2026 (lần chạy thứ 5, sau 3 bản sửa; xem mục 9) | ✅ **Đạt bước ① → ⑥** ngày 22/10/2026 (xem mục 9) |
+| **Trạng thái** | ✅ **Đạt đủ 11 bước** ngày 22/10/2026 (lần chạy thứ 5, sau 3 bản sửa; xem mục 9) | ✅ **Đạt đủ tiêu chí 5.5** ngày 22/10/2026, gồm đăng nhập đầu-cuối bằng Okta (xem mục 9) |
 
 **Vì sao kịch bản 2 khác kịch bản 1?** Đây là hệ quả của thiết kế an toàn, không
 phải thiếu sót của kịch bản:
@@ -865,6 +865,25 @@ echo "exit=$?"
 `student.test` → vào được Dashboard. Đăng nhập `moodle-denied` → Okta từ chối
 (user không được assign app).
 
+Lần đầu đăng nhập, Okta đòi đăng ký Okta Verify. Nút *Set up Okta Verify* trên
+máy Mac chỉ hoạt động khi đã cài ứng dụng Okta Verify for macOS. Cách nhanh hơn:
+*Return to authenticator list*, rồi đăng ký bằng điện thoại qua mã QR.
+
+**Kiểm tra chéo (c) trong DB Moodle, chỉ đọc**, chạy với `-u 1000:1999` (mục 5.6).
+Đoạn PHP chỉ dùng `SELECT`, đọc các bảng `user`, `auth_oauth2_linked_login` và
+`logstore_standard_log`:
+
+| Kiểm tra | Kỳ vọng |
+|---|---|
+| Số tài khoản có email `student.test@…` | Đúng **1**, `auth = oauth2` |
+| `username` của tài khoản đó | Là `sub` của Okta (bắt đầu bằng `00u`), không phải email |
+| `auth_oauth2_linked_login` của user | Đúng **1** dòng, issuer `Okta` |
+| `firstaccess` / `currentlogin` và sự kiện `\core\event\user_loggedin` | Trùng thời điểm đăng nhập vừa làm |
+| Số tài khoản `moodle-denied` | **0**: Okta chặn trước khi tới Moodle, nên Moodle không tạo account |
+
+`lastlogin` sẽ bằng 0 ở lần đăng nhập đầu tiên, vì cột đó lưu **lần đăng nhập trước**.
+Dùng `firstaccess`/`currentlogin` để xác nhận.
+
 #### Bước 7: Kết thúc
 
 | Check bằng | Kỳ vọng |
@@ -1081,6 +1100,7 @@ Evidence: `terraform/.artifacts/moodle-safe-executor/CON-01-20261022T005639Z.jso
 | ⑤ Operator bật lại (CLI) | 02:08:55 | Nút Okta hiện lại; alert hết firing lúc 02:08:58 |
 | ⑥ Verifier (probe OIDC) | 02:09:40 → 02:11:49 | 5/5 mẫu đạt |
 | Sau khi cập nhật Okta | 08:45 | URL authorize mà Moodle tạo ra: Okta trả **200** (trang Sign In), 3/3 lần |
+| ⑥c Đăng nhập đầu-cuối | 08:44:29 | `student.test` đăng ký Okta Verify bằng điện thoại rồi đăng nhập qua Okta, vào Dashboard. DB Moodle xác nhận: đúng **1** tài khoản `auth = oauth2`, username là `sub` của Okta, 1 liên kết OAuth 2 tới issuer `Okta`, sự kiện `user_loggedin` cùng thời điểm. `moodle-denied` bị Okta từ chối; Moodle có **0** tài khoản `moodle-denied` |
 
 | Chỉ số | Giá trị |
 |---|---|
@@ -1089,5 +1109,21 @@ Evidence: `terraform/.artifacts/moodle-safe-executor/CON-01-20261022T005639Z.jso
 | Tới khi kết thúc cửa sổ ổn định của probe OIDC | 5 phút 23 giây |
 
 **Giới hạn cần nêu khi trình bày:** Verifier của SSO-13 là probe OIDC chạy tay,
-chưa ký attestation và chưa đưa incident sang `RESOLVED`. Đăng nhập đầu-cuối bằng
-`student.test` (⑥c) cần Okta Verify đã đăng ký cho user này.
+chưa ký attestation và chưa đưa incident sang `RESOLVED`. Xem mục 9.3.
+
+**Bài học khi đăng nhập lần đầu:** Okta đòi đăng ký Okta Verify theo policy MFA.
+Nút *Set up Okta Verify* trên máy Mac chỉ hoạt động khi đã cài ứng dụng Okta
+Verify for macOS. Cách nhanh hơn là *Return to authenticator list*, rồi đăng ký
+bằng điện thoại qua mã QR.
+
+### 9.3. Giới hạn của kịch bản 2
+
+| # | Giới hạn | Hệ quả | Hướng khắc phục |
+|---|---|---|---|
+| L1 | **Verifier không ký attestation và không đưa incident sang `RESOLVED`.** Luồng attestation chỉ chấp nhận biên nhận `executed` của executor; SSO-13 do người sửa nên không có biên nhận | Incident SSO-13 vẫn ở trạng thái chờ xác minh. Bằng chứng phục hồi là kết quả probe, không phải attestation có chữ ký | Thêm luồng "operator-remediated": operator ký biên nhận hành động thủ công, verifier dùng hợp đồng probe riêng cho SSO, rồi ký attestation |
+| L2 | **Probe verifier là script chạy tay**, chưa nằm trong `moodle-independent-verifier.py` và `live_contracts.py` | Kết quả phụ thuộc người chạy; chưa có hợp đồng allowed/forbidden/related cho SSO | Đưa probe OIDC vào hợp đồng của verifier: allowed (link SSO chuyển tới Okta authorize, Okta trả 200), forbidden (user bị cấm không vào được), related (healthz, ALB) |
+| L3 | **`moodle-auth-verify.py` không chạy được** vì staging chỉ có HTTP, mà script bắt buộc HTTPS | Thiếu kiểm tra đăng nhập tự động trong cửa sổ ổn định | P6: cấu hình HTTPS cho ALB (ACM + hostname), rồi chạy (b) |
+| L4 | **Đăng nhập đầu-cuối qua Okta là thao tác tay**, cần Okta Verify trên điện thoại | Không lặp lại tự động được; MFA chặn mọi script | Dùng user Okta riêng cho probe với policy MFA phù hợp cho staging, hoặc giữ là bước kiểm tra tay có bằng chứng DB |
+| L5 | **Alert chỉ phát hiện việc nút SSO biến mất.** Các lỗi phía Okta (sai redirect URI, client secret, policy) đều có nút nhưng hỏng ở bước sau | Lỗi SSO-10/11/12/15 không sinh alert này | Bổ sung probe gọi URL authorize và kiểm tra Okta trả 200 (như ⑥a mở rộng) |
+| L6 | **Thao tác tạo lỗi và sửa chạy qua CLI**, tương đương biểu tượng con mắt nhưng không đi qua giao diện | Không có thao tác UI để quay video trình diễn | Khi trình diễn, dùng UI cho bước ① và ⑤; giữ CLI để lặp lại nhanh |
+| L7 | **Redirect URI trên Okta phải cập nhật tay sau mỗi lần dựng lại hạ tầng**, vì DNS của ALB đổi | Okta trả 400 nếu quên | Dùng hostname cố định (Route 53 + HTTPS) hoặc đưa app Okta vào Terraform |
