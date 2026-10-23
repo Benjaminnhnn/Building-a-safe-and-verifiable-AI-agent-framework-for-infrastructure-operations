@@ -125,6 +125,7 @@ def verify_window(
     contract: dict[str, list[str]], window_seconds: int = 120,
     interval_seconds: int = 30, sleep=time.sleep, monotonic=time.monotonic,
     now=lambda: datetime.now(timezone.utc),
+    on_sample=None,
 ) -> dict[str, Any]:
     if window_seconds < 120 or not 1 <= interval_seconds <= 60:
         raise ValueError("verification requires a >=120s window and a 1..60s sampling interval")
@@ -144,6 +145,11 @@ def verify_window(
             missing, extra = sorted(required - set(sample)), sorted(set(sample) - required)
             raise ValueError(f"probe contract coverage mismatch; missing={missing}, extra={extra}")
         samples.append(sample)
+        if on_sample is not None:
+            try:
+                on_sample(index + 1, sample_count, observed_at, sample, contract)
+            except Exception:  # noqa: BLE001 - progress output must never change the verdict
+                pass
         observations.append(StabilityObservation(
             observed_at=observed_at,
             healthy=all(sample[name] for name in contract["allowed"]),
@@ -209,6 +215,40 @@ def verify_window(
     }
 
 
+_GROUP_LABEL = {
+    "allowed": "phải hoạt động",
+    "forbidden": "phải bị chặn",
+    "related": "liên quan sự cố",
+}
+
+
+def _telegram_progress(scenario_id: str, window_seconds: int, interval_seconds: int):
+    """Return an on_sample callback that posts each sample to Telegram (best effort)."""
+    sys.path.insert(0, str(REPO_ROOT / "automation" / "lib"))
+    from telegram_client import notify
+
+    def on_sample(index, total, observed_at, sample, contract):
+        if index == 1:
+            groups = "\n".join(
+                f"• {group} ({_GROUP_LABEL[group]}): {', '.join(contract[group])}" for group in ("allowed", "forbidden", "related")
+            )
+            notify(
+                f"🔎 ⑥ INDEPENDENT VERIFIER bắt đầu ({scenario_id})\n"
+                f"Chạy trên máy operator, không có khoá Executor. Cửa sổ {window_seconds} s, "
+                f"{total} mẫu × {interval_seconds} s. Hợp đồng:\n{groups}"
+            )
+        parts = []
+        for group in ("allowed", "forbidden", "related"):
+            names = contract[group]
+            ok = sum(sample[name] for name in names)
+            failed = [name for name in names if not sample[name]]
+            parts.append(f"{group} {ok}/{len(names)} {'✅' if not failed else '❌ ' + ', '.join(failed)}")
+        verdict = "đạt" if all(sample.values()) else "HỎNG"
+        notify(f"🔎 Mẫu {index}/{total} lúc {observed_at.strftime('%H:%M:%S')} UTC: {verdict}\n" + "\n".join(parts))
+
+    return on_sample
+
+
 class _Probe:
     def __init__(self, name: str, probe_type: str, result: ProbeResult) -> None:
         self.name, self.probe_type, self._result = name, probe_type, result
@@ -226,13 +266,20 @@ def main() -> int:
     parser.add_argument("--scenario-id", required=True, choices=sorted(_SCENARIO_RELATED_CHECKS))
     parser.add_argument("--window-seconds", type=int, default=120)
     parser.add_argument("--interval-seconds", type=int, default=30)
+    parser.add_argument("--telegram-progress", action="store_true",
+                        help="post each probe sample to Telegram (operator credentials from release/.env)")
     args = parser.parse_args()
+    on_sample = (
+        _telegram_progress(args.scenario_id, args.window_seconds, args.interval_seconds)
+        if args.telegram_progress else None
+    )
     try:
         result = verify_window(
             audit_db=args.audit_db, incident_id=args.incident_id, request_id=args.request_id,
             signing_key=args.signing_key,
             scenario_id=args.scenario_id, contract=_contract_for_scenario(args.scenario_id),
             window_seconds=args.window_seconds, interval_seconds=args.interval_seconds,
+            on_sample=on_sample,
         )
     except (OSError, ValueError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
         print(json.dumps({"verdict": "not_resolved", "resolution_eligible": False, "error": str(exc)}))

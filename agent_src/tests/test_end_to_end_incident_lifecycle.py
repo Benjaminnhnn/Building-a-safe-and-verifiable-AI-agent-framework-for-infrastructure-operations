@@ -307,6 +307,10 @@ def test_e2e_happy_path_alert_to_verified_resolved_with_intact_audit_chain(
     assert prepared["status"] == "approval_required"
     assert prepared["execution_permitted"] is False
     assert prepared["resolution_eligible"] is False
+    # The gate explains itself to the approver without approving anything.
+    preview = prepared["gate_preview"]
+    assert preview["decision"] == "REQUIRE_APPROVAL"
+    assert len(preview["checks"]) == 8 and preview["approval_reasons"]
     request_id = prepared["request"]["request_id"]
 
     # 3. Dual independent Ed25519 approvals + execute_moodle_live_handoff

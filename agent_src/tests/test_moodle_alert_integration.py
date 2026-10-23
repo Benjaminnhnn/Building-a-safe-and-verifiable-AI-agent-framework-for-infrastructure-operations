@@ -426,13 +426,12 @@ def test_celery_worker_routes_staging_moodle_alert_to_unified_pipeline(monkeypat
 
     assert len(sent) == 1
     assert metric_reports == [report]
-    assert "hypothesis=RDS path probe failed" in sent[0]
-    assert "read_only_proposal=read_health:act-1 target=postgres-db" in sent[0]
-    assert "remediation_candidate=DB-01:remove_scoped_db_reject action=act-2" in sent[0]
-    assert "approvals=2-required dispatch=False" in sent[0]
-    assert "decision_evidence=ev-diagnosis,ev-plan" in sent[0]
+    assert "[DB-01]" in sent[0]
+    assert "Nguyên nhân: RDS path probe failed" in sent[0]
+    assert "remove_scoped_db_reject" in sent[0] and "staging_moodle_nodes" in sent[0]
+    assert "cần 2 chữ ký người duyệt" in sent[0]
     assert "execution_permitted=False" in sent[0]
-    assert "resolution_eligible=False" in sent[0]
+    assert "incident=i1" in sent[0]
 
 
 def test_moodle_pipeline_metrics_record_mode_and_bounded_status(monkeypatch) -> None:

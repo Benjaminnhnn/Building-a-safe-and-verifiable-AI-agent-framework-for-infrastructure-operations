@@ -250,6 +250,35 @@ def test_successful_window_signs_result_without_resolving_the_local_snapshot(
     assert len(events) == 1
 
 
+def test_progress_callback_sees_every_sample_and_cannot_change_the_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    audit_db = tmp_path / "audit.sqlite"
+    _audit_db(audit_db)
+    contract = {"allowed": ["moodle_healthy"], "forbidden": ["internet_to_postgresql"], "related": ["targets_healthy"]}
+    monkeypatch.setattr(
+        verifier, "_run_probe",
+        lambda *_: {"moodle_healthy": True, "internet_to_postgresql": True, "targets_healthy": True},
+    )
+    seen = []
+
+    def on_sample(index, total, _observed_at, sample, _contract):
+        seen.append((index, total, all(sample.values())))
+        raise RuntimeError("telegram down")  # must be swallowed
+
+    elapsed = [0.0]
+    base = datetime.now(timezone.utc) - timedelta(seconds=120)
+    result = verifier.verify_window(
+        audit_db=audit_db, signing_key=_private_key(tmp_path / "verifier.pem"),
+        incident_id="inc-1", request_id="req-1", scenario_id="DB-01", contract=contract,
+        sleep=lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds),
+        monotonic=lambda: elapsed[0], now=lambda: base + timedelta(seconds=elapsed[0]),
+        on_sample=on_sample,
+    )
+    assert [item[0] for item in seen] == [1, 2, 3, 4, 5] and all(item[2] for item in seen)
+    assert result["verdict"] == "ready_for_runtime_acceptance"
+
+
 def test_executed_request_remains_verifying_until_a_eligible_result_is_stored(
     tmp_path: Path,
 ) -> None:

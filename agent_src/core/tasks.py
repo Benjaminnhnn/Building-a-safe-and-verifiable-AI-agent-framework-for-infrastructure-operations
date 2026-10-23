@@ -25,6 +25,7 @@ from google import genai
 from google.genai import types
 from core.moodle.alert_integration import process_moodle_alert
 from utils.telegram_bot import send_telegram_message
+from core.moodle import safe_action_notify
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -619,11 +620,7 @@ async def process_single_alert(alert: dict) -> None:
             if not _reserve_alert_notification(alert, "resolved"):
                 ALERTS_PROCESSED_TOTAL.labels(status="deduped").inc()
                 return
-            send_telegram_message(
-                f"Alertmanager báo hết cảnh báo {alert_name} trên `{instance}`. "
-                "Incident vẫn cần Independent Verifier để xác nhận RESOLVED.",
-                parse_mode=None,
-            )
+            send_telegram_message(safe_action_notify.format_alert_resolved(alert_name, instance), parse_mode=None)
             ALERTS_PROCESSED_TOTAL.labels(status="verification_pending").inc()
             return
 
@@ -651,31 +648,7 @@ async def process_single_alert(alert: dict) -> None:
         AI_WORKFLOW_LATENCY_SECONDS.observe(time.time() - start_time)
         _record_moodle_pipeline_event(report)
         ALERTS_PROCESSED_TOTAL.labels(status="success").inc()
-        diagnosis = report.get("diagnosis") or {}
-        proposal = report.get("plan_candidate") or {}
-        remediation = report.get("remediation_candidate") or {}
-        hypothesis = str(diagnosis.get("hypothesis") or diagnosis.get("reason") or "none")[:240]
-        proposal_summary = (
-            f"{proposal.get('action_type')}:{proposal.get('action_id')} target={proposal.get('target_resource_id')}"
-            if proposal else "none"
-        )
-        remediation_summary = (
-            f"{remediation.get('scenario_id')}:{remediation.get('catalog_action_id')} "
-            f"action={((remediation.get('action') or {}).get('action_id', 'unknown'))} "
-            f"scope={remediation.get('target_scope')} approvals=2-required dispatch=False"
-            if remediation else "none"
-        )
-        refs = ",".join(report.get("decision_evidence_refs", [])[:2]) or "none"
-        send_telegram_message(
-            "Moodle evidence pipeline: "
-            f"{report['status']} | incident={report.get('incident_id', 'unassigned')} | "
-            f"hypothesis={hypothesis} | read_only_proposal={proposal_summary} | "
-            f"remediation_candidate={remediation_summary} | "
-            f"candidate_evidence={report.get('remediation_candidate_evidence_id', 'none')} | "
-            f"decision_evidence={refs} | execution_permitted={report.get('execution_permitted', False)} | "
-            f"resolution_eligible={report.get('resolution_eligible', False)}",
-            parse_mode=None,
-        )
+        send_telegram_message(safe_action_notify.format_alert_report(alert, report), parse_mode=None)
         logger.info("Moodle evidence pipeline result: %s", json.dumps(report, sort_keys=True))
     except Exception as exc:
         ALERTS_PROCESSED_TOTAL.labels(status="failure").inc()

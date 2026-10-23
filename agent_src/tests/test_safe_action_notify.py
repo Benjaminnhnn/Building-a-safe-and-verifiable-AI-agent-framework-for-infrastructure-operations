@@ -24,9 +24,15 @@ PREPARED = {
     "gate_action_sha256": "a" * 64,
     "executor_action_sha256": "b" * 64,
     "execution_permitted": False,
+    "gate_preview": {
+        "decision": "REQUIRE_APPROVAL",
+        "reason": "valid, action-bound approval is required",
+        "checks": [f"check {n}" for n in range(8)],
+        "approval_reasons": ["confidence 0.65 < 0.80"],
+    },
 }
 EXECUTED = {
-    "status": "executed",
+    "status": "awaiting_verification",
     "mutated": True,
     "execution_permitted": True,
     "gate": {"decision": "ALLOW", "reason": "passed", "action_sha256": "a" * 64},
@@ -48,24 +54,70 @@ PAYLOAD = {
 }
 
 
-def test_prepare_message_names_gate_and_hides_signatures() -> None:
+def test_prepare_message_lists_each_gate_check_and_hides_full_hash() -> None:
     text = notify_mod.format_prepare("ev-cand", PREPARED)
-    assert text.startswith("④ Safety Gate")
-    assert "CON-01" in text and "moodle-app-b" in text and "2 chữ ký" in text
+    assert "④ SAFETY GATE" in text
+    assert text.count("✅") == 8 and "confidence 0.65 < 0.80" in text
+    assert "CHƯA ĐƯỢC THỰC THI" in text and "2 chữ ký" in text
     assert "a" * 64 not in text  # only a hash prefix is shown
 
 
-def test_execute_message_distinguishes_executed_from_blocked() -> None:
-    assert notify_mod.format_execute("ev-cand", EXECUTED).startswith("⑤ Executor: đã thực thi")
-    blocked = {**EXECUTED, "status": "blocked", "mutated": False, "gate": {"decision": "DENY", "reason": "expired"}}
+def test_prepare_message_reports_a_gate_denial() -> None:
+    denied = {**PREPARED, "gate_preview": {"decision": "DENY", "reason": "kill switch is enabled"}}
+    text = notify_mod.format_prepare("ev-cand", denied)
+    assert "BỊ CHẶN: kill switch is enabled" in text and "✅" not in text
+
+
+def test_execute_message_reads_the_executor_result_not_the_workflow_status() -> None:
+    # The workflow reports awaiting_verification; the executor result says executed.
+    assert "⑤ EXECUTOR ĐÃ THỰC THI" in notify_mod.format_execute("ev-cand", EXECUTED)
+    blocked = {
+        "status": "blocked", "mutated": False,
+        "gate": {"decision": "DENY", "reason": "approval expired"},
+        "result": {"status": "rejected", "mutated": False},
+    }
     text = notify_mod.format_execute("ev-cand", blocked)
-    assert "KHÔNG thực thi" in text and "expired" in text
+    assert "KHÔNG THỰC THI" in text and "approval expired" in text
 
 
 def test_verification_message_counts_passing_samples() -> None:
     text = notify_mod.format_verification("req-1", PAYLOAD, {"status": "resolved", "event_hash": "c" * 64})
-    assert text.startswith("⑥ Independent Verifier: RESOLVED")
+    assert "⑥ INDEPENDENT VERIFIER: RESOLVED" in text
     assert "4/5" in text
+
+
+def test_alert_report_for_candidate_says_ai_will_not_execute() -> None:
+    report = {
+        "incident_id": "inc-1",
+        "status": "remediation_candidate",
+        "diagnosis": {"hypothesis": "web container stopped", "cause_code": "web_container_not_running",
+                      "confidence": 0.65, "affected_nodes": ["moodle-app-b"], "evidence_refs": ["a", "b"]},
+        "remediation_disposition": "{'disposition': 'candidate_proposed', 'scenario_id': 'CON-01'}",
+        "remediation_candidate": {
+            "catalog_action_id": "start_reviewed_compose_service", "target_scope": "moodle-app-b",
+            "action": {"target_resource_id": "moodle-app-b", "evidence_refs": ["e"] * 8,
+                       "rollback_plan": {"rollback_action_id": "reconcile_con01_safe_baseline"}},
+        },
+    }
+    alert = {"labels": {"alertname": "MoodleWebContainerMissing", "instance": "moodle-app-b"}}
+    text = notify_mod.format_alert_report(alert, report)
+    assert "[CON-01]" in text and "8 bằng chứng" in text
+    assert "reconcile_con01_safe_baseline" in text and "AI KHÔNG tự thực thi" in text
+
+
+def test_alert_report_for_human_only_has_no_proposal_to_execute() -> None:
+    report = {
+        "incident_id": "inc-2",
+        "status": "investigation_hypothesis",
+        "diagnosis": {"hypothesis": "SSO option missing", "cause_code": "sso_login_option_missing", "confidence": 0.65},
+        "remediation_disposition": {"disposition": "human_only_escalation", "scenario_id": "SSO-13",
+                                    "catalog_action_id": "restore_moodle_oauth2_issuer",
+                                    "target_scope": "staging_moodle_oauth2_issuer"},
+        "remediation_candidate": None,
+    }
+    text = notify_mod.format_alert_report({"labels": {"alertname": "MoodleSsoLoginOptionMissing"}}, report)
+    assert "CHỈ NGƯỜI ĐƯỢC SỬA" in text and "restore_moodle_oauth2_issuer" in text
+    assert "ĐỀ XUẤT KHẮC PHỤC" not in text
 
 
 def test_notify_swallows_sender_failures() -> None:
@@ -95,7 +147,7 @@ def test_prepare_endpoint_sends_step_four(tmp_path, monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert len(sent) == 1 and sent[0].startswith("④")
+    assert len(sent) == 1 and "④ SAFETY GATE" in sent[0]
 
 
 def test_execute_endpoint_reports_rejection_without_secrets(tmp_path, monkeypatch) -> None:
@@ -124,7 +176,7 @@ def test_execute_endpoint_reports_rejection_without_secrets(tmp_path, monkeypatc
     )
 
     assert response.status_code == 409
-    assert len(sent) == 1 and sent[0].startswith("⑤") and "bị từ chối" in sent[0]
+    assert len(sent) == 1 and "⑤ YÊU CẦU THỰC THI BỊ TỪ CHỐI" in sent[0]
     assert SIGNATURE not in sent[0] and TOKEN not in sent[0]
 
 
@@ -150,4 +202,4 @@ def test_execute_endpoint_sends_step_five(tmp_path, monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert len(sent) == 1 and "đã thực thi" in sent[0] and SIGNATURE not in sent[0]
+    assert len(sent) == 1 and "ĐÃ THỰC THI" in sent[0] and SIGNATURE not in sent[0]
