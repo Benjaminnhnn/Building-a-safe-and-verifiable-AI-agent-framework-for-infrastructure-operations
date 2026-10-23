@@ -66,6 +66,8 @@ jobs:
             automation/moodle-safe-gate-approval.py \
             automation/moodle-independent-verifier.py \
             automation/moodle-demo-watch.py \
+            automation/moodle-telegram-approval.py \
+            automation/lib/telegram_client.py \
             automation/export-moodle-safe-action-audit.py \
             automation/moodle-safe-executor-request.py \
             automation/harvest-benchmark-results.py \

@@ -144,6 +144,23 @@ request_id="$(jq -r '.request.request_id' "$prepared_file")"
 idempotency_key="$(jq -r '.request.idempotency_key' "$prepared_file")"
 catalog_action_id="$(jq -r '.request.catalog_action_id' "$prepared_file")"
 
+approval_mode="${MOODLE_APPROVAL_MODE:-auto}"
+if [[ "$approval_mode" == telegram ]]; then
+  # A human decides on Telegram; the keys stay on this machine and are used
+  # only after the bridge reports approval. Reject, timeout or error stops here.
+  stage=human-approval-telegram
+  human_approval_file="$evidence_dir/$run_id-human-approval.json"
+  if ! python3 "$script_dir/moodle-telegram-approval.py" approve \
+      --prepared "$prepared_file" \
+      --timeout-seconds "${MOODLE_APPROVAL_TIMEOUT_SECONDS:-600}" > "$human_approval_file"; then
+    echo "Human approval was not granted ($(jq -r '.decision' "$human_approval_file")); nothing was executed." >&2
+    exit 1
+  fi
+elif [[ "$approval_mode" != auto ]]; then
+  echo "MOODLE_APPROVAL_MODE must be auto or telegram." >&2
+  exit 64
+fi
+
 stage=two-independent-approvals
 python3 "$script_dir/moodle-safe-gate-approval.py" \
   --action-sha256 "$(jq -r '.gate_action_sha256' "$prepared_file")" \
@@ -189,10 +206,13 @@ done
 stage=export-audit-and-independent-verification
 python3 "$script_dir/export-moodle-safe-action-audit.py" \
   --ssh-config "$ssh_config" --output "$audit_file" >/dev/null
+verifier_progress=()
+[[ "$approval_mode" == telegram ]] && verifier_progress=(--telegram-progress)
 AWS_PROFILE="${AWS_PROFILE:-target-account}" python3 "$script_dir/moodle-independent-verifier.py" \
   --audit-db "$audit_file" --signing-key "$secrets_dir/verifier-ed25519-private.pem" \
   --incident-id "$incident_id" --request-id "$request_id" \
   --scenario-id "$scenario" --window-seconds 120 --interval-seconds 30 \
+  ${verifier_progress[@]+"${verifier_progress[@]}"} \
   > "$verifier_file"
 jq -e '.verdict == "ready_for_runtime_acceptance" and .resolution_eligible == true and (.probe_samples | length >= 5) and (.attestation.signature | type == "string" and length > 0)' "$verifier_file" >/dev/null
 jq '.attestation' "$verifier_file" > "$verifier_attestation_file"

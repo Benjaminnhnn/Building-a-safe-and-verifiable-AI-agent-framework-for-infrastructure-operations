@@ -84,8 +84,12 @@ def prepare_moodle_live_handoff(
         approved_actors=gate_actors,
     )
     action_sha256 = gate.action_hash(request)
+    # Read-only explanation for the approver: no approval is passed, so this can
+    # never return ALLOW for an approval-required action or dispatch anything.
+    gate_preview = gate.explain(request, actor_role="executor", confidence=confidence)
     return {
         "status": "approval_required",
+        "gate_preview": gate_preview,
         "incident_id": request.action.incident_id,
         "candidate_id": candidate_id,
         "request": request.model_dump(mode="json"),

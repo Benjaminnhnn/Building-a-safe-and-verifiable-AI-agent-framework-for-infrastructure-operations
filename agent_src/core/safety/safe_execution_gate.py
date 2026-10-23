@@ -275,6 +275,45 @@ class SafeExecutionGate:
             approval_required=approval_required,
         )
 
+    def explain(
+        self,
+        request: SafeActionRequest | SafeLiveActionRequest,
+        *,
+        actor_role: str,
+        confidence: float,
+    ) -> dict:
+        """Describe the pre-approval checks for an operator, without approving anything.
+
+        It runs ``evaluate`` with no approval. The checks are ordered and fail
+        fast, so a REQUIRE_APPROVAL or ALLOW verdict means every listed check
+        passed; a DENY verdict names the first failing check in ``reason``.
+        """
+        verdict = self.evaluate(request, actor_role=actor_role, confidence=confidence)
+        summary = {"decision": verdict.decision, "reason": verdict.reason, "checks": [], "approval_reasons": []}
+        if verdict.decision == "DENY":
+            return summary
+        entry = self._catalog.lookup(request.catalog_action_id)
+        action = request.action
+        summary["checks"] = [
+            "request and approval schema are valid",
+            "kill switch is off",
+            f"{len(set(action.evidence_refs))} distinct evidence references (minimum 3)",
+            f"catalog action {request.catalog_action_id}, timeout {request.timeout_seconds}s <= {entry.timeout_seconds}s",
+            f"reciprocal rollback {entry.rollback_action or 'not required (read-only)'}",
+            f"scope {request.target_scope}, environment {action.environment.value}, role {actor_role} allowed",
+            f"target {action.target_resource_id} is inside the reviewed scope and resource class",
+            f"diagnosis confidence {confidence:.2f} >= 0.65",
+        ]
+        reasons = []
+        if action.requires_approval or entry.default_requires_approval:
+            reasons.append("the catalog marks this action as approval-required")
+        if confidence < 0.80:
+            reasons.append(f"confidence {confidence:.2f} < 0.80")
+        if entry.blast_radius != "LOW":
+            reasons.append(f"blast radius is {entry.blast_radius}")
+        summary["approval_reasons"] = reasons
+        return summary
+
     def release_before_execution(
         self,
         request: SafeActionRequest | SafeLiveActionRequest,
