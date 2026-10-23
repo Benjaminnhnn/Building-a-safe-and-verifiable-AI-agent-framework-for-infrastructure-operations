@@ -424,6 +424,33 @@
         mode: '0600'
       no_log: true
 
+    # Telegram reporting is optional. The wrapper passes a filtered file with
+    # only TELEGRAM_* and AI_AGENT_PUBLIC_URL; without it an empty file keeps
+    # env_file valid and the Agent logs that Telegram is not configured.
+    - name: Install root-only Agent Telegram environment
+      ansible.builtin.copy:
+        src: "{{ moodle_agent_telegram_env_file }}"
+        dest: "{{ moodle_observability_root }}/secrets/agent-telegram.env"
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+      when:
+        - moodle_agent_enabled | bool
+        - moodle_agent_telegram_env_file | default('') | length > 0
+
+    - name: Keep an empty Agent Telegram environment when none is supplied
+      ansible.builtin.copy:
+        content: ""
+        dest: "{{ moodle_observability_root }}/secrets/agent-telegram.env"
+        owner: root
+        group: root
+        mode: '0600'
+        force: false
+      when:
+        - moodle_agent_enabled | bool
+        - moodle_agent_telegram_env_file | default('') | length == 0
+
     - name: Install Moodle synthetic transaction service
       ansible.builtin.copy:
         dest: /etc/systemd/system/moodle-synthetic-transaction.service
@@ -795,6 +822,7 @@
               image: {{ moodle_agent_image }}
               container_name: moodle-ai-agent
               restart: unless-stopped
+              env_file: [./secrets/agent-telegram.env]
               environment:
                 AI_AGENT_PORT: "8000"
                 REDIS_HOST: agent-redis
@@ -840,6 +868,7 @@
               image: {{ moodle_agent_image }}
               container_name: moodle-agent-worker
               restart: unless-stopped
+              env_file: [./secrets/agent-telegram.env]
               environment:
                 REDIS_HOST: agent-redis
                 REDIS_PORT: "6379"

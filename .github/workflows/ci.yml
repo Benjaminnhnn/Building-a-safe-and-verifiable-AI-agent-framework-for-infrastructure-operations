@@ -65,6 +65,7 @@ jobs:
             automation/moodle-safe-approval.py \
             automation/moodle-safe-gate-approval.py \
             automation/moodle-independent-verifier.py \
+            automation/moodle-demo-watch.py \
             automation/export-moodle-safe-action-audit.py \
             automation/moodle-safe-executor-request.py \
             automation/harvest-benchmark-results.py \

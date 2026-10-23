@@ -288,6 +288,81 @@ latest() { ls -t "$EVID_DIR"/*-"$1".json 2>/dev/null | head -1; }
 `false`, không có alert nào, và 2 dòng `healthy`. Nếu `curl` báo
 `Connection refused`, tunnel ở T2 đã đóng: mở lại.
 
+### 3.5. Bảng theo dõi real-time ① → ⑥ (T4, chỉ đọc)
+
+Mục đích: khi trình diễn, người xem thấy từng bước của workflow chuyển trạng thái
+ngay lúc nó xảy ra, thay vì phải gõ từng lệnh check ở mục 3.4.
+
+```bash
+# Terminal T4, ở thư mục gốc repo. Mở TRƯỚC khi gây lỗi.
+python3 automation/moodle-demo-watch.py CON-01     # hoặc SSO-13
+# Tuỳ chọn: --interval 5 (mặc định 3 giây), --once (in một lần rồi thoát)
+```
+
+Script hoạt động như thế nào (để giải thích được khi hội đồng hỏi):
+
+| Nguồn dữ liệu | Đọc ở đâu | Cách đọc (chỉ đọc) |
+|---|---|---|
+| Alert, `moodle_node_web_running`, `probe_success` SSO và trang login | Prometheus trên monitor-ai-01 | GET `127.0.0.1:9090/api/v1/...` |
+| Quyết định của Agent (diagnosis, remediation_candidate) | `/app/data/evidence.db` trong `moodle-ai-agent` | SQLite `mode=ro`, chỉ các dòng mới hơn lúc mở bảng |
+| Công tắc live | Agent `/health`, Executor `/healthz` | GET |
+| Số lần thực thi | `executions.sqlite3` của Executor | SQLite `mode=ro`, đếm dòng |
+| prepared, hai chữ ký, kết quả thực thi, Verifier, RESOLVED | `terraform/.artifacts/moodle-safe-executor/` trên laptop | đọc file JSON mới hơn lúc mở bảng; không in chữ ký hay khoá |
+
+Mỗi lần cập nhật chỉ dùng **một** kết nối SSH được giữ lại (ControlMaster), nên
+không tạo thêm tải đáng kể. Bảng không gửi lệnh ghi nào lên staging.
+
+Ký hiệu: `○` chưa xảy ra · `◐` đang diễn ra · `●` xong đúng kỳ vọng · `✕` sai kỳ vọng.
+
+| Dòng | CON-01 chuyển `●` khi | SSO-13 chuyển `●` khi |
+|---|---|---|
+| 0 Công tắc | cả hai `tắt` (đang `BẬT` là `◐`: drill đang mở cửa sổ live) | cả hai luôn `tắt` |
+| ① Lỗi | `web_running` B về 0 rồi trở lại | probe SSO = 0 trong khi trang login = 1 |
+| ② Alert | `MoodleWebContainerMissing` firing | `MoodleSsoLoginOptionMissing` firing |
+| ③ AI | có `remediation_candidate` CON-01 kèm số evidence | chẩn đoán `sso_login_option_missing` → `human_only_escalation`, **không** có candidate |
+| ④ Gate | có file prepared, rồi hai chữ ký khác người, khớp hash | số executions **không đổi** |
+| ⑤ Executor / Operator | `executed`, `mutated=true`, executions +1 | probe SSO trở lại 1 sau khi operator bật issuer |
+| ⑥ Verifier | 5/5 mẫu đạt rồi `resolved` kèm event hash | probe SSO liên tục = 1 đủ 120 s (probe OIDC 5 mẫu vẫn chạy tay ở mục 5.4) |
+
+Cách đọc khi có dòng `✕` (tư duy khoanh vùng): bảng cho biết **bước đầu tiên** bị
+sai, nên chỉ cần điều tra lớp đó. Ví dụ ② `●` nhưng ③ vẫn `○` sau hơn 1 phút thì
+lỗi nằm giữa Alertmanager và Agent (webhook, Celery worker, cooldown). Xem log
+bằng `agent_logs` ở mục 3.4, không cần kiểm tra lại Prometheus. Nếu ⑥a `✕`, bảng
+in tên probe hỏng: đối chiếu với mục 7.
+
+Nếu dòng đầu báo `Không đọc được monitor-ai-01`: IP laptop có thể đã đổi (SSH
+timeout, xem mục 3.2), hoặc `terraform/.artifacts/moodle-ssh.config` chưa tồn tại.
+Bảng tự thử lại ở lần cập nhật sau, nên không cần tắt.
+
+### 3.6. Báo cáo qua Telegram
+
+Agent chỉ gửi Telegram khi container có `TELEGRAM_TOKEN` và `TELEGRAM_CHAT_ID`.
+Điền hai biến này vào `release/.env` (Git-ignored), rồi deploy lại Agent bằng
+`bash automation/configure-moodle-monitoring.sh --agent-image <image>`. Wrapper chỉ
+chép các biến `TELEGRAM_*` và `AI_AGENT_PUBLIC_URL` sang
+`/opt/moodle-observability/secrets/agent-telegram.env` (root, mode 600). Các giá
+trị chỉ dành cho laptop như `REDIS_HOST=localhost` không lên staging.
+
+| Bước | Tin nhắn | Gửi từ |
+|---|---|---|
+| ② ③ | `Moodle evidence pipeline: ...` gồm hypothesis, candidate, evidence ID | Celery worker |
+| ④ | `④ Safety Gate: cần phê duyệt` | Agent API `/prepare` |
+| ⑤ | `⑤ Executor: đã thực thi` / `KHÔNG thực thi` / `bị từ chối` | Agent API `/execute` |
+| Alert hết | `Alertmanager báo hết cảnh báo ...` | Celery worker |
+| ⑥ | `⑥ Independent Verifier: RESOLVED` / `bị từ chối` | Agent API `/verifications` |
+
+Tin chỉ chứa ID, quyết định và tiền tố hash; không có chữ ký hay token. Tin ở
+④–⑥ được gửi sau khi API đã trả lời, nên Telegram chậm hay lỗi không thay đổi
+quyết định an toàn. SSO-13 chỉ có tin ②/③ và tin hết alert, vì Agent không đi
+tới ④.
+
+**Khoanh vùng khi không thấy tin:** xem log worker
+`sudo docker logs --since 10m moodle-agent-worker | grep -i telegram`. Dòng
+`TELEGRAM_TOKEN or TELEGRAM_CHAT_ID not found` nghĩa là biến chưa vào container,
+nên kiểm tra lại bước deploy. Lỗi `403`/`400` nghĩa là bot hoặc chat sai, nên
+gọi `getMe`/`getChat`. Không có dòng nào nghĩa là alert chưa tới Agent, nên
+kiểm tra Alertmanager và webhook.
+
 ---
 
 ## 4. Kịch bản 1: Lỗi hạ tầng CON-01
@@ -1073,6 +1148,7 @@ Kịch bản 2 (SSO-13)
 | 3 | ⑥ Verifier (`not_stable`) | Ngưỡng khoảng cách mẫu là 30 s, khoảng cách thực tế 30.005 s | Đặt 60 s theo hợp đồng attestation (commit `2ef0f4c`) |
 | 4 | ② `observe-fault` | Máy điều khiển mất mạng; cleanup không chạy được, công tắc bật khoảng 10 giờ | Không phải lỗi code; dọn tay theo mục 7 |
 | **5** | **Đạt cả 11 bước** | — | — |
+| **6** | **Đạt cả 11 bước** (23/10, theo dõi bằng bảng real-time mục 3.5) | — | — |
 
 Lần 5 (22/10, UTC): lỗi lúc 01:00:13; alert pending 01:01:03, firing khoảng
 01:01:18; Agent tạo candidate với 8 evidence; hai chữ ký `safety-officer` +
@@ -1089,7 +1165,24 @@ lúc 01:08:32.
 Evidence: `terraform/.artifacts/moodle-safe-executor/CON-01-20261022T005639Z.json`
 (Git-ignored).
 
+Lần 6 (23/10, UTC): drill 14:19:55 → 14:30:42, exit 0. Lỗi được thấy lúc
+14:23:42; alert pending 14:23:44, firing 14:24:03 (kèm
+`MoodleSyntheticTransactionFailed` vì một nửa request rơi vào node B); candidate
+lúc 14:24:05 với 8 evidence, confidence 0.65; prepared và hai chữ ký lúc
+14:24:10, hết hạn 14:29:10; executor sửa lúc 14:24:28 (`mutated: true`, node
+`b`, executions 4 → 5); Verifier 5/5 mẫu, **`resolved`** lúc 14:28:01 (event
+`14eaaba13a7b…`); công tắc tắt lúc 14:30:20; baseline passed.
+
 ### 9.2. Kịch bản 2: SSO-13
+
+Lần chạy lại 23/10 (UTC), tắt và bật issuer bằng CLI mục 5.6: tắt issuer
+14:32:03 (trang login còn 0 link SSO, healthz 200); probe SSO = 0 lúc 14:32:11;
+alert active 14:32:14, firing khoảng 14:33:14, **không** có alert hạ tầng nào;
+Agent chẩn đoán `sso_login_option_missing` → `human_only_escalation` lúc
+14:33:20, không có candidate; executions giữ nguyên 5; operator bật issuer
+14:33:49; probe OIDC 5/5 (14:33:59 → 14:36:09); alert hết lúc 14:34:06;
+baseline passed. MTTD khoảng 11 s, MTTR 4 phút 6 giây. Lệnh thử forced-command
+(bước ④ tuỳ chọn) không chạy lần này.
 
 | Bước | Thời điểm (22/10, UTC) | Kết quả |
 |---|---|---|

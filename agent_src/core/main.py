@@ -8,7 +8,7 @@ import redis
 import re
 import requests
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pathlib import Path
 from pydantic import BaseModel, ConfigDict
@@ -19,6 +19,7 @@ from core.tasks import process_admin_feedback_task, process_alerts_task, review_
 from core.schema.event_schema import normalize_alertmanager_payload
 from utils.telegram_bot import TELEGRAM_CHAT_ID, send_telegram_message, set_telegram_webhook
 from utils import telegram_bot
+from core.moodle import safe_action_notify
 from core.rag.rag_engine import get_rag_instance
 from core.metrics import CELERY_QUEUE_DEPTH, WEBHOOK_EVENTS_TOTAL, get_metrics_response
 from core.rag.runbook_registry import (
@@ -166,11 +167,15 @@ def _authorize_safe_action(authorization: str | None, token_path: Path) -> None:
 
 
 @app.post("/api/moodle/remediation/{candidate_id}/prepare")
-def prepare_moodle_remediation(candidate_id: str, authorization: str | None = Header(default=None)):
+def prepare_moodle_remediation(
+    candidate_id: str,
+    background_tasks: BackgroundTasks,
+    authorization: str | None = Header(default=None),
+):
     evidence_db, public_key, actors, _, token_path = _safe_action_config()
     _authorize_safe_action(authorization, token_path)
     try:
-        return prepare_moodle_live_handoff(
+        prepared = prepare_moodle_live_handoff(
             evidence_db=evidence_db,
             candidate_id=candidate_id,
             gate_public_key=public_key,
@@ -178,18 +183,21 @@ def prepare_moodle_remediation(candidate_id: str, authorization: str | None = He
         )
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=404, detail="fresh remediation candidate is unavailable") from exc
+    background_tasks.add_task(safe_action_notify.notify, safe_action_notify.format_prepare(candidate_id, prepared))
+    return prepared
 
 
 @app.post("/api/moodle/remediation/{candidate_id}/execute")
 def execute_moodle_remediation(
     candidate_id: str,
     body: MoodleLiveExecutionRequest,
+    background_tasks: BackgroundTasks,
     authorization: str | None = Header(default=None),
 ):
     evidence_db, public_key, actors, audit_db, token_path = _safe_action_config(require_live=True)
     _authorize_safe_action(authorization, token_path)
     try:
-        return execute_moodle_live_handoff(
+        outcome = execute_moodle_live_handoff(
             evidence_db=evidence_db,
             candidate_id=candidate_id,
             request_data=body.request,
@@ -201,28 +209,42 @@ def execute_moodle_remediation(
             kill_switch_enabled=False,
         )
     except (ValueError, OSError) as exc:
-        raise HTTPException(status_code=409, detail="candidate or approval request is stale or invalid") from exc
+        detail = "candidate or approval request is stale or invalid"
+        # Starlette skips background tasks on an error response, so send this one inline.
+        safe_action_notify.notify(safe_action_notify.format_execute_rejected(candidate_id, 409, detail))
+        raise HTTPException(status_code=409, detail=detail) from exc
+    background_tasks.add_task(safe_action_notify.notify, safe_action_notify.format_execute(candidate_id, outcome))
+    return outcome
 
 
 @app.post("/api/moodle/verifications/{request_id}")
-def record_moodle_verification(request_id: str, body: VerifierAttestation):
+def record_moodle_verification(request_id: str, body: VerifierAttestation, background_tasks: BackgroundTasks):
     try:
         public_key_path = Path(os.environ["AIOPS_VERIFIER_PUBLIC_KEY_FILE"])
         audit_db = Path(os.getenv("AIOPS_SAFE_ACTION_AUDIT_DB", "/app/data/safe_action_audit.sqlite3"))
         public_key_path.read_bytes()
     except (KeyError, OSError) as exc:
         raise HTTPException(status_code=503, detail="verifier key configuration is unavailable") from exc
+    payload = body.payload.model_dump(mode="json")
     try:
-        return accept_verifier_attestation(
+        accepted = accept_verifier_attestation(
             audit_db=audit_db,
             public_key_path=public_key_path,
             request_id=request_id,
             attestation=body,
         )
     except InvalidVerifierSignature as exc:
-        raise HTTPException(status_code=401, detail="invalid independent verifier signature") from exc
+        detail = "invalid independent verifier signature"
+        safe_action_notify.notify(safe_action_notify.format_verification_rejected(request_id, payload, 401, detail))
+        raise HTTPException(status_code=401, detail=detail) from exc
     except (ValueError, OSError) as exc:
-        raise HTTPException(status_code=409, detail="verifier result is stale, invalid, or not awaiting verification") from exc
+        detail = "verifier result is stale, invalid, or not awaiting verification"
+        safe_action_notify.notify(safe_action_notify.format_verification_rejected(request_id, payload, 409, detail))
+        raise HTTPException(status_code=409, detail=detail) from exc
+    background_tasks.add_task(
+        safe_action_notify.notify, safe_action_notify.format_verification(request_id, payload, accepted)
+    )
+    return accepted
 
 
 @app.get("/api/moodle/incidents/{incident_id}/requests/{request_id}/status")
