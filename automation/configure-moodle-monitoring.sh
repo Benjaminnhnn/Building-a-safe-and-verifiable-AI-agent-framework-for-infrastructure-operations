@@ -88,6 +88,23 @@ if [[ "${MOODLE_SAFE_ACTION_LIVE_ENABLED:-false}" == true ]]; then
 fi
 
 mkdir -p "$artifacts_dir"
+
+# Optional Telegram reporting: copy only the Telegram keys from the operator's
+# Git-ignored env file, so laptop-only values (REDIS_HOST, paths) never reach staging.
+telegram_args=()
+telegram_source="${MOODLE_AGENT_TELEGRAM_ENV_FILE:-$repo_root/release/.env}"
+if [[ "$agent_enabled" == true && -r "$telegram_source" ]]; then
+  telegram_env_file="$artifacts_dir/agent-telegram.env"
+  (umask 077; grep -E '^(TELEGRAM_TOKEN|TELEGRAM_CHAT_ID|TELEGRAM_ADMIN_USER_IDS|TELEGRAM_WEBHOOK_SECRET|AI_AGENT_PUBLIC_URL)=.+' \
+    "$telegram_source" > "$telegram_env_file" || true)
+  if grep -q '^TELEGRAM_TOKEN=' "$telegram_env_file" && grep -q '^TELEGRAM_CHAT_ID=' "$telegram_env_file"; then
+    telegram_args=(--extra-vars "moodle_agent_telegram_env_file=$telegram_env_file")
+    echo "Agent Telegram reporting: enabled from $telegram_source"
+  else
+    echo "Agent Telegram reporting: skipped (TELEGRAM_TOKEN or TELEGRAM_CHAT_ID empty in $telegram_source)"
+  fi
+fi
+
 terraform -chdir="$terraform_dir" output -raw moodle_ssh_config > "$ssh_config_path"
 terraform -chdir="$terraform_dir" output -raw moodle_ansible_inventory > "$inventory_path"
 chmod 0600 "$ssh_config_path"
@@ -114,4 +131,5 @@ ansible-playbook \
   --extra-vars "moodle_synthetic_password_file=$synthetic_password_file" \
   --extra-vars "moodle_agent_enabled=$agent_enabled" \
   --extra-vars "moodle_agent_image=$agent_image" \
-  "${live_args[@]}"
+  "${live_args[@]}" \
+  ${telegram_args[@]+"${telegram_args[@]}"}
