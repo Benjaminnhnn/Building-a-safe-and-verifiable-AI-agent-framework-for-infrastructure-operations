@@ -119,7 +119,8 @@ def approve(prepared_path: Path, timeout_seconds: int, client: TelegramClient | 
                     same = signed["safety-officer"]["user_id"] == signed["operator"]["user_id"]
                     client.edit(message_id, _request_text(
                         prepared, signed,
-                        "🔏 Đủ 2 phê duyệt. Laptop operator đang ký Ed25519 (khoá không nằm trên Agent) và gửi yêu cầu thực thi."
+                        "🔏 Đủ 2 phê duyệt của người. Bước tiếp theo: máy operator ký Ed25519 (khoá không nằm trên Agent). "
+                        "Chưa có gì được thực thi cho tới khi Gate nhận đủ chữ ký hợp lệ."
                         + ("\nGhi chú: cùng một người duyệt hai vai (giới hạn demo)." if same else "")))
                     print(json.dumps({"decision": "approved", "approvals": signed, "same_human": same}))
                     return 0
