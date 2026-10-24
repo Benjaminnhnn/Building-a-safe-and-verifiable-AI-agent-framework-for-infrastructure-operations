@@ -93,11 +93,9 @@ _S3_3_REMEDIATIONS = {
     "NET-01": ("MoodleSyntheticTransactionFailed", "recreate_moodle_web_from_reviewed_compose", "moodle-app", "staging_moodle_nodes"),
     "CON-01": ("MoodleWebContainerMissing", "start_reviewed_compose_service", "moodle-app", "moodle-app-b"),
     "SEC-02": ("MoodleSyntheticTransactionFailed", "restore_fixture_directory_mode", "moodledata-volume", "moodledata_synthetic_fixture_directory"),
-    # Business / User & Admin workflow remediations (BIZ-01 .. BIZ-04)
+    # Business / Infrastructure workflow remediations (BIZ-01, BIZ-02)
     "BIZ-01": ("MoodleMaintenanceModeStuck", "disable_moodle_cli_maintenance_mode", "moodle-app", "staging_moodle_app"),
-    "BIZ-02": ("MoodleAdhocTaskQueueStuck", "release_stuck_moodle_adhoc_task_lock", "moodle-app", "staging_moodle_app"),
-    "BIZ-03": ("MoodleStudentAuthPluginDisabled", "restore_approved_moodle_auth_plugins", "moodle-app", "staging_moodle_configuration"),
-    "BIZ-04": ("MoodleCourseSelfEnrolDisabled", "restore_approved_course_self_enrolment", "moodle-app", "staging_moodle_configuration"),
+    "BIZ-02": ("MoodleAdhocTaskQueueStuck", "restart_moodle_cron_service", "moodle-app", "staging_moodle_app"),
 }
 _S3_3_DIAGNOSES = {
     "DB-01": "node_rds_path_probe_failed",
@@ -107,41 +105,24 @@ _S3_3_DIAGNOSES = {
     "SEC-02": "application_path_not_isolated",
     "BIZ-01": "moodle_maintenance_mode_stuck",
     "BIZ-02": "moodle_adhoc_task_queue_stuck",
-    "BIZ-03": "moodle_student_auth_disabled",
-    "BIZ-04": "moodle_course_self_enrol_disabled",
 }
 
-SCENARIO_REMEDIATION_DISPOSITION: dict[str, dict[str, str]] = {
+BUSINESS_SCENARIO_REMEDIATION_DISPOSITION: dict[str, dict[str, str]] = {
     "BIZ-01": {
         "disposition": "s3_3_live_allowlisted",
         "catalog_action_id": "disable_moodle_cli_maintenance_mode",
         "target_scope": "staging_moodle_app",
-        "reason": "Allowlisted Moodle business workflow remediation when stuck CLI maintenance mode blocks student access while web containers are healthy.",
+        "reason": "Allowlisted Moodle business workflow remediation when stuck CLI maintenance mode blocks student access while web containers are healthy and upgrade is completed.",
     },
     "BIZ-02": {
         "disposition": "s3_3_live_allowlisted",
-        "catalog_action_id": "release_stuck_moodle_adhoc_task_lock",
+        "catalog_action_id": "restart_moodle_cron_service",
         "target_scope": "staging_moodle_app",
-        "reason": "Allowlisted Moodle business workflow remediation when overdue ad-hoc task locks block assignment grading and notifications.",
+        "reason": "Allowlisted infrastructure-level remediation: restart moodle-cron container on node A when ad-hoc task queue is overdue; does not mutate Moodle DB tables.",
     },
-    "BIZ-03": {
-        "disposition": "s3_3_live_allowlisted",
-        "catalog_action_id": "restore_approved_moodle_auth_plugins",
-        "target_scope": "staging_moodle_configuration",
-        "reason": "Allowlisted Moodle business workflow remediation when student authentication plugins are disabled in site configuration.",
-    },
-    "BIZ-04": {
-        "disposition": "s3_3_live_allowlisted",
-        "catalog_action_id": "restore_approved_course_self_enrolment",
-        "target_scope": "staging_moodle_configuration",
-        "reason": "Allowlisted Moodle business workflow remediation when course self-enrolment plugin is disabled for active courses.",
-    },
-    "BIZ-05": {
-        "disposition": "human_only_escalation",
-        "catalog_action_id": "reset_live_quiz_attempts_and_regrade",
-        "target_scope": "staging_moodle_app",
-        "reason": "Human-only escalation: HIGH blast-radius live quiz attempt reset or gradebook recalculation is irreversible and never agent-executable.",
-    },
+}
+
+SCENARIO_REMEDIATION_DISPOSITION: dict[str, dict[str, str]] = {
     "DB-01": {
         "disposition": "s3_3_live_allowlisted",
         "catalog_action_id": "remove_scoped_db_reject",
@@ -335,24 +316,16 @@ def plan_moodle_s3_3_remediation(
             candidates.append("SEC-02")
     if alert_name == _S3_3_REMEDIATIONS["BIZ-01"][0] and (
         matches("moodle_cli_maintenance_mode_enabled", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
+        and matches("moodle_upgrade_in_progress", {"moodle-app-a": 0.0, "moodle-app-b": 0.0})
         and matches("moodle_node_web_running", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
     ):
         candidates.append("BIZ-01")
     if alert_name == _S3_3_REMEDIATIONS["BIZ-02"][0] and (
         matches("moodle_adhoc_tasks_overdue_count", minimum=0.0)
+        and matches("moodle_cron_container_stopped", {"moodle-app-a": 1.0, "moodle-app-b": 0.0})
         and matches("moodle_node_web_running", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
     ):
         candidates.append("BIZ-02")
-    if alert_name == _S3_3_REMEDIATIONS["BIZ-03"][0] and (
-        matches("moodle_student_auth_plugin_disabled", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
-        and matches("moodle_node_web_running", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
-    ):
-        candidates.append("BIZ-03")
-    if alert_name == _S3_3_REMEDIATIONS["BIZ-04"][0] and (
-        matches("moodle_course_self_enrol_disabled", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
-        and matches("moodle_node_web_running", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
-    ):
-        candidates.append("BIZ-04")
     if (
         len(candidates) != 1
         or diagnosis.get("cause_code") != _S3_3_DIAGNOSES[candidates[0]]
@@ -364,7 +337,7 @@ def plan_moodle_s3_3_remediation(
     scenario_id = candidates[0]
     _, catalog_action_id, target_resource_id, target_scope = _S3_3_REMEDIATIONS[scenario_id]
     catalog = (
-        ActionCatalog.load_moodle_10_scenario_catalog()
+        ActionCatalog.load_moodle_7_scenario_catalog()
         if scenario_id.startswith("BIZ-")
         else ActionCatalog.load_moodle_s3_3_execution_catalog()
     )
@@ -517,7 +490,7 @@ def describe_moodle_remediation_disposition(
     """Describe whether an alert/diagnosis yields an S3.3 candidate or safe escalation."""
     if remediation_candidate is not None:
         scenario_id = str(remediation_candidate.get("scenario_id") or "")
-        info = SCENARIO_REMEDIATION_DISPOSITION.get(scenario_id, {})
+        info = SCENARIO_REMEDIATION_DISPOSITION.get(scenario_id) or BUSINESS_SCENARIO_REMEDIATION_DISPOSITION.get(scenario_id, {})
         return {
             "disposition": "candidate_proposed",
             "scenario_id": scenario_id,
@@ -552,18 +525,6 @@ def describe_moodle_remediation_disposition(
         return {
             "disposition": info["disposition"],
             "scenario_id": "SEC-01",
-            "catalog_action_id": info["catalog_action_id"],
-            "target_scope": info["target_scope"],
-            "reason": info["reason"],
-            "execution_permitted": False,
-            "approval_required": True,
-        }
-
-    if alert_name == "MoodleLiveQuizGradebookIncident":
-        info = SCENARIO_REMEDIATION_DISPOSITION["BIZ-05"]
-        return {
-            "disposition": info["disposition"],
-            "scenario_id": "BIZ-05",
             "catalog_action_id": info["catalog_action_id"],
             "target_scope": info["target_scope"],
             "reason": info["reason"],

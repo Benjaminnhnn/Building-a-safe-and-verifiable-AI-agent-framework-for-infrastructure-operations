@@ -19,6 +19,7 @@ from core.schema.resource import Resource
 from core.safety.action_catalog import ActionCatalog
 from core.evidence.dependency_graph import DependencyGraph
 from core.evidence.evidence_collectors import (
+    BUSINESS_METRIC_QUERIES_BY_ALERT,
     METRIC_QUERIES_BY_ALERT,
     collect_shadow_evidence,
 )
@@ -53,6 +54,8 @@ MOODLE_ALERT_RESOURCE_MAP: dict[str, str] = {
     "MoodleScratchEnospc": "moodle-app",
     "MoodleWebContainerRestarting": "moodle-app",
     "MoodleNodeProbeStale": "moodle-app",
+    "MoodleMaintenanceModeStuck": "moodle-app",
+    "MoodleAdhocTaskQueueStuck": "moodle-app",
     "LogFileErrorDetected": "ai-agent",
 }
 
@@ -162,7 +165,7 @@ class MoodlePlatformAdapter:
         return DependencyGraph(self.get_resources())
 
     def get_alert_queries(self, alert_name: str) -> tuple[tuple[str, str], ...]:
-        return METRIC_QUERIES_BY_ALERT.get(alert_name, ())
+        return METRIC_QUERIES_BY_ALERT.get(alert_name) or BUSINESS_METRIC_QUERIES_BY_ALERT.get(alert_name, ())
 
     def collect_evidence(
         self,
@@ -188,7 +191,7 @@ class MoodlePlatformAdapter:
         return diagnose_moodle_alert(alert_name, evidence)
 
     def get_action_catalog(self) -> ActionCatalog:
-        return ActionCatalog.load_moodle_s3_3_execution_catalog()
+        return ActionCatalog.load_moodle_7_scenario_catalog()
 
     def plan_investigation(
         self, incident_id: str, diagnosis: dict[str, Any]

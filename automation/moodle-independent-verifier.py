@@ -48,6 +48,7 @@ _SCENARIO_RELATED_CHECKS = {
     "SEC-02": ["fixture_directory_mode_restored", "efs_mount_metric_is_one"],
     "SEC-03": ["sec03_backup_removed", "app_b_reverse_proxy_setting_approved", "app_b_reverse_proxy_metric_approved", "both_alb_targets_healthy"],
 }
+_ALL_VERIFIED_SCENARIOS = sorted(set(_SCENARIO_RELATED_CHECKS) | set(MOODLE_LIVE_CONTRACTS))
 _PROBE_SCRIPT = REPO_ROOT / "automation" / "moodle-scenario-verify.sh"
 
 
@@ -220,7 +221,7 @@ def main() -> int:
     parser.add_argument("--signing-key", type=Path, required=True)
     parser.add_argument("--incident-id", required=True)
     parser.add_argument("--request-id", required=True)
-    parser.add_argument("--scenario-id", required=True, choices=sorted(_SCENARIO_RELATED_CHECKS))
+    parser.add_argument("--scenario-id", required=True, choices=_ALL_VERIFIED_SCENARIOS)
     parser.add_argument("--window-seconds", type=int, default=120)
     parser.add_argument("--interval-seconds", type=int, default=30)
     args = parser.parse_args()

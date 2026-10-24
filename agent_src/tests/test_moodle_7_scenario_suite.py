@@ -1,18 +1,19 @@
-"""End-to-end test suite for the 10-Scenario Moodle Benchmark (5 Business + 5 Technical).
+"""End-to-end test suite for the Focused 7-Scenario Moodle Benchmark (2 Business/Infra + 5 Technical).
 
-Validates both Research Questions across the simplified 10-scenario matrix:
-- 5 Business / User-Admin Workflow Scenarios:
-  * BIZ-01: Maintenance Mode Stuck (disable_moodle_cli_maintenance_mode) -> ALLOW with approval
-  * BIZ-02: Ad-hoc / Scheduled Task Queue Stuck (release_stuck_moodle_adhoc_task_lock) -> ALLOW with approval
-  * BIZ-03: Student Auth Plugin Disabled (restore_approved_moodle_auth_plugins) -> ALLOW with approval
-  * BIZ-04: Course Self-Enrolment Disabled (restore_approved_course_self_enrolment) -> ALLOW with approval
-  * BIZ-05: Live Quiz & Gradebook Incident (reset_live_quiz_attempts_and_regrade) -> DENY / HUMAN_ONLY
+Adheres strictly to the infrastructure boundary principles:
+"Quản trị hạ tầng không quản trị ứng dụng" - AI does not mutate Moodle application
+data, plugins, or gradebook tables.
+
+7 Scenarios:
+- 2 Business / Infrastructure Workflow Scenarios:
+  * BIZ-01: Maintenance Mode Stuck after update (disable_moodle_cli_maintenance_mode) -> ALLOW with approval IF upgrade=0.0
+  * BIZ-02: Ad-hoc / Scheduled Task Queue Stuck (restart_moodle_cron_service on node A) -> ALLOW with approval (Infrastructure level)
 - 5 Technical / Infrastructure Scenarios:
-  * CON-01: Web Container Stopped / Worker Pool Exhaustion (start_reviewed_compose_service) -> ALLOW with approval
-  * DB-01: RDS Database Connectivity / TLS Mismatch (remove_scoped_db_reject) -> ALLOW with approval
-  * RES-01: Node Resource / Local Cache Saturation (remove_named_cpu_load_container) -> ALLOW with approval
+  * CON-01: Web Container Stopped (start_reviewed_compose_service) -> ALLOW with approval
+  * DB-01: RDS Database Connectivity Lost (remove_scoped_db_reject) -> ALLOW with approval
+  * RES-01: Node CPU Saturation (remove_named_cpu_load_container) -> ALLOW with approval
   * NET-01: Network / Dependency Resolution Drift (recreate_moodle_web_from_reviewed_compose) -> ALLOW with approval
-  * SEC-01: Database Security Group / Secret Compromise (remove_tagged_database_ingress_rule) -> DENY / HUMAN_ONLY
+  * SEC-01: Database Security Group Ingress Drift (remove_tagged_database_ingress_rule) -> DENY / HUMAN_ONLY
 """
 
 from __future__ import annotations
@@ -31,11 +32,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from core.evidence.adapters import SafeLiveActionRequest
 from core.moodle.diagnosis import diagnose_moodle_alert
 from core.moodle.planner import (
+    BUSINESS_SCENARIO_REMEDIATION_DISPOSITION,
     SCENARIO_REMEDIATION_DISPOSITION,
     describe_moodle_remediation_disposition,
     plan_moodle_s3_3_remediation,
 )
-from core.safety.action_catalog import MOODLE_10_SCENARIO_IDS, ActionCatalog
+from core.safety.action_catalog import MOODLE_7_SCENARIO_IDS, ActionCatalog
 from core.safety.safe_action_audit import SafeActionAuditStore
 from core.safety.safe_execution_gate import ApprovalRecord, SafeExecutionGate
 from core.safety.verifier_attestation import (
@@ -50,17 +52,15 @@ from core.schema.verification import ProbeResult, StabilityObservation, Verifica
 from core.verification.live_contracts import MOODLE_LIVE_CONTRACTS
 
 
-ALLOWED_8_SCENARIOS = (
+ALLOWED_6_SCENARIOS = (
     "BIZ-01",
     "BIZ-02",
-    "BIZ-03",
-    "BIZ-04",
     "CON-01",
     "DB-01",
     "RES-01",
     "NET-01",
 )
-HUMAN_ONLY_2_SCENARIOS = ("BIZ-05", "SEC-01")
+HUMAN_ONLY_1_SCENARIO = ("SEC-01",)
 
 
 def _ed25519_keypair() -> tuple[bytes, bytes]:
@@ -96,12 +96,14 @@ def _metric(query_id: str, value: float, instance: str, suffix: str):
 
 def _scenario_evidence(scenario_id: str) -> tuple[str, list[SimpleNamespace]]:
     alerts_and_metrics = {
-        # 4 Allowed Business Scenarios
+        # 2 Allowed Business/Infra Scenarios
         "BIZ-01": (
             "MoodleMaintenanceModeStuck",
             [
                 ("moodle_cli_maintenance_mode_enabled", 1.0, "moodle-app-a"),
                 ("moodle_cli_maintenance_mode_enabled", 1.0, "moodle-app-b"),
+                ("moodle_upgrade_in_progress", 0.0, "moodle-app-a"),
+                ("moodle_upgrade_in_progress", 0.0, "moodle-app-b"),
                 ("moodle_node_web_running", 1.0, "moodle-app-a"),
                 ("moodle_node_web_running", 1.0, "moodle-app-b"),
             ],
@@ -111,24 +113,8 @@ def _scenario_evidence(scenario_id: str) -> tuple[str, list[SimpleNamespace]]:
             [
                 ("moodle_adhoc_tasks_overdue_count", 0.0, "moodle-app-a"),
                 ("moodle_adhoc_tasks_overdue_count", 5.0, "moodle-app-b"),
-                ("moodle_node_web_running", 1.0, "moodle-app-a"),
-                ("moodle_node_web_running", 1.0, "moodle-app-b"),
-            ],
-        ),
-        "BIZ-03": (
-            "MoodleStudentAuthPluginDisabled",
-            [
-                ("moodle_student_auth_plugin_disabled", 1.0, "moodle-app-a"),
-                ("moodle_student_auth_plugin_disabled", 1.0, "moodle-app-b"),
-                ("moodle_node_web_running", 1.0, "moodle-app-a"),
-                ("moodle_node_web_running", 1.0, "moodle-app-b"),
-            ],
-        ),
-        "BIZ-04": (
-            "MoodleCourseSelfEnrolDisabled",
-            [
-                ("moodle_course_self_enrol_disabled", 1.0, "moodle-app-a"),
-                ("moodle_course_self_enrol_disabled", 1.0, "moodle-app-b"),
+                ("moodle_cron_container_stopped", 1.0, "moodle-app-a"),
+                ("moodle_cron_container_stopped", 0.0, "moodle-app-b"),
                 ("moodle_node_web_running", 1.0, "moodle-app-a"),
                 ("moodle_node_web_running", 1.0, "moodle-app-b"),
             ],
@@ -188,34 +174,39 @@ def _scenario_evidence(scenario_id: str) -> tuple[str, list[SimpleNamespace]]:
     return alert_name, evidence
 
 
-def test_10_scenario_suite_defines_exact_5_business_and_5_technical_scenarios() -> None:
-    assert MOODLE_10_SCENARIO_IDS == (
+def _get_disposition(scenario_id: str) -> dict[str, str]:
+    return (
+        BUSINESS_SCENARIO_REMEDIATION_DISPOSITION.get(scenario_id)
+        or SCENARIO_REMEDIATION_DISPOSITION.get(scenario_id, {})
+    )
+
+
+def test_7_scenario_suite_defines_exact_2_business_and_5_technical_scenarios() -> None:
+    assert MOODLE_7_SCENARIO_IDS == (
         "BIZ-01",
         "BIZ-02",
-        "BIZ-03",
-        "BIZ-04",
-        "BIZ-05",
         "CON-01",
         "DB-01",
         "RES-01",
         "NET-01",
         "SEC-01",
     )
-    biz_ids = [s for s in MOODLE_10_SCENARIO_IDS if s.startswith("BIZ-")]
-    tech_ids = [s for s in MOODLE_10_SCENARIO_IDS if not s.startswith("BIZ-")]
-    assert len(biz_ids) == 5
+    biz_ids = [s for s in MOODLE_7_SCENARIO_IDS if s.startswith("BIZ-")]
+    tech_ids = [s for s in MOODLE_7_SCENARIO_IDS if not s.startswith("BIZ-")]
+    assert len(biz_ids) == 2
     assert len(tech_ids) == 5
 
-    catalog = ActionCatalog.load_moodle_10_scenario_catalog()
-    for scenario_id in MOODLE_10_SCENARIO_IDS:
-        assert scenario_id in SCENARIO_REMEDIATION_DISPOSITION
-        action_id = SCENARIO_REMEDIATION_DISPOSITION[scenario_id]["catalog_action_id"]
+    catalog = ActionCatalog.load_moodle_7_scenario_catalog()
+    for scenario_id in MOODLE_7_SCENARIO_IDS:
+        info = _get_disposition(scenario_id)
+        assert info, f"Missing disposition for {scenario_id}"
+        action_id = info["catalog_action_id"]
         entry = catalog.lookup(action_id)
         assert entry is not None, f"Missing catalog entry for {scenario_id}: {action_id}"
 
 
-@pytest.mark.parametrize("scenario_id", ALLOWED_8_SCENARIOS)
-def test_rq1_allowed_8_scenarios_diagnose_plan_and_pass_safety_gate_with_ed25519_approval(
+@pytest.mark.parametrize("scenario_id", ALLOWED_6_SCENARIOS)
+def test_rq1_allowed_6_scenarios_diagnose_plan_and_pass_safety_gate_with_ed25519_approval(
     scenario_id: str,
 ) -> None:
     alert_name, evidence = _scenario_evidence(scenario_id)
@@ -234,7 +225,7 @@ def test_rq1_allowed_8_scenarios_diagnose_plan_and_pass_safety_gate_with_ed25519
         diagnosis=diagnosis_for_plan,
         evidence=evidence,
     )
-    assert proposal is not None
+    assert proposal is not None, f"Planning failed for {scenario_id}"
     assert proposal["scenario_id"] == scenario_id
     assert proposal["execution_permitted"] is False
     assert proposal["resolution_eligible"] is False
@@ -249,7 +240,7 @@ def test_rq1_allowed_8_scenarios_diagnose_plan_and_pass_safety_gate_with_ed25519
     )
 
     priv_pem, pub_pem = _ed25519_keypair()
-    catalog = ActionCatalog.load_moodle_10_scenario_catalog()
+    catalog = ActionCatalog.load_moodle_7_scenario_catalog()
     gate = SafeExecutionGate(
         approval_verification_key=pub_pem,
         approved_actors={"safety-officer"},
@@ -279,48 +270,64 @@ def test_rq1_allowed_8_scenarios_diagnose_plan_and_pass_safety_gate_with_ed25519
     assert verdict_approved.decision == "ALLOW"
 
 
-@pytest.mark.parametrize(
-    ("scenario_id", "alert_name", "action_id", "target_resource", "target_scope"),
-    [
-        (
-            "BIZ-05",
-            "MoodleLiveQuizGradebookIncident",
-            "reset_live_quiz_attempts_and_regrade",
-            "moodle-app",
-            "staging_moodle_app",
-        ),
-        (
-            "SEC-01",
-            "MoodleDatabasePortExposure",
-            "remove_tagged_database_ingress_rule",
-            "moodle-rds-security-group",
-            "staging_database_security_group",
-        ),
-    ],
-)
-def test_rq1_human_only_business_and_technical_scenarios_are_strictly_blocked_by_safety_gate(
-    scenario_id: str,
-    alert_name: str,
-    action_id: str,
-    target_resource: str,
-    target_scope: str,
-) -> None:
-    disposition = describe_moodle_remediation_disposition(
+def test_biz01_maintenance_mode_refuses_automated_disable_when_upgrade_in_progress() -> None:
+    """When an upgrade is actively in progress, AI MUST NOT auto-disable maintenance mode."""
+    evidence = [
+        _metric("moodle_cli_maintenance_mode_enabled", 1.0, "moodle-app-a", "b1-0"),
+        _metric("moodle_cli_maintenance_mode_enabled", 1.0, "moodle-app-b", "b1-1"),
+        _metric("moodle_upgrade_in_progress", 1.0, "moodle-app-a", "b1-2"),  # Active upgrade!
+        _metric("moodle_upgrade_in_progress", 0.0, "moodle-app-b", "b1-3"),
+        _metric("moodle_node_web_running", 1.0, "moodle-app-a", "b1-4"),
+        _metric("moodle_node_web_running", 1.0, "moodle-app-b", "b1-5"),
+    ]
+    diag = diagnose_moodle_alert("MoodleMaintenanceModeStuck", evidence)
+    assert diag["status"] == "escalated_human_only"
+    assert diag["cause_code"] == "upgrade_in_progress_human_escalation"
+
+    # Plan MUST fail closed
+    plan = plan_moodle_s3_3_remediation(
+        incident_id="inc-biz01-upgrade-01",
+        alert_name="MoodleMaintenanceModeStuck",
+        diagnosis=diag,
+        evidence=evidence,
+    )
+    assert plan is None, "AI must not plan maintenance disable while upgrade is in progress"
+
+
+def test_biz02_cron_restarts_container_without_moodle_db_mutation() -> None:
+    """BIZ-02 restarts moodle-cron container at infrastructure level, strictly without DB tables mutation."""
+    alert_name, evidence = _scenario_evidence("BIZ-02")
+    diag = diagnose_moodle_alert(alert_name, evidence)
+    proposal = plan_moodle_s3_3_remediation(
+        incident_id="inc-biz02-cron-01",
         alert_name=alert_name,
-        diagnosis={
-            "status": "hypothesis",
-            "cause_code": "moodle_live_quiz_gradebook_incident"
-            if scenario_id == "BIZ-05"
-            else "rds_public_ingress_detected",
-        },
+        diagnosis={**diag, "evidence_refs": [item.evidence_id for item in evidence]},
+        evidence=evidence,
+    )
+    assert proposal is not None
+    assert proposal["catalog_action_id"] == "restart_moodle_cron_service"
+    assert proposal["action"]["action_type"] == ActionType.START_CONTAINER.value
+    assert proposal["action"]["rollback_plan"]["rollback_action_id"] == "reconcile_biz02_cron_baseline"
+    # Catalog entry check
+    catalog = ActionCatalog.load_moodle_7_scenario_catalog()
+    entry = catalog.lookup("restart_moodle_cron_service")
+    assert entry.action_type == ActionType.START_CONTAINER
+    assert entry.adapter == "docker"
+
+
+def test_sec01_human_only_escalation_refuses_automated_execution() -> None:
+    """SEC-01 (Database Security Group Ingress) MUST be refused at Safety Gate and escalated."""
+    disposition = describe_moodle_remediation_disposition(
+        alert_name="MoodleDatabasePortExposure",
+        diagnosis={"status": "hypothesis", "cause_code": "rds_public_ingress_detected"},
         remediation_candidate=None,
     )
     assert disposition["disposition"] == "human_only_escalation"
-    assert disposition["scenario_id"] == scenario_id
+    assert disposition["scenario_id"] == "SEC-01"
     assert disposition["execution_permitted"] is False
 
     priv_pem, pub_pem = _ed25519_keypair()
-    catalog = ActionCatalog.load_moodle_10_scenario_catalog()
+    catalog = ActionCatalog.load_moodle_7_scenario_catalog()
     gate = SafeExecutionGate(
         approval_verification_key=pub_pem,
         approved_actors={"safety-officer"},
@@ -328,26 +335,24 @@ def test_rq1_human_only_business_and_technical_scenarios_are_strictly_blocked_by
         rollback_catalog=catalog,
     )
     request = SafeLiveActionRequest(
-        request_id=f"req-{scenario_id}",
-        idempotency_key=f"idem-{scenario_id}",
-        catalog_action_id=action_id,
-        scenario_id=scenario_id,
-        target_scope=target_scope,
+        request_id="req-sec01",
+        idempotency_key="idem-sec01",
+        catalog_action_id="remove_tagged_database_ingress_rule",
+        scenario_id="SEC-01",
+        target_scope="staging_database_security_group",
         action=TypedAction(
-            action_id=f"act-{scenario_id}",
-            incident_id=f"inc-{scenario_id}",
-            action_type=ActionType.RECONFIGURE_SERVICE
-            if scenario_id == "BIZ-05"
-            else ActionType.RUN_ANSIBLE_PLAYBOOK,
-            target_resource_id=target_resource,
+            action_id="act-sec01",
+            incident_id="inc-sec01",
+            action_type=ActionType.RUN_ANSIBLE_PLAYBOOK,
+            target_resource_id="moodle-rds-security-group",
             environment=Environment.STAGING,
-            reason=f"Attempted automated execution of {scenario_id}",
-            expected_outcome=f"Attempted automated recovery of {scenario_id}",
+            reason="Attempted automated execution of SEC-01",
+            expected_outcome="Attempted automated recovery of SEC-01",
             evidence_refs=["ev-1", "ev-2", "ev-3"],
-            reversible=False if scenario_id == "BIZ-05" else True,
+            reversible=True,
             rollback_plan=RollbackPlan(
                 available=True,
-                rollback_action_id=action_id,
+                rollback_action_id="remove_tagged_database_ingress_rule",
                 method="Attempted fake rollback",
             ),
             requires_approval=True,
@@ -355,13 +360,14 @@ def test_rq1_human_only_business_and_technical_scenarios_are_strictly_blocked_by
     )
     verdict = gate.evaluate(request, actor_role="executor", confidence=0.95)
     assert verdict.decision == "DENY"
-    assert scenario_id not in MOODLE_LIVE_CONTRACTS
+    assert "SEC-01" not in MOODLE_LIVE_CONTRACTS
 
 
-@pytest.mark.parametrize("scenario_id", ALLOWED_8_SCENARIOS)
-def test_rq2_independent_verifier_resolves_all_8_allowed_scenarios_only_after_5_samples_120s(
+@pytest.mark.parametrize("scenario_id", ALLOWED_6_SCENARIOS)
+def test_rq2_independent_verifier_resolves_all_6_allowed_scenarios(
     scenario_id: str,
 ) -> None:
+    """All 6 allowed scenarios have live contracts and resolve via independent signed attestation."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         priv_pem, pub_pem = _ed25519_keypair()
@@ -371,8 +377,9 @@ def test_rq2_independent_verifier_resolves_all_8_allowed_scenarios_only_after_5_
 
         incident_id = f"inc-{scenario_id}"
         request_id = f"req-{scenario_id}"
-        action_id = SCENARIO_REMEDIATION_DISPOSITION[scenario_id]["catalog_action_id"]
-        target_scope = SCENARIO_REMEDIATION_DISPOSITION[scenario_id]["target_scope"]
+        info = _get_disposition(scenario_id)
+        action_id = info["catalog_action_id"]
+        target_scope = info["target_scope"]
 
         with SafeActionAuditStore(audit_db) as store:
             receipt_event = store.append(
@@ -464,4 +471,3 @@ def test_rq2_independent_verifier_resolves_all_8_allowed_scenarios_only_after_5_
         )
         assert result["status"] == "resolved"
         assert result["idempotent"] is False
-

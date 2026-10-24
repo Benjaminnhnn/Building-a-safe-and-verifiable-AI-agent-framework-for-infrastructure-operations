@@ -154,6 +154,20 @@ METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
     ),
 }
 
+BUSINESS_METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
+    "MoodleMaintenanceModeStuck": (
+        ("moodle_cli_maintenance_mode_enabled", 'moodle_cli_maintenance_mode_enabled{job="moodle_node"}'),
+        ("moodle_upgrade_in_progress", 'moodle_upgrade_in_progress{job="moodle_node"}'),
+        ("moodle_node_web_running", 'moodle_node_web_running{job="moodle_node"}'),
+        ("moodle_public_probe", 'probe_success{job="blackbox_moodle_external"}'),
+    ),
+    "MoodleAdhocTaskQueueStuck": (
+        ("moodle_adhoc_tasks_overdue_count", 'moodle_adhoc_tasks_overdue_count{job="moodle_node"}'),
+        ("moodle_cron_container_stopped", 'moodle_cron_container_stopped{job="moodle_node"}'),
+        ("moodle_node_web_running", 'moodle_node_web_running{job="moodle_node"}'),
+    ),
+}
+
 _SAFE_LABELS = frozenset({"job", "instance", "resource_id", "environment"})
 
 

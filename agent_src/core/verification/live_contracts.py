@@ -57,7 +57,7 @@ MOODLE_LIVE_CONTRACTS: dict[str, dict[str, list[str]]] = {
         ],
     },
     # -----------------------------------------------------------------------
-    # Business / User & Admin Usage Scenarios (BIZ-01 .. BIZ-04)
+    # Business / Infrastructure Scenarios (BIZ-01, BIZ-02)
     # -----------------------------------------------------------------------
     "BIZ-01": {
         "allowed": ["common_synthetic_transaction", "verify_student_course_access"],
@@ -69,30 +69,12 @@ MOODLE_LIVE_CONTRACTS: dict[str, dict[str, list[str]]] = {
         ],
     },
     "BIZ-02": {
-        "allowed": ["common_synthetic_transaction", "verify_moodle_task_queue_draining"],
-        "forbidden": ["internet_to_postgresql_blocked", "adhoc_task_lock_stuck"],
+        "allowed": ["common_synthetic_transaction", "verify_moodle_cron_running"],
+        "forbidden": ["internet_to_postgresql_blocked", "moodle_cron_container_unhealthy"],
         "related": [
             "scenario_alert_resolved",
+            "moodle_cron_service_active",
             "overdue_adhoc_tasks_zero",
-            "assignment_notification_dispatched",
-        ],
-    },
-    "BIZ-03": {
-        "allowed": ["common_synthetic_transaction", "verify_student_login_flow"],
-        "forbidden": ["internet_to_postgresql_blocked", "student_auth_method_unavailable"],
-        "related": [
-            "scenario_alert_resolved",
-            "approved_auth_plugins_enabled",
-            "student_dashboard_session_established",
-        ],
-    },
-    "BIZ-04": {
-        "allowed": ["common_synthetic_transaction", "verify_course_self_enrolment_ready"],
-        "forbidden": ["internet_to_postgresql_blocked", "self_enrolment_plugin_disabled"],
-        "related": [
-            "scenario_alert_resolved",
-            "enrol_self_plugin_active",
-            "student_course_enrolment_page_accessible",
         ],
     },
 }

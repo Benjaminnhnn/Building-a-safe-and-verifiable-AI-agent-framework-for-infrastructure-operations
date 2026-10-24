@@ -40,19 +40,18 @@ _ALL_QUERY_IDS = (
     "moodle_fault_net01_hosts_override",
     "moodle_fault_con01_web_stopped",
     "moodle_fault_sec02_fixture_mode_zero",
-    # Business / User & Admin workflow query IDs (BIZ-01 .. BIZ-05)
+    # Business / Infrastructure workflow query IDs (BIZ-01, BIZ-02)
     "moodle_cli_maintenance_mode_enabled",
+    "moodle_upgrade_in_progress",
     "moodle_adhoc_tasks_overdue_count",
-    "moodle_student_auth_plugin_disabled",
-    "moodle_course_self_enrol_disabled",
-    "moodle_live_quiz_gradebook_anomaly",
+    "moodle_cron_container_stopped",
 )
 _BUSINESS_ALERT_RULES = {
     "MoodleMaintenanceModeStuck": (
         "moodle_cli_maintenance_mode_enabled",
         1.0,
         "moodle_maintenance_mode_stuck",
-        "Moodle CLI maintenance mode remains enabled and blocks non-admin student access while HTTP health probes remain green",
+        "Moodle CLI maintenance mode remains enabled after upgrade and blocks non-admin student access while HTTP health probes remain green",
         True,
         True,
     ),
@@ -60,31 +59,7 @@ _BUSINESS_ALERT_RULES = {
         "moodle_adhoc_tasks_overdue_count",
         1.0,
         "moodle_adhoc_task_queue_stuck",
-        "Moodle ad-hoc/scheduled task queue has overdue locked tasks blocking assignment grading and notifications",
-        True,
-        True,
-    ),
-    "MoodleStudentAuthPluginDisabled": (
-        "moodle_student_auth_plugin_disabled",
-        1.0,
-        "moodle_student_auth_disabled",
-        "Approved Moodle student authentication plugin is disabled in site configuration",
-        True,
-        True,
-    ),
-    "MoodleCourseSelfEnrolDisabled": (
-        "moodle_course_self_enrol_disabled",
-        1.0,
-        "moodle_course_self_enrol_disabled",
-        "Moodle course self-enrolment plugin is disabled for active student courses",
-        True,
-        True,
-    ),
-    "MoodleLiveQuizGradebookIncident": (
-        "moodle_live_quiz_gradebook_anomaly",
-        1.0,
-        "moodle_live_quiz_gradebook_incident",
-        "Live quiz attempt or gradebook anomaly detected; automated mutation is prohibited (human-only academic escalation)",
+        "Moodle ad-hoc/scheduled task queue has overdue locked tasks and cron service requires infrastructure restart",
         True,
         True,
     ),
@@ -451,6 +426,33 @@ def diagnose_moodle_alert(alert_name: str, evidence: list[Any]) -> dict[str, Any
         if alert_name in _BUSINESS_ALERT_RULES and exact_instances(
             "moodle_node_web_running", {"moodle-app-a": 1.0, "moodle-app-b": 1.0}
         ):
+            if alert_name == "MoodleMaintenanceModeStuck":
+                upgrade_samples = instance_values("moodle_upgrade_in_progress")
+                if upgrade_samples and any(v >= 1.0 for v in upgrade_samples.values()):
+                    return {
+                        "status": "escalated_human_only",
+                        "cause_code": "upgrade_in_progress_human_escalation",
+                        "reason": "Moodle upgrade is actively in progress or failed during execution; automated maintenance mode disable is dangerous and escalated to human operator.",
+                        "evidence_refs": sorted(set(
+                            refs_by_query[query_id]
+                            + refs_by_query.get("moodle_upgrade_in_progress", [])
+                        )),
+                        "hypothesis": "Moodle upgrade actively in progress; human-only escalation required",
+                        "confidence": 0.95,
+                        "action_candidate": None,
+                    }
+                if exact_instances("moodle_upgrade_in_progress", {"moodle-app-a": 0.0, "moodle-app-b": 0.0}):
+                    result["evidence_refs"] = sorted(set(
+                        result["evidence_refs"] + refs_by_query.get("moodle_upgrade_in_progress", [])
+                    ))
+                    result["reason"] += "; upgrade is confirmed complete (0.0 in-progress)"
+
+            if alert_name == "MoodleAdhocTaskQueueStuck":
+                cron_stopped_refs = refs_by_query.get("moodle_cron_container_stopped", [])
+                if cron_stopped_refs:
+                    result["evidence_refs"] = sorted(set(result["evidence_refs"] + cron_stopped_refs))
+                    result["reason"] += "; moodle-cron container stopped or frozen"
+
             result["confidence"] = 0.85
             result["evidence_refs"] = sorted(set(
                 result["evidence_refs"]

@@ -1,5 +1,17 @@
 # AI Engineer scope status
 
+## Focused 7-Scenario Suite & Hermes Agent Integration Check (2026-10-24)
+
+Following thesis review and advisory feedback (*"Quản trị hạ tầng không quản trị ứng dụng"*), the operational scope was standardized to **7 focused scenarios** (2 Business/Infra + 5 Technical: `BIZ-01`, `BIZ-02`, `CON-01`, `DB-01`, `RES-01`, `NET-01`, `SEC-01`):
+1. **Application-layer mutations pruned**: `BIZ-03`, `BIZ-04`, `BIZ-05` were removed. `BIZ-02` was refactored from database row mutation (`mdl_task_adhoc`) to infrastructure-level container lifecycle management (`restart_moodle_cron_service` on node A). `BIZ-01` added a strict safety check refusing remediation if an upgrade process (`upgrade.php`) is active.
+2. **Audit gaps resolved**: Metric telemetry queries added for business alerts in `evidence_collectors.py`, Moodle platform adapter updated to provide the 7-scenario catalog, Independent Verifier updated to accept BIZ-01/02, offline runner `run-moodle-7-scenarios.py` updated with explicit `simulated=True` labeling, and the 15-scenario legacy CI disposition was cleanly decoupled from the 7 thesis scenarios.
+3. **Hermes Agent research & prototype integration**: Implemented in `integrations/hermes/` and documented in `docs/HERMES_AGENT_RESEARCH.md` and `docs/BAO_CAO_HOAN_THIEN_7_KICH_BAN_VA_HERMES_AGENT.md`:
+   - Verified that Hermes cannot natively serve as the Safety Gate or Independent Verifier (Safety Gate requires external out-of-process multi-party Ed25519 signatures; Verifier requires deterministic multi-sample telemetry measurement without an LLM in the loop).
+   - Implemented `HermesMcpServer` adhering strictly to read-only telemetry and proposal tools (no execution or verification tools).
+   - Implemented `HermesSafetyHook` intercepting shell execution and database table mutations.
+   - Designed Multi-AI Task Rotation (Investigator, Critic, Operator Liaison).
+4. **Automated verification**: `agent_src/tests/test_moodle_7_scenario_suite.py` (16/16 passed), `agent_src/tests/test_hermes_integration.py` (16/16 passed).
+
 ## Current staging readiness check (2026-10-20)
 
 The current checkout contains the evidence-derived `investigate` candidate,
