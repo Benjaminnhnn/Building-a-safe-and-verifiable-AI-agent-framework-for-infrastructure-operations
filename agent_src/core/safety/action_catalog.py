@@ -86,6 +86,20 @@ _ACTION_TYPES: dict[str, ActionType] = {
     "probe_erpnext_mariadb_connectivity": ActionType.READ_HEALTH,
     "probe_erpnext_redis_connectivity": ActionType.READ_HEALTH,
     "probe_erpnext_http_health": ActionType.READ_HEALTH,
+    # Business / User & Admin workflow actions (BIZ-01 .. BIZ-05)
+    "disable_moodle_cli_maintenance_mode": ActionType.RECONFIGURE_SERVICE,
+    "enable_moodle_cli_maintenance_mode": ActionType.RECONFIGURE_SERVICE,
+    "verify_student_course_access": ActionType.READ_HEALTH,
+    "release_stuck_moodle_adhoc_task_lock": ActionType.RECONFIGURE_SERVICE,
+    "restore_moodle_adhoc_task_schedule": ActionType.RECONFIGURE_SERVICE,
+    "verify_moodle_task_queue_draining": ActionType.READ_HEALTH,
+    "restore_approved_moodle_auth_plugins": ActionType.RECONFIGURE_SERVICE,
+    "reconcile_biz03_auth_plugin_baseline": ActionType.RECONFIGURE_SERVICE,
+    "verify_student_login_flow": ActionType.READ_HEALTH,
+    "restore_approved_course_self_enrolment": ActionType.RECONFIGURE_SERVICE,
+    "reconcile_biz04_enrolment_baseline": ActionType.RECONFIGURE_SERVICE,
+    "verify_course_self_enrolment_ready": ActionType.READ_HEALTH,
+    "reset_live_quiz_attempts_and_regrade": ActionType.RECONFIGURE_SERVICE,
 }
 
 _TARGET_RESOURCE_TYPES: dict[str, set[ResourceType]] = {
@@ -136,6 +150,20 @@ _TARGET_RESOURCE_TYPES: dict[str, set[ResourceType]] = {
     "probe_erpnext_mariadb_connectivity": {ResourceType.DATABASE},
     "probe_erpnext_redis_connectivity": {ResourceType.CONTAINER},
     "probe_erpnext_http_health": {ResourceType.APPLICATION, ResourceType.ENDPOINT},
+    # Business / User & Admin workflow target resource types (BIZ-01 .. BIZ-05)
+    "disable_moodle_cli_maintenance_mode": {ResourceType.APPLICATION},
+    "enable_moodle_cli_maintenance_mode": {ResourceType.APPLICATION},
+    "verify_student_course_access": {ResourceType.APPLICATION, ResourceType.ENDPOINT},
+    "release_stuck_moodle_adhoc_task_lock": {ResourceType.APPLICATION},
+    "restore_moodle_adhoc_task_schedule": {ResourceType.APPLICATION},
+    "verify_moodle_task_queue_draining": {ResourceType.APPLICATION},
+    "restore_approved_moodle_auth_plugins": {ResourceType.APPLICATION},
+    "reconcile_biz03_auth_plugin_baseline": {ResourceType.APPLICATION},
+    "verify_student_login_flow": {ResourceType.APPLICATION, ResourceType.ENDPOINT},
+    "restore_approved_course_self_enrolment": {ResourceType.APPLICATION},
+    "reconcile_biz04_enrolment_baseline": {ResourceType.APPLICATION},
+    "verify_course_self_enrolment_ready": {ResourceType.APPLICATION, ResourceType.ENDPOINT},
+    "reset_live_quiz_attempts_and_regrade": {ResourceType.APPLICATION, ResourceType.DATABASE},
 }
 
 
@@ -169,6 +197,46 @@ _S3_3_STAGING_EXECUTION_SCOPES: dict[str, dict[str, str]] = {
         "verify_efs_write": "moodle-synthetic-transaction",
     },
 }
+
+# Business / User & Admin workflow scenarios permitted for staging execution.
+# BIZ-05 (Live Quiz & Gradebook Incident) is intentionally omitted so it
+# fails closed (HUMAN_ONLY / DENY) at the Safety Gate.
+_BIZ_STAGING_EXECUTION_SCOPES: dict[str, dict[str, str]] = {
+    "BIZ-01": {
+        "disable_moodle_cli_maintenance_mode": "staging_moodle_app",
+        "enable_moodle_cli_maintenance_mode": "staging_moodle_app",
+        "verify_student_course_access": "staging_moodle_app",
+    },
+    "BIZ-02": {
+        "release_stuck_moodle_adhoc_task_lock": "staging_moodle_app",
+        "restore_moodle_adhoc_task_schedule": "staging_moodle_app",
+        "verify_moodle_task_queue_draining": "staging_moodle_app",
+    },
+    "BIZ-03": {
+        "restore_approved_moodle_auth_plugins": "staging_moodle_configuration",
+        "reconcile_biz03_auth_plugin_baseline": "staging_moodle_configuration",
+        "verify_student_login_flow": "staging_moodle_configuration",
+    },
+    "BIZ-04": {
+        "restore_approved_course_self_enrolment": "staging_moodle_configuration",
+        "reconcile_biz04_enrolment_baseline": "staging_moodle_configuration",
+        "verify_course_self_enrolment_ready": "staging_moodle_configuration",
+    },
+}
+
+# Canonical 10-scenario suite: 5 Business (BIZ-01..BIZ-05) + 5 Technical (CON-01, DB-01, RES-01, NET-01, SEC-01)
+MOODLE_10_SCENARIO_IDS: tuple[str, ...] = (
+    "BIZ-01",
+    "BIZ-02",
+    "BIZ-03",
+    "BIZ-04",
+    "BIZ-05",
+    "CON-01",
+    "DB-01",
+    "RES-01",
+    "NET-01",
+    "SEC-01",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -226,8 +294,8 @@ class ActionCatalog:
     def is_safe_execution_allowed(
         self, action_id: str, *, scenario_id: str, target_scope: str, environment: str, role: str
     ) -> bool:
-        """Fail closed unless a request matches the reviewed S3.3 live boundary."""
-        scope = _S3_3_STAGING_EXECUTION_SCOPES.get(scenario_id)
+        """Fail closed unless a request matches the reviewed S3.3 or Business live boundary."""
+        scope = _S3_3_STAGING_EXECUTION_SCOPES.get(scenario_id) or _BIZ_STAGING_EXECUTION_SCOPES.get(scenario_id)
         if scope is None or environment != "staging" or scope.get(action_id) != target_scope:
             return False
         return self.is_allowed(action_id, environment=environment, role=role)
@@ -704,6 +772,190 @@ class ActionCatalog:
             for action_id in actions
         }
         return cls(entries=[full_catalog._entries[action_id] for action_id in sorted(action_ids)])
+
+    @classmethod
+    def load_moodle_business_catalog(cls) -> ActionCatalog:
+        """Return a catalog pre-loaded with the 5 Moodle Business/Admin scenarios (BIZ-01..BIZ-05)."""
+        _executor_staging = ActionPermission(
+            required_role="executor",
+            environment_scope=["staging"],
+        )
+        _operator_staging = ActionPermission(
+            required_role="operator",
+            environment_scope=["staging"],
+        )
+        _verifier_staging_ro = ActionPermission(
+            required_role="verifier",
+            environment_scope=["staging"],
+            read_only=True,
+        )
+        entries: list[CatalogEntry] = [
+            # BIZ-01: Maintenance Mode Stuck
+            CatalogEntry(
+                action_id="disable_moodle_cli_maintenance_mode",
+                description="Disable stuck Moodle CLI maintenance mode (php admin/cli/maintenance.php --disable).",
+                adapter="ansible",
+                permission=_executor_staging,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action="enable_moodle_cli_maintenance_mode",
+                idempotent=True,
+                forbidden_in_production=True,
+            ),
+            CatalogEntry(
+                action_id="enable_moodle_cli_maintenance_mode",
+                description="Re-enable Moodle CLI maintenance mode if rollback is required.",
+                adapter="ansible",
+                permission=_executor_staging,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action="disable_moodle_cli_maintenance_mode",
+                idempotent=True,
+                forbidden_in_production=True,
+            ),
+            CatalogEntry(
+                action_id="verify_student_course_access",
+                description="Probe non-admin student course view to confirm maintenance mode is cleared.",
+                adapter="probe",
+                permission=_verifier_staging_ro,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action=None,
+                idempotent=True,
+                forbidden_in_production=False,
+            ),
+            # BIZ-02: Ad-hoc / Scheduled Task Queue Stuck
+            CatalogEntry(
+                action_id="release_stuck_moodle_adhoc_task_lock",
+                description="Release stale Moodle adhoc/scheduled task lock and drain overdue assignment tasks.",
+                adapter="ansible",
+                permission=_executor_staging,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action="restore_moodle_adhoc_task_schedule",
+                idempotent=True,
+                forbidden_in_production=True,
+            ),
+            CatalogEntry(
+                action_id="restore_moodle_adhoc_task_schedule",
+                description="Restore baseline Moodle task schedule state after partial task drain.",
+                adapter="ansible",
+                permission=_executor_staging,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action="release_stuck_moodle_adhoc_task_lock",
+                idempotent=True,
+                forbidden_in_production=True,
+            ),
+            CatalogEntry(
+                action_id="verify_moodle_task_queue_draining",
+                description="Probe Moodle task queue to confirm zero overdue adhoc tasks.",
+                adapter="probe",
+                permission=_verifier_staging_ro,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action=None,
+                idempotent=True,
+                forbidden_in_production=False,
+            ),
+            # BIZ-03: Student Auth Plugin Disabled
+            CatalogEntry(
+                action_id="restore_approved_moodle_auth_plugins",
+                description="Restore approved Moodle student authentication plugins (manual,oidc) via CLI.",
+                adapter="ansible",
+                permission=_executor_staging,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action="reconcile_biz03_auth_plugin_baseline",
+                idempotent=True,
+                forbidden_in_production=True,
+            ),
+            CatalogEntry(
+                action_id="reconcile_biz03_auth_plugin_baseline",
+                description="Re-apply reviewed BIZ-03 authentication plugin baseline.",
+                adapter="ansible",
+                permission=_executor_staging,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action="restore_approved_moodle_auth_plugins",
+                idempotent=True,
+                forbidden_in_production=True,
+            ),
+            CatalogEntry(
+                action_id="verify_student_login_flow",
+                description="Probe end-to-end student login flow to confirm authentication recovery.",
+                adapter="probe",
+                permission=_verifier_staging_ro,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action=None,
+                idempotent=True,
+                forbidden_in_production=False,
+            ),
+            # BIZ-04: Course Self-Enrolment Disabled
+            CatalogEntry(
+                action_id="restore_approved_course_self_enrolment",
+                description="Re-enable approved Moodle course self-enrolment plugin (enrol_self) via CLI.",
+                adapter="ansible",
+                permission=_executor_staging,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action="reconcile_biz04_enrolment_baseline",
+                idempotent=True,
+                forbidden_in_production=True,
+            ),
+            CatalogEntry(
+                action_id="reconcile_biz04_enrolment_baseline",
+                description="Re-apply reviewed BIZ-04 course enrolment plugin baseline.",
+                adapter="ansible",
+                permission=_executor_staging,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action="restore_approved_course_self_enrolment",
+                idempotent=True,
+                forbidden_in_production=True,
+            ),
+            CatalogEntry(
+                action_id="verify_course_self_enrolment_ready",
+                description="Probe student course self-enrolment page to confirm enrolment availability.",
+                adapter="probe",
+                permission=_verifier_staging_ro,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action=None,
+                idempotent=True,
+                forbidden_in_production=False,
+            ),
+            # BIZ-05: Live Quiz & Gradebook Incident (HUMAN_ONLY / Blocked at Safety Gate)
+            CatalogEntry(
+                action_id="reset_live_quiz_attempts_and_regrade",
+                description="Human-only intervention for live quiz attempt reset or gradebook recalculation.",
+                adapter="ansible",
+                permission=_operator_staging,
+                blast_radius="HIGH",
+                is_reversible=False,
+                rollback_action=None,
+                idempotent=False,
+                forbidden_in_production=True,
+            ),
+        ]
+        return cls(entries=entries)
+
+    @classmethod
+    def load_moodle_10_scenario_catalog(cls) -> ActionCatalog:
+        """Load the unified 10-scenario catalog: 5 Business (BIZ-01..05) + 5 Technical (CON-01, DB-01, RES-01, NET-01, SEC-01)."""
+        moodle_full = cls.load_moodle_catalog()
+        tech_scenarios = ("CON-01", "DB-01", "RES-01", "NET-01")
+        tech_action_ids = {
+            action_id
+            for scenario_id in tech_scenarios
+            for action_id in _S3_3_STAGING_EXECUTION_SCOPES[scenario_id]
+        }
+        # Include SEC-01 human-only technical action
+        tech_action_ids.add("remove_tagged_database_ingress_rule")
+        tech_entries = [moodle_full._entries[action_id] for action_id in sorted(tech_action_ids)]
+        biz_entries = list(cls.load_moodle_business_catalog()._entries.values())
+        return cls(entries=tech_entries + biz_entries)
 
     @classmethod
     def load_erpnext_catalog(cls) -> ActionCatalog:

@@ -40,7 +40,55 @@ _ALL_QUERY_IDS = (
     "moodle_fault_net01_hosts_override",
     "moodle_fault_con01_web_stopped",
     "moodle_fault_sec02_fixture_mode_zero",
+    # Business / User & Admin workflow query IDs (BIZ-01 .. BIZ-05)
+    "moodle_cli_maintenance_mode_enabled",
+    "moodle_adhoc_tasks_overdue_count",
+    "moodle_student_auth_plugin_disabled",
+    "moodle_course_self_enrol_disabled",
+    "moodle_live_quiz_gradebook_anomaly",
 )
+_BUSINESS_ALERT_RULES = {
+    "MoodleMaintenanceModeStuck": (
+        "moodle_cli_maintenance_mode_enabled",
+        1.0,
+        "moodle_maintenance_mode_stuck",
+        "Moodle CLI maintenance mode remains enabled and blocks non-admin student access while HTTP health probes remain green",
+        True,
+        True,
+    ),
+    "MoodleAdhocTaskQueueStuck": (
+        "moodle_adhoc_tasks_overdue_count",
+        1.0,
+        "moodle_adhoc_task_queue_stuck",
+        "Moodle ad-hoc/scheduled task queue has overdue locked tasks blocking assignment grading and notifications",
+        True,
+        True,
+    ),
+    "MoodleStudentAuthPluginDisabled": (
+        "moodle_student_auth_plugin_disabled",
+        1.0,
+        "moodle_student_auth_disabled",
+        "Approved Moodle student authentication plugin is disabled in site configuration",
+        True,
+        True,
+    ),
+    "MoodleCourseSelfEnrolDisabled": (
+        "moodle_course_self_enrol_disabled",
+        1.0,
+        "moodle_course_self_enrol_disabled",
+        "Moodle course self-enrolment plugin is disabled for active student courses",
+        True,
+        True,
+    ),
+    "MoodleLiveQuizGradebookIncident": (
+        "moodle_live_quiz_gradebook_anomaly",
+        1.0,
+        "moodle_live_quiz_gradebook_incident",
+        "Live quiz attempt or gradebook anomaly detected; automated mutation is prohibited (human-only academic escalation)",
+        True,
+        True,
+    ),
+}
 _MAX_SAMPLE_AGE_SECONDS = 120
 _MAX_FUTURE_SKEW_SECONDS = 30
 _DIRECT_PROBE_RULES = {
@@ -158,7 +206,7 @@ def diagnose_moodle_alert(alert_name: str, evidence: list[Any]) -> dict[str, Any
     """Return a bounded hypothesis, or explicit insufficient/conflicting evidence."""
     direct_rule = _DIRECT_PROBE_RULES.get(alert_name)
     direct_node_rule = _DIRECT_NODE_RULES.get(alert_name)
-    threshold_rule = _DIRECT_THRESHOLD_RULES.get(alert_name)
+    threshold_rule = _DIRECT_THRESHOLD_RULES.get(alert_name) or _BUSINESS_ALERT_RULES.get(alert_name)
     if alert_name != "MoodleSyntheticTransactionFailed" and direct_rule is None and direct_node_rule is None and threshold_rule is None:
         return {
             "status": "insufficient_evidence",
@@ -400,6 +448,16 @@ def diagnose_moodle_alert(alert_name: str, evidence: list[Any]) -> dict[str, Any
                 + refs_by_query["moodle_node_web_running"]
             ))
             result["reason"] += "; exact named RES-01 fixture and healthy peer probes match"
+        if alert_name in _BUSINESS_ALERT_RULES and exact_instances(
+            "moodle_node_web_running", {"moodle-app-a": 1.0, "moodle-app-b": 1.0}
+        ):
+            result["confidence"] = 0.85
+            result["evidence_refs"] = sorted(set(
+                result["evidence_refs"]
+                + refs_by_query["moodle_node_web_running"]
+                + refs_by_query.get("moodle_public_probe", [])
+            ))
+            result["reason"] += "; web infrastructure is healthy while Moodle business workflow is impaired"
         return result
 
     if direct_node_rule is not None:

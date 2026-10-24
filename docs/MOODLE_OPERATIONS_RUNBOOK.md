@@ -599,6 +599,65 @@ MOODLE_SPRINT2_CAMPAIGN=final-evidence-$(date -u +%Y%m%dT%H%M%SZ) \
   --stability-seconds 120
 ```
 
+The supervised Agent remediation canary is a separate, single-scenario drill
+limited to `CON-01`. It starts from fresh evidence, requires two signed
+approvals, runs the allowlisted action, verifies recovery for at least 120
+seconds, records the Independent Verifier attestation, and disables both live
+switches at cleanup. Run it only after the host, image, baseline, reset path,
+and signing public keys have passed preflight:
+
+```bash
+MOODLE_SAFE_EXECUTOR_CONFIRM=staging \
+  bash automation/moodle-safe-executor-drill.sh CON-01
+```
+
+The drill prints the prepared request and waits for separate Safety Gate and
+Executor approval JSON files. Each approver must sign the corresponding digest
+with a private key held under their own control, then securely deliver the
+signed file to the printed path. The setup helper requires the matching public
+keys; it does not generate approver private keys. Set
+`MOODLE_VERIFIER_SIGNING_KEY_FILE` to the verifier-held signing key. If
+approval is not supplied, the cleanup trap resets the fault and disables live
+switches. A successful local replay or mocked end-to-end test is not staging
+acceptance.
+
+Generate each Ed25519 key pair on its owner's machine and transfer only the
+public key to the protected `terraform/.artifacts/safe-executor/` directory:
+
+```bash
+openssl genpkey -algorithm ED25519 -out approver-private.pem
+openssl pkey -in approver-private.pem -pubout -out approver-public.pem
+```
+
+Provision `gate-approval-ed25519.pub` for the Safety Gate,
+`approval-ed25519.pub` for the Executor, and `verifier-ed25519.pub` for the
+Independent Verifier as distinct keys. Keep their private keys with the
+respective approver or verifier; never place both approver private keys on the
+drill host. The live drill waits at most five minutes for the independent
+approval files, then resets and disables live switches if approvals are
+missing or invalid.
+
+After securely receiving the prepared request, each approver can create its
+signature from a trusted checkout without transferring its private key:
+
+```bash
+prepared=/path/to/CON-01-prepared.json
+python automation/moodle-safe-gate-approval.py \
+  --action-sha256 "$(jq -r .gate_action_sha256 "$prepared")" \
+  --private-key ~/.keys/safety-officer.pem --actor safety-officer \
+  > gate-approval.json
+python automation/moodle-safe-approval.py CON-01 \
+  --action-id "$(jq -r .request.catalog_action_id "$prepared")" \
+  --idempotency-key "$(jq -r .request.idempotency_key "$prepared")" \
+  --private-key ~/.keys/operator.pem --actor operator \
+  > executor-approval.json
+```
+
+Securely deliver these two JSON files to the paths printed by the running
+drill. The tool rejects equal actor IDs and mismatched digests; the Gate and
+Executor independently verify each signature against its provisioned public
+key.
+
 Accept Sprint 2 only if every scenario has `runs=3` and `passed=3`, with:
 
 - MTTD ≤60 seconds;

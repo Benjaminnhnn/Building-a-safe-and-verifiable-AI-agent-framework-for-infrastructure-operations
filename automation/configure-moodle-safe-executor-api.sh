@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create local-only signing/transport material, then install the private API.
+# Create transport material and validate separately provisioned public keys.
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -14,36 +14,34 @@ mkdir -p "$secrets_dir"
 if [[ ! -e "$secrets_dir/agent-hmac.key" ]]; then
   openssl rand -hex 32 > "$secrets_dir/agent-hmac.key"
 fi
-if [[ ! -e "$secrets_dir/approval-ed25519-private.pem" ]]; then
-  openssl genpkey -algorithm ED25519 -out "$secrets_dir/approval-ed25519-private.pem"
-fi
-if [[ ! -e "$secrets_dir/approval-ed25519.pub" ]]; then
-  openssl pkey -in "$secrets_dir/approval-ed25519-private.pem" -pubout \
-    -out "$secrets_dir/approval-ed25519.pub"
-fi
-if [[ ! -e "$secrets_dir/gate-approval-ed25519-private.pem" ]]; then
-  openssl genpkey -algorithm ED25519 -out "$secrets_dir/gate-approval-ed25519-private.pem"
-fi
-if [[ ! -e "$secrets_dir/gate-approval-ed25519.pub" ]]; then
-  openssl pkey -in "$secrets_dir/gate-approval-ed25519-private.pem" -pubout \
-    -out "$secrets_dir/gate-approval-ed25519.pub"
-fi
 if [[ ! -e "$secrets_dir/safe-action-api-token" ]]; then
   openssl rand -hex 32 > "$secrets_dir/safe-action-api-token"
 fi
-if [[ ! -e "$secrets_dir/verifier-ed25519-private.pem" ]]; then
-  openssl genpkey -algorithm ED25519 -out "$secrets_dir/verifier-ed25519-private.pem"
+for public_key in approval-ed25519.pub gate-approval-ed25519.pub verifier-ed25519.pub; do
+  [[ -r "$secrets_dir/$public_key" ]] || {
+    echo "Missing $secrets_dir/$public_key; provision public keys from their separate approver/verifier owners." >&2
+    exit 66
+  }
+  grep -q 'BEGIN PUBLIC KEY' "$secrets_dir/$public_key" || {
+    echo "Invalid public key: $secrets_dir/$public_key" >&2
+    exit 65
+  }
+done
+for private_key in approval-ed25519-private.pem gate-approval-ed25519-private.pem verifier-ed25519-private.pem; do
+  [[ ! -e "$secrets_dir/$private_key" ]] || {
+    echo "Private key is present on the provisioning host: $secrets_dir/$private_key; move it to its owner before continuing." >&2
+    exit 65
+  }
+done
+if cmp -s "$secrets_dir/approval-ed25519.pub" "$secrets_dir/gate-approval-ed25519.pub" \
+  || cmp -s "$secrets_dir/approval-ed25519.pub" "$secrets_dir/verifier-ed25519.pub" \
+  || cmp -s "$secrets_dir/gate-approval-ed25519.pub" "$secrets_dir/verifier-ed25519.pub"; then
+  echo "Approver and verifier public keys must be distinct." >&2
+  exit 65
 fi
-if [[ ! -e "$secrets_dir/verifier-ed25519.pub" ]]; then
-  openssl pkey -in "$secrets_dir/verifier-ed25519-private.pem" -pubout \
-    -out "$secrets_dir/verifier-ed25519.pub"
-fi
-chmod 0600 "$secrets_dir/agent-hmac.key" "$secrets_dir/approval-ed25519-private.pem" \
-  "$secrets_dir/gate-approval-ed25519-private.pem" "$secrets_dir/safe-action-api-token" \
-  "$secrets_dir/verifier-ed25519-private.pem"
-chmod 0644 "$secrets_dir/approval-ed25519.pub"
-chmod 0644 "$secrets_dir/gate-approval-ed25519.pub"
-chmod 0644 "$secrets_dir/verifier-ed25519.pub"
+chmod 0600 "$secrets_dir/agent-hmac.key" "$secrets_dir/safe-action-api-token"
+chmod 0644 "$secrets_dir/approval-ed25519.pub" "$secrets_dir/gate-approval-ed25519.pub" \
+  "$secrets_dir/verifier-ed25519.pub"
 
 terraform -chdir="$terraform_dir" output -raw moodle_ansible_inventory > "$inventory"
 chmod 0600 "$inventory"
@@ -59,12 +57,12 @@ ansible-playbook -i "$inventory" \
   "$root/ansible/playbooks/configure-moodle-safe-executor-api.yml" \
   ${ansible_args[@]+"${ansible_args[@]}"}
 
-printf 'Safe Executor API installed. Live execution remains disabled.\n'
-printf 'Operator private key (keep local; never upload): %s\n' \
-  "$secrets_dir/approval-ed25519-private.pem"
-printf 'Safety Gate private key (keep local; never upload): %s\n' \
-  "$secrets_dir/gate-approval-ed25519-private.pem"
-printf 'Verifier private key (keep on verifier host; never upload): %s\n' \
-  "$secrets_dir/verifier-ed25519-private.pem"
+if [[ "${SAFE_EXECUTOR_LIVE_ENABLED:-false}" == true ]]; then
+  printf 'Safe Executor API installed with live execution enabled for the confirmed staging drill.\n'
+else
+  printf 'Safe Executor API installed. Live execution remains disabled.\n'
+fi
+printf 'Approval public keys validated; keep each approver private key with its owner.\n'
+printf 'Verifier private key must remain with the independent verifier.\n'
 printf 'Agent API bearer token (keep local): %s\n' \
   "$secrets_dir/safe-action-api-token"
