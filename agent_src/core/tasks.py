@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from core.moodle.alert_integration import process_moodle_alert
+from core.moodle.operator_report import build_admin_action_report
 from utils.telegram_bot import send_telegram_message
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -666,8 +667,10 @@ async def process_single_alert(alert: dict) -> None:
             if remediation else "none"
         )
         refs = ",".join(report.get("decision_evidence_refs", [])[:2]) or "none"
+        admin_report = build_admin_action_report(alert_name, report)
         send_telegram_message(
-            "Moodle evidence pipeline: "
+            f"{admin_report['text']}\n\n"
+            "Audit: Moodle evidence pipeline: "
             f"{report['status']} | incident={report.get('incident_id', 'unassigned')} | "
             f"hypothesis={hypothesis} | read_only_proposal={proposal_summary} | "
             f"remediation_candidate={remediation_summary} | "
@@ -677,6 +680,10 @@ async def process_single_alert(alert: dict) -> None:
             parse_mode=None,
         )
         logger.info("Moodle evidence pipeline result: %s", json.dumps(report, sort_keys=True))
+        logger.info(
+            "Moodle administrator action report: %s",
+            json.dumps({key: value for key, value in admin_report.items() if key != "text"}, sort_keys=True),
+        )
     except Exception as exc:
         ALERTS_PROCESSED_TOTAL.labels(status="failure").inc()
         logger.error("Error processing alert: %s", exc)

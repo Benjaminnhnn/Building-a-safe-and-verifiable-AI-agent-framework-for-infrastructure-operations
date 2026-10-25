@@ -176,6 +176,7 @@ def test_moodle_runbooks_are_ingested_recursively_with_alert_provenance() -> Non
         "moodle/runbook_moodle_storage_resources.md",
         "moodle/runbook_moodle_monitoring.md",
         "moodle/runbook_moodle_security.md",
+        "moodle/runbook_moodle_platform_operations.md",
     }
     assert {row["alert_name"] for row in moodle_rows} >= {
         "MoodleDatabaseEndpointInvalid",

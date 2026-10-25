@@ -32,7 +32,7 @@ Sau khi tiếp nhận ý kiến phản biện chuyên gia:
 | **DB-01** | Mất kết nối TCP app $\rightarrow$ RDS | `MoodleNodeRdsTcpFailed` | Luật iptables chặn có gắn nhãn sự cố trên nút ứng dụng | Gỡ bỏ đúng luật chặn iptables có gắn nhãn | RDS ngừng hoạt động, cấu hình Security Group/Route thay đổi |
 | **RES-01** | Quá tải CPU nút ứng dụng | `MoodleNodeCpuHigh` | Tiến trình / container phụ tải nhân tạo chiếm dụng CPU | Dừng đúng container gây tải phụ đã biết tên | Tải thật từ người dùng tăng đột biến $\rightarrow$ Cần người quyết định scale |
 | **NET-01** | Lệch phân giải tên nội bộ | `MoodleSyntheticTransactionFailed` | Ghi đè hosts sai lệch bên trong container làm sai địa chỉ phụ thuộc | Tạo lại container web từ Compose chuẩn đã được kiểm duyệt | Cấu hình DNS Route 53 / VPC thay đổi |
-| **SEC-01** | Nguồn lạ trong Security Group của RDS | `MoodleDatabasePublicAccessDetected` | Ingress rule mở cổng 5432 ra Internet (`0.0.0.0/0`) | **HUMAN_ONLY** — AI chỉ tạo cảnh báo và phân tích; **tuyệt đối cấm tự động sửa đổi** | Luôn chuyển cho Kỹ sư An ninh xử lý thủ công |
+| **SEC-01** | Nguồn lạ trong Security Group của RDS | `MoodleDatabasePortExposure` | Ingress rule mở cổng 5432 ra Internet (`0.0.0.0/0`) | **HUMAN_ONLY** — AI chỉ tạo cảnh báo và phân tích; **tuyệt đối cấm tự động sửa đổi** | Luôn chuyển cho Kỹ sư An ninh xử lý thủ công |
 
 > [!NOTE]
 > **Các kịch bản đã loại bỏ:**
@@ -64,7 +64,7 @@ Sau khi tiếp nhận ý kiến phản biện chuyên gia:
 2. **Về Bộ Xác minh (Independent Verifier):** Tuân thủ bất biến $\text{Actor}(\text{Remediation}) \neq \text{Actor}(\text{Verification})$. Hermes không được tự kết luận `RESOLVED`. Việc xác minh phải do daemon đo đạc độc lập thực hiện qua 5 mẫu đo trong 120 giây.
 3. **Kiến trúc Phân tầng:** Hermes Agent đóng vai trò là **Bộ não Điều tra (Investigator)** kết nối với hạ tầng thông qua máy chủ MCP chỉ-đọc.
 
-### 4.2. Hiện thực Nguyên mẫu Tích hợp (`integrations/hermes/`)
+### 4.2. Hiện thực Nguyên mẫu Tích hợp (`agent_src/integrations/hermes/`)
 - **`mcp_server.py`:**
   - Cung cấp 4 công cụ chuẩn MCP: `list_scenarios`, `collect_evidence`, `diagnose_alert`, `propose_remediation`.
   - **Không cung cấp** bất kỳ công cụ thực thi hay xác minh nào (`execute_action`, `resolve_incident`). Mọi yêu cầu trái phép đều bị từ chối ngay tại tầng protocol.

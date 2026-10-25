@@ -45,7 +45,24 @@ _ALL_QUERY_IDS = (
     "moodle_upgrade_in_progress",
     "moodle_adhoc_tasks_overdue_count",
     "moodle_cron_container_stopped",
+    # SEC-01 read-only RDS security-group audit
+    "moodle_rds_sg_unreviewed_ingress_rules",
+    "moodle_rds_sg_public_ingress_rules",
+    "moodle_rds_sg_audit_success",
+    "moodle_adhoc_queue_probe_success",
 )
+# SEC-01 is diagnosed but never remediated by the agent; the planner maps it
+# to a human-only disposition.
+_SECURITY_ALERT_RULES = {
+    "MoodleDatabasePortExposure": (
+        "moodle_rds_sg_unreviewed_ingress_rules",
+        0.5,
+        "rds_ingress_unreviewed_source",
+        "The RDS security group authorizes an ingress source outside the reviewed Moodle and monitor security groups",
+        False,
+        False,
+    ),
+}
 _BUSINESS_ALERT_RULES = {
     "MoodleMaintenanceModeStuck": (
         "moodle_cli_maintenance_mode_enabled",
@@ -70,6 +87,7 @@ _DIRECT_PROBE_RULES = {
     "MoodleRdsTcpProbeFailed": ("moodle_rds_tcp_probe", "rds_path_probe_failed"),
     "MoodlePublicProbeFailed": ("moodle_public_probe", "public_entry_probe_failed"),
     "MoodleEfsMountMissing": ("moodle_efs_mount", "efs_mount_probe_failed"),
+    "MoodleRdsIngressAuditFailed": ("moodle_rds_sg_audit_success", "rds_ingress_audit_unavailable"),
 }
 _DIRECT_NODE_RULES = {
     "MoodleNodeRdsTcpFailed": (
@@ -107,6 +125,12 @@ _DIRECT_NODE_RULES = {
         "node_router_fallback_failed",
         "The web container is running but its node-local router fallback probe fails",
         "The current node-local probes confirm a failed router fallback while the web container is running",
+    ),
+    "MoodleAdhocQueueProbeFailed": (
+        "moodle_adhoc_queue_probe_success",
+        "adhoc_queue_probe_failed",
+        "The read-only ad-hoc queue probe fails on a running web container; BIZ-02 detection is blind",
+        "Fresh node-local probes report the ad-hoc backlog query failing while the web container runs",
     ),
 }
 _DIRECT_THRESHOLD_RULES = {
@@ -181,7 +205,11 @@ def diagnose_moodle_alert(alert_name: str, evidence: list[Any]) -> dict[str, Any
     """Return a bounded hypothesis, or explicit insufficient/conflicting evidence."""
     direct_rule = _DIRECT_PROBE_RULES.get(alert_name)
     direct_node_rule = _DIRECT_NODE_RULES.get(alert_name)
-    threshold_rule = _DIRECT_THRESHOLD_RULES.get(alert_name) or _BUSINESS_ALERT_RULES.get(alert_name)
+    threshold_rule = (
+        _DIRECT_THRESHOLD_RULES.get(alert_name)
+        or _BUSINESS_ALERT_RULES.get(alert_name)
+        or _SECURITY_ALERT_RULES.get(alert_name)
+    )
     if alert_name != "MoodleSyntheticTransactionFailed" and direct_rule is None and direct_node_rule is None and threshold_rule is None:
         return {
             "status": "insufficient_evidence",
@@ -339,6 +367,7 @@ def diagnose_moodle_alert(alert_name: str, evidence: list[Any]) -> dict[str, Any
             "rds_path_probe_failed": "Monitor-to-RDS TCP probe is failing; Moodle-node reachability is unconfirmed",
             "public_entry_probe_failed": "Monitor-to-public-ALB Moodle probe is failing; the fault domain is not isolated",
             "efs_mount_probe_failed": "Moodle EFS mount is unavailable on the probed node set",
+            "rds_ingress_audit_unavailable": "The read-only RDS security-group audit is failing; SEC-01 exposure detection is blind",
         }
         return {
             "status": "hypothesis",
@@ -460,6 +489,18 @@ def diagnose_moodle_alert(alert_name: str, evidence: list[Any]) -> dict[str, Any
                 + refs_by_query.get("moodle_public_probe", [])
             ))
             result["reason"] += "; web infrastructure is healthy while Moodle business workflow is impaired"
+        if alert_name in _SECURITY_ALERT_RULES:
+            public_values = instance_values("moodle_rds_sg_public_ingress_rules")
+            result["confidence"] = 0.8
+            result["evidence_refs"] = sorted(set(
+                result["evidence_refs"]
+                + refs_by_query.get("moodle_rds_sg_public_ingress_rules", [])
+                + refs_by_query.get("moodle_rds_tcp_probe", [])
+            ))
+            if public_values and any(value >= 1.0 for value in public_values.values()):
+                result["confidence"] = 0.9
+                result["reason"] += "; at least one rule is open to 0.0.0.0/0 or ::/0"
+            result["reason"] += "; security-group changes are human-only"
         return result
 
     if direct_node_rule is not None:

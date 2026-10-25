@@ -152,6 +152,17 @@ METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
     "MoodleNodeProbeStale": (
         ("moodle_node_probe_age_seconds", 'time() - moodle_node_probe_timestamp_seconds{job="moodle_node"}'),
     ),
+    # Telemetry-health alerts: while they fire, BIZ-02 or SEC-01 detection is blind.
+    "MoodleAdhocQueueProbeFailed": (
+        ("moodle_adhoc_queue_probe_success", 'moodle_adhoc_queue_probe_success{job="moodle_node"}'),
+        ("moodle_node_web_running", 'moodle_node_web_running{job="moodle_node"}'),
+    ),
+    "MoodleRdsIngressAuditFailed": (
+        (
+            "moodle_rds_sg_audit_success",
+            'moodle_rds_sg_audit_success{job="moodle_synthetic",instance="monitor-ai-01"}',
+        ),
+    ),
 }
 
 BUSINESS_METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
@@ -159,12 +170,27 @@ BUSINESS_METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
         ("moodle_cli_maintenance_mode_enabled", 'moodle_cli_maintenance_mode_enabled{job="moodle_node"}'),
         ("moodle_upgrade_in_progress", 'moodle_upgrade_in_progress{job="moodle_node"}'),
         ("moodle_node_web_running", 'moodle_node_web_running{job="moodle_node"}'),
-        ("moodle_public_probe", 'probe_success{job="blackbox_moodle_external"}'),
+        ("moodle_public_probe", 'probe_success{job="blackbox_moodle_public"}'),
     ),
     "MoodleAdhocTaskQueueStuck": (
         ("moodle_adhoc_tasks_overdue_count", 'moodle_adhoc_tasks_overdue_count{job="moodle_node"}'),
         ("moodle_cron_container_stopped", 'moodle_cron_container_stopped{job="moodle_node"}'),
         ("moodle_node_web_running", 'moodle_node_web_running{job="moodle_node"}'),
+    ),
+}
+
+# SEC-01: the read-only RDS security-group audit on monitor-ai-01.
+SECURITY_METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
+    "MoodleDatabasePortExposure": (
+        (
+            "moodle_rds_sg_unreviewed_ingress_rules",
+            'moodle_rds_sg_unreviewed_ingress_rules{job="moodle_synthetic",instance="monitor-ai-01"}',
+        ),
+        (
+            "moodle_rds_sg_public_ingress_rules",
+            'moodle_rds_sg_public_ingress_rules{job="moodle_synthetic",instance="monitor-ai-01"}',
+        ),
+        ("moodle_rds_tcp_probe", 'probe_success{job="blackbox_moodle_rds"}'),
     ),
 }
 

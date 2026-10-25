@@ -6,12 +6,18 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from core.moodle.diagnosis import diagnose_moodle_alert
-from core.evidence.evidence_collectors import METRIC_QUERIES_BY_ALERT
+from core.evidence.evidence_collectors import (
+    BUSINESS_METRIC_QUERIES_BY_ALERT,
+    METRIC_QUERIES_BY_ALERT,
+    SECURITY_METRIC_QUERIES_BY_ALERT,
+)
 from core.moodle.diagnosis import (
     _ALL_QUERY_IDS,
+    _BUSINESS_ALERT_RULES,
     _DIRECT_NODE_RULES,
     _DIRECT_PROBE_RULES,
     _DIRECT_THRESHOLD_RULES,
+    _SECURITY_ALERT_RULES,
 )
 import yaml
 
@@ -50,10 +56,17 @@ def test_every_configured_moodle_alert_has_a_fixed_query_and_diagnosis_contract(
         set(_DIRECT_NODE_RULES)
         | set(_DIRECT_PROBE_RULES)
         | set(_DIRECT_THRESHOLD_RULES)
+        | set(_BUSINESS_ALERT_RULES)
+        | set(_SECURITY_ALERT_RULES)
         | {"MoodleSyntheticTransactionFailed"}
     )
+    query_catalog = {
+        **METRIC_QUERIES_BY_ALERT,
+        **BUSINESS_METRIC_QUERIES_BY_ALERT,
+        **SECURITY_METRIC_QUERIES_BY_ALERT,
+    }
 
-    assert alerts == set(METRIC_QUERIES_BY_ALERT)
+    assert alerts == set(query_catalog)
     assert alerts == diagnosis_alerts
     rules_by_name = {
         rule["alert"]: rule
@@ -65,7 +78,7 @@ def test_every_configured_moodle_alert_has_a_fixed_query_and_diagnosis_contract(
     assert memory_rule == f"{memory_query} > 33554432"
     configured_query_ids = {
         query_id
-        for queries in METRIC_QUERIES_BY_ALERT.values()
+        for queries in query_catalog.values()
         for query_id, _ in queries
     }
     assert configured_query_ids <= set(_ALL_QUERY_IDS)

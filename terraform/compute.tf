@@ -14,6 +14,7 @@ resource "aws_instance" "monitor" {
   vpc_security_group_ids      = [aws_security_group.monitor_sg.id]
   associate_public_ip_address = true
   key_name                    = aws_key_pair.deployer.key_name
+  iam_instance_profile        = aws_iam_instance_profile.monitor_audit.name
 
   root_block_device {
     volume_size = coalesce(var.monitor_root_volume_size, var.root_volume_size)
@@ -22,13 +23,18 @@ resource "aws_instance" "monitor" {
   }
 
   metadata_options {
-    http_endpoint = "enabled"
-    http_tokens   = "required"
+    http_endpoint          = "enabled"
+    http_tokens            = "required"
+    instance_metadata_tags = "enabled"
   }
 
+  # The SEC-01 audit reads these through IMDSv2. EC2 tag values cannot hold
+  # commas, so reviewed source groups are colon-separated.
   tags = merge(local.common_tags, {
-    Name = "monitor-ai-01"
-    Role = "monitoring"
+    Name                         = "monitor-ai-01"
+    Role                         = "monitoring"
+    AiopsRdsSecurityGroupId      = aws_security_group.rds_sg.id
+    AiopsRdsReviewedSourceGroups = join(":", [aws_security_group.moodle_sg.id, aws_security_group.monitor_sg.id])
   })
 }
 

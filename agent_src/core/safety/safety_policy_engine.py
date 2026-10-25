@@ -135,18 +135,23 @@ class AuditRecord(BaseModel):
 # Forbidden-action patterns (applied before any rule)
 # ---------------------------------------------------------------------------
 
+# Action ids are snake_case and "_" is a regex word character, so a "\b"
+# boundary would miss "drop_table". These boundaries treat "_" as a separator.
+_START = r"(?<![a-z0-9])"
+_END = r"(?![a-z0-9])"
+
 _FORBIDDEN_PATTERNS: list[re.Pattern[str]] = [
     re.compile(p, re.IGNORECASE)
     for p in [
-        r"\bdelete[_\s]database",  # matches delete_database, delete_database_schema, etc.
-        r"\bdrop\b",
-        r"\btruncate\b",
-        r"\bdelete[_\s]volume\b",
-        r"\bunrestricted[_\s]shell\b",
-        r"\biam\b",
-        r"\bsecurity[_\s]group\b",
-        r"\bbusiness[_\s]data[_\s]rollback\b",
-        r"\brollback[_\s]business[_\s]data\b",
+        _START + r"delete[_\s]database",  # matches delete_database, delete_database_schema, etc.
+        _START + r"drop" + _END,
+        _START + r"truncate" + _END,
+        _START + r"delete[_\s]volume" + _END,
+        _START + r"unrestricted[_\s]shell" + _END,
+        _START + r"iam" + _END,
+        _START + r"security[_\s]group" + _END,
+        _START + r"business[_\s]data[_\s]rollback" + _END,
+        _START + r"rollback[_\s]business[_\s]data" + _END,
     ]
 ]
 
