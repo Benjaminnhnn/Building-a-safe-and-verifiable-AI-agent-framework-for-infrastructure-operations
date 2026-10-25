@@ -47,6 +47,18 @@ GEMINI_CALL_LATENCY_SECONDS = Histogram(
     buckets=(0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60, 120),
 )
 
+LLM_DIAGNOSIS_EVENTS_TOTAL = Counter(
+    "aiops_llm_diagnosis_events_total",
+    "Evidence diagnoses by configured mode and the source that decided",
+    ["mode", "source"],
+)
+
+LLM_CITATION_VIOLATIONS_TOTAL = Counter(
+    "aiops_llm_citation_violations_total",
+    "LLM diagnosis outputs rejected by the citation validator, by violation code",
+    ["code"],
+)
+
 # Để đo số task đang xử lý đồng thời
 ACTIVE_TASKS = Gauge(
     "aiops_active_tasks", "Số lượng alert đang được phân tích đồng thời"

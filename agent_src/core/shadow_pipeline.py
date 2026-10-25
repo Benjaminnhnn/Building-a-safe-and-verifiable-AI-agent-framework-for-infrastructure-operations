@@ -15,6 +15,12 @@ from core.evidence.evidence_collectors import collect_shadow_evidence
 from core.safety.sanitization import sanitize_log_excerpt
 from core.evidence.evidence_store import SQLiteEvidenceStore, evidence_content_hash
 from core.platform_adapter import PlatformAdapter, PlatformAdapterRegistry
+from core.reasoning.llm_diagnosis import (
+    DiagnosisMode,
+    get_diagnosis_mode,
+    reason_about_alert,
+    revalidate_cached_diagnosis,
+)
 from core.schema.evidence import Evidence
 from core.schema.common import EvidenceType
 from core.schema.resource import Resource
@@ -104,13 +110,20 @@ def _fresh_cached_result(
     if not ad:
         return None
 
-    current_diagnosis = ad.diagnose(alert_name, evidence)
-    if (
-        current_diagnosis.get("status") != "hypothesis"
-        or current_diagnosis.get("cause_code") != diagnosis.get("cause_code")
-        or current_diagnosis.get("hypothesis") != diagnosis.get("hypothesis")
-    ):
-        return None
+    reasoning = diagnosis.get("reasoning")
+    if isinstance(reasoning, dict) and reasoning.get("source") not in (None, "rules"):
+        # A cached LLM decision is re-checked by the validator, never re-asked.
+        if not revalidate_cached_diagnosis(evidence, diagnosis):
+            return None
+        current_diagnosis = diagnosis
+    else:
+        current_diagnosis = ad.diagnose(alert_name, evidence)
+        if (
+            current_diagnosis.get("status") != "hypothesis"
+            or current_diagnosis.get("cause_code") != diagnosis.get("cause_code")
+            or current_diagnosis.get("hypothesis") != diagnosis.get("hypothesis")
+        ):
+            return None
     current_candidate = ad.plan_remediation(
         incident_id=incident_id,
         alert_name=alert_name,
@@ -342,6 +355,16 @@ def run_shadow_if_enabled(
                 alert_name_str,
                 evidence_items,
             )
+            runbook_context, runbook_provenance = _retrieve_runbook_with_provenance(alert)
+            diagnosis_mode = get_diagnosis_mode()
+            if diagnosis_mode != DiagnosisMode.RULES and getattr(effective_adapter, "platform_name", None) == "moodle":
+                diagnosis = reason_about_alert(
+                    alert_name_str,
+                    evidence_items,
+                    rule_diagnosis=diagnosis,
+                    mode=diagnosis_mode,
+                    runbook_context=runbook_context,
+                )
             plan_candidate = effective_adapter.plan_investigation(
                 incident_id=incident_id,
                 diagnosis=diagnosis,
@@ -372,7 +395,6 @@ def run_shadow_if_enabled(
                 for item in evidence_provenance
                 if item["evidence_id"] in supporting_refs_set
             ]
-            runbook_context, runbook_provenance = _retrieve_runbook_with_provenance(alert)
             if hasattr(effective_adapter, "describe_remediation_disposition"):
                 remediation_disposition = effective_adapter.describe_remediation_disposition(
                     alert_name=alert_name_str,
@@ -421,6 +443,18 @@ def run_shadow_if_enabled(
                 "runbook_provenance": runbook_provenance,
                 "disposition": str(remediation_disposition.get("disposition", "unknown")),
             }
+            reasoning = diagnosis.get("reasoning")
+            if isinstance(reasoning, dict):
+                llm_record = reasoning.get("llm") or {}
+                diagnosis_record["reasoning"] = {
+                    "mode": reasoning.get("mode"),
+                    "source": reasoning.get("source"),
+                    "rule_status": reasoning.get("rule_status"),
+                    "rule_cause_code": reasoning.get("rule_cause_code"),
+                    "llm_usage": llm_record.get("usage"),
+                    "violation_codes": llm_record.get("violation_codes", []),
+                    "selected": llm_record.get("selected"),
+                }
             if diagnosis.get("missing_queries"):
                 diagnosis_record["missing_queries"] = [
                     sanitize_log_excerpt(query, max_chars=120)

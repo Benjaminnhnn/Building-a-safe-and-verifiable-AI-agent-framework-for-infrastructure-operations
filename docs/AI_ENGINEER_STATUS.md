@@ -1,5 +1,24 @@
 # AI Engineer scope status
 
+## Evidence-cited LLM diagnosis layer (2026-10-25)
+
+Scope: agent and offline evaluation only. `automation/` and CI files are unchanged. Design: `docs/LLM_DIAGNOSIS_DESIGN.md`.
+
+1. **New `core/reasoning/` package.**
+   - The closed cause vocabulary is derived from the rule tables in `core/moodle/diagnosis.py`.
+   - A bounded Gemini client: temperature 0, no tools, 1024 output tokens, hard timeout, two concurrent calls.
+   - A deterministic citation validator with 15 violation codes covering hallucinated IDs, value/query/instance mismatch, staleness, uncited required signals, unsatisfied predicates (with an anti-cherry-pick rule), unknown causes and action fields.
+   - A mode combiner: `rules` (default), `llm`, `hybrid`, and the ablation-only `llm_unvalidated`, which runtime refuses.
+2. **Pipeline wiring.**
+   - `shadow_pipeline.py` applies the configured mode to Moodle alerts only.
+   - A cached LLM decision is re-validated, never re-asked.
+   - The persisted diagnosis decision carries a `reasoning` audit block.
+   - The planner, Safety Gate and verifier are unchanged. An accepted LLM diagnosis still needs the exact fault markers before a remediation candidate exists.
+3. **Metrics.** `aiops_llm_diagnosis_events_total{mode,source}` and `aiops_llm_citation_violations_total{code}` were added.
+4. **Offline ablation.** `evaluation/benchmark/diagnosis_ablation.py` runs 12 synthetic cases through all four modes and 72 adversarial model outputs. Scripted result: the validator blocked 72/72, and without it 60/72 unsupported diagnoses passed. The scripted accuracy run only checks the wiring (`simulated: true`).
+
+Local checks (Python 3.14): critical Ruff passed. **1127 passed**, including 36 new tests in `test_llm_diagnosis.py`. Unified replay 15/15 accepted, and the Sprint 2 replay passed for 15 scenarios. Not run: any Gemini call (no key used), so real-model accuracy, token cost and latency are not yet measured. No live drill was run.
+
 ## Thesis campaign tooling for the 7 scenarios (2026-10-25)
 
 This round changes `automation/` with the owner's approval; CI files are unchanged. Operator procedure: `docs/MOODLE_OPERATIONS_RUNBOOK.md` §12.1.
