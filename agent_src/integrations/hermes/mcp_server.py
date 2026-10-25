@@ -103,7 +103,7 @@ SCENARIO_METADATA: dict[str, dict[str, Any]] = {
     "SEC-01": {
         "scenario_id": "SEC-01",
         "name": "Database Security Group Ingress Drift",
-        "alert_name": "MoodleDatabasePublicAccessDetected",
+        "alert_name": "MoodleDatabasePortExposure",
         "layer": "infrastructure",
         "description": "Unauthorized security group ingress rule exposing port 5432 to 0.0.0.0/0.",
         "disposition": "REVIEWED_HUMAN_ONLY",

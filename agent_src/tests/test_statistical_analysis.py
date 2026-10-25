@@ -62,7 +62,9 @@ def _retie_audit_trace(row: dict) -> None:
     row["evidence_sha256"][str(new_path)] = digest
 
 
-def _ablation_rows(tmp_path: Path, mode: str) -> tuple[list[dict], dict[tuple[str, int], dict]]:
+def _ablation_rows(
+    tmp_path: Path, mode: str, scenarios: list[str] | None = None
+) -> tuple[list[dict], dict[tuple[str, int], dict]]:
     evidence = tmp_path / "raw.json"
     evidence.write_text("{}", encoding="utf-8")
     model_config = tmp_path / "model-config.json"
@@ -70,7 +72,7 @@ def _ablation_rows(tmp_path: Path, mode: str) -> tuple[list[dict], dict[tuple[st
     model_config_sha256 = hashlib.sha256(model_config.read_bytes()).hexdigest()
     main_ai: dict[tuple[str, int], dict] = {}
     rows: list[dict] = []
-    for scenario in DEFAULT_ABLATION_SCENARIOS:
+    for scenario in scenarios if scenarios is not None else DEFAULT_ABLATION_SCENARIOS:
         for repetition in range(1, 6):
             key = (scenario, repetition)
             main_ai[key] = {
@@ -353,13 +355,23 @@ def test_missing_empirical_dataset_stays_inconclusive(tmp_path: Path) -> None:
     assert report["rq2"]["status"] == "inconclusive"
 
 
-def _accepted_main_rows(tmp_path: Path) -> list[dict]:
+def _accepted_main_rows(
+    tmp_path: Path,
+    scenarios: frozenset[str] | None = None,
+    root_causes: dict[str, dict[str, str]] | None = None,
+    ai_denied: frozenset[str] | None = None,
+) -> list[dict]:
     evidence = tmp_path / "trace.json"
     evidence.write_text("{}", encoding="utf-8")
     model_config = tmp_path / "model-config.json"
     model_config.write_text('{"model":"gemini-test","temperature":0}', encoding="utf-8")
     model_config_sha256 = hashlib.sha256(model_config.read_bytes()).hexdigest()
-    gate = ACCEPTANCE
+    gate = dict(ACCEPTANCE)
+    if scenarios is not None:
+        gate["SCENARIOS"] = scenarios
+    if ai_denied is not None:
+        gate["AI_DENY_HANDOFF_SCENARIOS"] = ai_denied
+    root_causes = root_causes or ACCEPTANCE["GROUND_TRUTH_ROOT_CAUSE"]
     rows: list[dict] = []
     time_values = [f"2026-10-01T00:00:{second:02d}Z" for second in range(10)]
     for scenario in sorted(gate["SCENARIOS"]):
@@ -394,7 +406,7 @@ def _accepted_main_rows(tmp_path: Path) -> list[dict]:
                     "verification_status": "passed",
                     "snapshot_id": f"snapshot-{scenario}-{repetition}",
                     "action_plan_sha256": hashlib.sha256(f"plan-{scenario}-{repetition}".encode()).hexdigest(),
-                    "predicted_root_cause": dict(ACCEPTANCE["GROUND_TRUTH_ROOT_CAUSE"][scenario]),
+                    "predicted_root_cause": dict(root_causes[scenario]),
                     "timestamps": dict(zip(("t_inject", "t_detect", "t_incident", "t_plan", "t_gate", "t_execute_start", "t_execute_end", "t_verify", "t_resolved"), time_values[0:9])),
                     "rca_correct": True,
                     "recovery_success": not denied,

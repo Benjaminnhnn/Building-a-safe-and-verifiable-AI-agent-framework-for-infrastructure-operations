@@ -156,6 +156,8 @@ case "$scenario" in
         "The Moodle application's current PostgreSQL session uses TLS on $host" \
         remote "$host" 'sudo docker exec release-moodle-web-1 php -r '\''define("CLI_SCRIPT", true); require "/var/www/html/config.php"; $ssl = $DB->get_field_sql("SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()"); exit(in_array($ssl, [true, 1, "1", "t"], true) ? 0 : 1);'\'''
     done
+    run_check both_alb_targets_healthy \
+      'Both Moodle ALB targets are healthy' check_two_healthy_alb_targets
     ;;
   DB-02)
     run_check app_role_quota_and_tagged_sessions_restored \
@@ -305,9 +307,11 @@ case "$scenario" in
     run_check moodle_cli_maintenance_disabled \
       'The Moodle CLI maintenance mode flag file climaintenance.html is absent' \
       remote moodle-app-a "test ! -e '$moodledata_path/climaintenance.html'"
+    # The login page returns 503 while CLI maintenance is on, unlike the
+    # static healthz endpoint.
     run_check student_course_view_http_200 \
-      'The non-admin student course page returns HTTP 200' \
-      curl --fail --silent -o /dev/null "$public_url"
+      'The Moodle login page returns HTTP 200 to a non-admin visitor' \
+      curl --fail --silent -o /dev/null "$public_url/login/index.php"
     ;;
   BIZ-02)
     run_check moodle_cron_service_active \

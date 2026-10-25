@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Execute the reviewed CON-01 staging action through the Agent two-approval API.
+# Execute one reviewed staging action through the Agent two-approval API.
+# Used directly or by automation/thesis-campaign-trial.py for ai_agent trials.
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,17 +8,26 @@ repo_root="$(cd -- "$script_dir/.." && pwd)"
 source "$script_dir/lib/moodle-fault-common.sh"
 
 scenario="${1:-}"
-[[ "$scenario" == CON-01 ]] || {
-  echo "This integrated Agent handoff drill is limited to CON-01." >&2
-  exit 64
-}
+# Scope each action runs on; must match the executor API allowlist.
+case "$scenario" in
+  DB-01) expected_scope=staging_moodle_nodes; alert_name=MoodleNodeRdsTcpFailed; alert_timeout=150 ;;
+  RES-01) expected_scope=moodle-app-b; alert_name=MoodleNodeCpuHigh; alert_timeout=150 ;;
+  NET-01) expected_scope=staging_moodle_nodes; alert_name=MoodleSyntheticTransactionFailed; alert_timeout=150 ;;
+  CON-01) expected_scope=moodle-app-b; alert_name=MoodleWebContainerMissing; alert_timeout=150 ;;
+  BIZ-01) expected_scope=staging_moodle_app; alert_name=MoodleMaintenanceModeStuck; alert_timeout=420 ;;
+  BIZ-02) expected_scope=staging_moodle_app; alert_name=MoodleAdhocTaskQueueStuck; alert_timeout=420 ;;
+  *)
+    echo "This Agent handoff drill covers the live-allowlisted thesis scenarios DB-01, RES-01, NET-01, CON-01, BIZ-01 and BIZ-02." >&2
+    exit 64
+    ;;
+esac
 [[ "${MOODLE_SAFE_EXECUTOR_CONFIRM:-}" == staging ]] || {
   echo "Set MOODLE_SAFE_EXECUTOR_CONFIRM=staging to authorize one staging drill." >&2
   exit 77
 }
 load_moodle_environment
 secrets_dir="$artifacts_dir/safe-executor"
-evidence_dir="$artifacts_dir/moodle-safe-executor"
+evidence_dir="${MOODLE_DRILL_EVIDENCE_DIR:-$artifacts_dir/moodle-safe-executor}"
 image_file="$artifacts_dir/moodle-agent-image"
 run_id="$scenario-$(date -u +%Y%m%dT%H%M%SZ)"
 drill_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -32,6 +42,11 @@ verifier_attestation_file="$evidence_dir/$run_id-verifier-attestation.json"
 runtime_verification_file="$evidence_dir/$run_id-runtime-verification.json"
 audit_file="$evidence_dir/$run_id-audit.sqlite3"
 verifier_signing_key="${MOODLE_VERIFIER_SIGNING_KEY_FILE:-}"
+stage_times='{}'
+# Record trial timestamps for the thesis campaign row (UTC, ISO-8601).
+mark_time() {
+  stage_times="$(jq -c --arg name "$1" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '. + {($name): $at}' <<<"$stage_times")"
+}
 umask 077
 mkdir -p "$evidence_dir"
 chmod 0700 "$evidence_dir"
@@ -115,26 +130,31 @@ agent_token="$(<"$secrets_dir/safe-action-api-token")"
 
 stage=fault-injection
 fault_injected=true
+mark_time t_inject
 MOODLE_FAULT_CONFIRM=staging "$script_dir/moodle-fault-inject.sh" "$scenario"
 
 stage=observe-fault
-one_target=false
-for _ in {1..18}; do
-  healthy_count="$(aws elbv2 describe-target-health --profile "${AWS_PROFILE:-target-account}" --region "$region" --target-group-arn "$target_group_arn" --query 'TargetHealthDescriptions[?TargetHealth.State==`healthy`]' --output json | jq length)"
-  if [[ "$healthy_count" -eq 1 ]]; then one_target=true; break; fi
-  sleep 5
-done
-[[ "$one_target" == true ]] || { echo "Expected one healthy ALB target, found $healthy_count." >&2; exit 1; }
-alert_name=MoodleWebContainerMissing
-wait_for_prometheus_alert "$alert_name" 150
+if [[ "$scenario" == CON-01 ]]; then
+  one_target=false
+  for _ in {1..18}; do
+    healthy_count="$(aws elbv2 describe-target-health --profile "${AWS_PROFILE:-target-account}" --region "$region" --target-group-arn "$target_group_arn" --query 'TargetHealthDescriptions[?TargetHealth.State==`healthy`]' --output json | jq length)"
+    if [[ "$healthy_count" -eq 1 ]]; then one_target=true; break; fi
+    sleep 5
+  done
+  [[ "$one_target" == true ]] || { echo "Expected one healthy ALB target, found $healthy_count." >&2; exit 1; }
+fi
+wait_for_prometheus_alert "$alert_name" "$alert_timeout"
+mark_time t_detect
 
 candidate_id=""
 for _ in {1..30}; do
-  candidate_id="$(remote monitor-ai-01 "sudo docker exec moodle-ai-agent python -c 'import sqlite3,sys; db=sqlite3.connect(\"/app/data/evidence.db\"); row=db.execute(\"select evidence_id from evidence where source=? and json_extract(metadata_json, ?) = ? and json_extract(json_extract(metadata_json, ?), ?) = ? and julianday(collected_at) >= julianday(?) order by collected_at desc limit 1\", (\"ai_decision\", \"$.decision_kind\", \"remediation_candidate\", \"$.decision_json\", \"$.scenario_id\", \"CON-01\", sys.argv[1])).fetchone(); print(row[0] if row else \"\")' '$drill_started_at'")"
+  candidate_id="$(remote monitor-ai-01 "sudo docker exec moodle-ai-agent python -c 'import sqlite3,sys; db=sqlite3.connect(\"/app/data/evidence.db\"); row=db.execute(\"select evidence_id from evidence where source=? and json_extract(metadata_json, ?) = ? and json_extract(json_extract(metadata_json, ?), ?) = ? and julianday(collected_at) >= julianday(?) order by collected_at desc limit 1\", (\"ai_decision\", \"$.decision_kind\", \"remediation_candidate\", \"$.decision_json\", \"$.scenario_id\", \"$scenario\", sys.argv[1])).fetchone(); print(row[0] if row else \"\")' '$drill_started_at'")"
   [[ -n "$candidate_id" ]] && break
   sleep 5
 done
-[[ -n "$candidate_id" ]] || { echo "No evidence-linked CON-01 candidate was created; execution stopped." >&2; exit 1; }
+[[ -n "$candidate_id" ]] || { echo "No evidence-linked $scenario candidate was created; execution stopped." >&2; exit 1; }
+mark_time t_incident
+mark_time t_plan
 
 stage=prepare
 curl --fail --silent --show-error \
@@ -142,7 +162,8 @@ curl --fail --silent --show-error \
   -X POST "http://127.0.0.1:18000/api/moodle/remediation/$candidate_id/prepare" \
   > "$prepared_file"
 jq -e --arg scenario "$scenario" \
-  '.status == "approval_required" and .request.scenario_id == $scenario and .request.target_scope == "moodle-app-b" and .execution_permitted == false' \
+  --arg scope "$expected_scope" \
+  '.status == "approval_required" and .request.scenario_id == $scenario and .request.target_scope == $scope and .execution_permitted == false' \
   "$prepared_file" >/dev/null
 request_id="$(jq -r '.request.request_id' "$prepared_file")"
 idempotency_key="$(jq -r '.request.idempotency_key' "$prepared_file")"
@@ -204,15 +225,24 @@ jq -n \
   '{request:$prepared[0].request,gate_approval:$gate[0],executor_approval:$executor[0].approval}' \
   > "$execute_body_file"
 chmod 0600 "$prepared_file" "$gate_approval_file" "$executor_approval_file" "$execute_body_file"
+mark_time t_gate
 
 stage=agent-execute
+mark_time t_execute_start
 curl --fail --silent --show-error \
   -H "Authorization: Bearer $agent_token" -H 'Content-Type: application/json' \
   -X POST "http://127.0.0.1:18000/api/moodle/remediation/$candidate_id/execute" \
   --data-binary "@$execute_body_file" > "$execute_result_file"
 jq -e --arg scenario "$scenario" --arg request_id "$request_id" \
-  '.status == "awaiting_verification" and .result.status == "executed" and .result.scenario_id == $scenario and .result.request_id == $request_id and .result.target_scope == "moodle-app-b" and .result.mutated == true' \
+  --arg scope "$expected_scope" \
+  '.status == "awaiting_verification" and .result.status == "executed" and .result.scenario_id == $scenario and .result.request_id == $request_id and .result.target_scope == $scope and .result.mutated == true' \
   "$execute_result_file" >/dev/null
+mark_time t_execute_end
+# RQ2 counterfactual: what a health-only check would conclude right now,
+# and whether the recovery contract actually holds at the same moment.
+health_only_http_status="$(curl --silent --output /dev/null --max-time 10 --write-out '%{http_code}' "$public_url/healthz.php" || true)"
+contract_at_execute_end="$("$script_dir/moodle-scenario-verify.sh" "$scenario" 2>/dev/null || true)"
+jq -e . <<<"$contract_at_execute_end" >/dev/null 2>&1 || contract_at_execute_end='{"status":"failed","checks":[]}'
 incident_id="$(jq -r '.incident_id' "$prepared_file")"
 remove_scenario_marker "$scenario"
 fault_injected=false
@@ -242,6 +272,7 @@ AWS_PROFILE="${AWS_PROFILE:-target-account}" python3 "$script_dir/moodle-indepen
   > "$verifier_file"
 jq -e '.verdict == "ready_for_runtime_acceptance" and .resolution_eligible == true and (.probe_samples | length >= 5) and (.attestation.signature | type == "string" and length > 0)' "$verifier_file" >/dev/null
 jq '.attestation' "$verifier_file" > "$verifier_attestation_file"
+mark_time t_verify
 chmod 0600 "$verifier_file" "$verifier_attestation_file"
 
 stage=persist-runtime-verification
@@ -259,6 +290,7 @@ jq -e --arg event_id "$(jq -r '.verification_event_id' "$runtime_verification_fi
   --arg event_hash "$(jq -r '.verification_event_hash' "$runtime_verification_file.status.json")" \
   '.status == "resolved" and .idempotent == false and .event_id == $event_id and .event_hash == $event_hash' \
   "$runtime_verification_file" >/dev/null
+mark_time t_resolved
 
 stage=disable-live-switches
 SAFE_EXECUTOR_LIVE_ENABLED=false bash "$script_dir/configure-moodle-safe-executor-api.sh" >/dev/null
@@ -278,7 +310,9 @@ jq -n \
   --slurpfile executor_approval "$executor_approval_file" \
   --slurpfile execution "$execute_result_file" --slurpfile verifier "$verifier_file" \
   --slurpfile runtime "$runtime_verification_file" --slurpfile runtime_status "$runtime_verification_file.status.json" \
-  '{run_id:$run_id,scenario_id:$scenario,status:"passed",evidence_class:"operator_approved_staging_drill",method:"agent_prepare_two_approvals_execute_signed_independent_verify",observed_alert:$alert,candidate_id:$candidate_id,incident_id:$incident_id,prepared_request:$prepared[0],gate_approval:$gate[0],executor_approval:$executor_approval[0].approval,execution_receipt:$execution[0].result,verifier:$verifier[0],verifier_attestation:$verifier[0].attestation,runtime_persistence:$runtime[0],runtime_status:$runtime_status[0],probe_samples:$verifier[0].probe_samples,alert_resolved:"passed",reset:"safe_executor_receipt",baseline_after_reset:"passed",live_switch:"disabled_after_drill",completed_at:$completed_at}' \
+  --argjson stage_times "$stage_times" --arg health_only_http_status "$health_only_http_status" \
+  --argjson contract_at_execute_end "$contract_at_execute_end" \
+  '{run_id:$run_id,stage_times:$stage_times,health_only_http_status:$health_only_http_status,contract_at_execute_end:$contract_at_execute_end,scenario_id:$scenario,status:"passed",evidence_class:"operator_approved_staging_drill",method:"agent_prepare_two_approvals_execute_signed_independent_verify",observed_alert:$alert,candidate_id:$candidate_id,incident_id:$incident_id,prepared_request:$prepared[0],gate_approval:$gate[0],executor_approval:$executor_approval[0].approval,execution_receipt:$execution[0].result,verifier:$verifier[0],verifier_attestation:$verifier[0].attestation,runtime_persistence:$runtime[0],runtime_status:$runtime_status[0],probe_samples:$verifier[0].probe_samples,alert_resolved:"passed",reset:"safe_executor_receipt",baseline_after_reset:"passed",live_switch:"disabled_after_drill",completed_at:$completed_at}' \
   > "$evidence_file"
 chmod 0600 "$evidence_file"
 stage=complete

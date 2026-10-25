@@ -47,6 +47,11 @@ CATALOG = {
     ("CON-01", "reconcile_con01_safe_baseline", "moodle-app-b"): ("b",),
     ("SEC-02", "restore_fixture_directory_mode", "moodledata_synthetic_fixture_directory"): ("a",),
     ("SEC-02", "reconcile_sec02_safe_baseline", "moodledata_synthetic_fixture_directory"): ("a",),
+    # The maintenance flag lives on shared EFS and cron runs only on node A.
+    ("BIZ-01", "disable_moodle_cli_maintenance_mode", "staging_moodle_app"): ("a",),
+    ("BIZ-01", "enable_moodle_cli_maintenance_mode", "staging_moodle_app"): ("a",),
+    ("BIZ-02", "restart_moodle_cron_service", "staging_moodle_app"): ("a",),
+    ("BIZ-02", "reconcile_biz02_cron_baseline", "staging_moodle_app"): ("a",),
 }
 
 

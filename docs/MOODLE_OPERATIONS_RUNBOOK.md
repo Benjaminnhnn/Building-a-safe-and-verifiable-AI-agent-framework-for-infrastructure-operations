@@ -680,6 +680,63 @@ find "$campaign" -name result.json -print0 | xargs -0 jq -s '
   })'
 ```
 
+### 12.1 Thesis seven-scenario campaign for RQ1 and RQ2
+
+The thesis matrix is 7 scenarios (`BIZ-01`, `BIZ-02`, `CON-01`, `DB-01`,
+`RES-01`, `NET-01`, `SEC-01`) x 3 methods (`ai_agent`, `ansible`, `manual`) x
+5 repetitions = 105 main trials, plus 35 no-gate and 35 health-only ablation
+rows produced alongside the `ai_agent` trials.
+
+Prerequisites, once per campaign:
+
+1. Apply the reviewed Terraform change that adds the read-only monitor audit
+   role (`terraform/monitor-iam.tf`) and the RDS tags on `monitor-ai-01`.
+2. Re-run the monitoring and safe-executor playbooks so the BIZ probes, the
+   RDS ingress audit, the BIZ executor branches and the baseline playbook are
+   installed. Confirm `promtool check rules` passed during the play.
+3. Freeze the campaign: one commit SHA, one Moodle image digest and one Agent
+   image digest for every trial. Pick a `--campaign-id`.
+4. Smoke-test each new fault once: `bash automation/moodle-fault-trial.sh
+   BIZ-01`, `BIZ-02`, and `SEC-01`. SEC-01 changes a real security group and
+   also needs `MOODLE_SEC01_CONFIRM=rds-security-group`.
+
+Run one trial per cell, from the repository root:
+
+```bash
+python3 automation/thesis-campaign-trial.py \
+  --scenario BIZ-02 --method ai_agent --repetition 1 \
+  --campaign-id <campaign-id> \
+  --commit-sha <sha> --moodle-image-digest sha256:<moodle> \
+  --ai-agent-image-digest sha256:<agent> --aws-cost-per-hour <usd>
+```
+
+- `ai_agent` on the six live scenarios runs `moodle-safe-executor-drill.sh`:
+  two different approvers sign the prepared request out of band, then the
+  signed Independent Verifier decides recovery.
+- `ai_agent` and `ansible` on `SEC-01` record a denied handoff; the security
+  engineer then remediates and `moodle-human-remediation-verify.sh` checks it.
+- `manual` trials prompt the operator, who follows `OPERATOR_ACTION_CATALOG`
+  in `evaluation/benchmark/manual_protocol.py` and must not see scenario IDs.
+- Every trial injects the same fixed dangerous proposals in a sandbox (RQ1,
+  `evaluation/benchmark/dangerous_injection.py`) and records what a health-only
+  check would conclude at execution end (RQ2).
+
+BIZ trials take longer: their alerts hold for 5 minutes. Budget roughly 15-25
+minutes per trial including the 120-second stability window and reset.
+
+When the matrix is complete, audit and analyze:
+
+```bash
+python3 evaluation/benchmark/statistical_analysis.py --profile thesis7 \
+  --main terraform/.artifacts/thesis-campaign/main.jsonl \
+  --no-gate terraform/.artifacts/thesis-campaign/no-gate.jsonl \
+  --health-only terraform/.artifacts/thesis-campaign/health-only.jsonl
+```
+
+`--simulate` runs the same row construction offline for testing. Its rows are
+labeled `simulated` and the acceptance gate rejects them; never mix them into
+a campaign dataset directory.
+
 ## 13. End-of-session recovery and handoff
 
 If an injector or campaign fails, do not repeat the fault immediately. Reset

@@ -1,7 +1,8 @@
 # Moodle monitoring signal quality
 
 This runbook applies to `MoodleNodeExporterDown`, `MoodleCAdvisorDown`,
-`MoodleNodeProbeStale`, and `MoodleSyntheticTransactionStale`.
+`MoodleNodeProbeStale`, `MoodleSyntheticTransactionStale`,
+`MoodleAdhocQueueProbeFailed`, and `MoodleRdsIngressAuditFailed`.
 
 ## Evidence to collect
 
@@ -13,6 +14,12 @@ This runbook applies to `MoodleNodeExporterDown`, `MoodleCAdvisorDown`,
   treating missing telemetry as application recovery or failure.
 - Keep this alert distinct from an observed Moodle failure: stale telemetry
   means the relevant state is unknown until an independent probe succeeds.
+- For `MoodleAdhocQueueProbeFailed`, run the node-local probe service by hand
+  and check that the web container can bootstrap Moodle from the CLI.
+- For `MoodleRdsIngressAuditFailed`, check that monitor-ai-01 has the
+  read-only audit instance role and the `AiopsRdsSecurityGroupId` and
+  `AiopsRdsReviewedSourceGroups` tags, and that instance metadata tags are
+  enabled. While it fires, SEC-01 exposure cannot be detected.
 
 ## Interpretation and safety
 

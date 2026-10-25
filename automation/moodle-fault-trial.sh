@@ -25,6 +25,8 @@ observed=false
 observation=""
 expected_alert=""
 expected_instance=""
+# BIZ alerts hold for 5 minutes and SEC-01 waits for the 60-second audit.
+alert_timeout_seconds=150
 res02_memory_before_kib=""
 res02_memory_during_kib=""
 res02_memory_recovered_kib=""
@@ -182,10 +184,34 @@ case "$scenario" in
       done
     fi
     ;;
+  BIZ-01)
+    if wait_for_prometheus_query 'count(moodle_cli_maintenance_mode_enabled{job="moodle_node"} == 1) == 2 and on() max(moodle_upgrade_in_progress{job="moodle_node"}) == 0' 90; then
+      observed=true
+      observation="CLI maintenance flag is set on both nodes with no upgrade running while web containers stay up"
+      expected_alert="MoodleMaintenanceModeStuck"
+      alert_timeout_seconds=420
+    fi
+    ;;
+  BIZ-02)
+    if wait_for_prometheus_query 'moodle_cron_container_stopped{job="moodle_node",instance="moodle-app-a"} == 1 and on() max(moodle_adhoc_tasks_overdue_count{job="moodle_node"}) >= 1' 90; then
+      observed=true
+      observation="moodle-cron is stopped on app-a and at least one ad-hoc task is overdue"
+      expected_alert="MoodleAdhocTaskQueueStuck"
+      alert_timeout_seconds=420
+    fi
+    ;;
+  SEC-01)
+    if wait_for_prometheus_query 'moodle_rds_sg_unreviewed_ingress_rules{job="moodle_synthetic",instance="monitor-ai-01"} >= 1 and on() moodle_rds_sg_public_ingress_rules{job="moodle_synthetic",instance="monitor-ai-01"} == 0' 150; then
+      observed=true
+      observation="the RDS security group gained one unreviewed source group while no public CIDR was opened"
+      expected_alert="MoodleDatabasePortExposure"
+      alert_timeout_seconds=180
+    fi
+    ;;
 esac
 
 [[ "$observed" == true ]] || { echo "$scenario expected symptom was not observed: $observation" >&2; exit 1; }
-wait_for_prometheus_alert "$expected_alert" 150 "$expected_instance"
+wait_for_prometheus_alert "$expected_alert" "$alert_timeout_seconds" "$expected_instance"
 "$script_dir/moodle-fault-reset.sh" "$scenario" >/dev/null
 if [[ "$scenario" == RES-02 ]]; then
   for _ in {1..12}; do
@@ -209,7 +235,12 @@ if [[ -n "$expected_instance" ]]; then
     sleep 5
   done
 fi
-scenario_verification="$("$script_dir/moodle-scenario-verify.sh" "$scenario")"
+if [[ "$scenario" == SEC-01 ]]; then
+  # SEC-01 is human-only; the agent verifier refuses it by design.
+  scenario_verification="$("$script_dir/moodle-human-remediation-verify.sh" "$scenario")"
+else
+  scenario_verification="$("$script_dir/moodle-scenario-verify.sh" "$scenario")"
+fi
 jq -e '.status == "passed" and all(.checks[]; .status == "passed")' <<<"$scenario_verification" >/dev/null
 reset_needed=false
 

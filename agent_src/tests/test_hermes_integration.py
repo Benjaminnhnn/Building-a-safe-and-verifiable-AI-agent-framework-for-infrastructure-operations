@@ -139,7 +139,7 @@ def test_hermes_mcp_diagnose_sec01_human_escalation_only(mcp_server: HermesMcpSe
     """SEC-01: Must diagnose unauthorized ingress rule and flag human escalation."""
     diag = mcp_server.diagnose_alert(
         scenario_id="SEC-01",
-        alert_name="MoodleDatabasePublicAccessDetected",
+        alert_name="MoodleDatabasePortExposure",
         telemetry_data={},
     )
     assert diag["status"] == "diagnosed"

@@ -7,7 +7,6 @@ Thesis implementation and operations tooling for an AI agent that observes Moodl
 - [Current AI status and evidence gaps](docs/AI_ENGINEER_STATUS.md)
 - [Documentation index](docs/README.md)
 - [Repository and agent instructions](AGENTS.md)
-- [Thesis report snapshot](report.md) — historical evidence; check dates and artifacts before reusing claims.
 
 ## Find the code
 
@@ -49,7 +48,7 @@ The agent proposes typed actions. The Safety Gate checks policy and execution co
 
 `automation/aiops-unified-replay.py` produces offline simulation artifacts. `automation/run-benchmark.py` is a synthetic harness and its generated metrics must not be presented as observed Moodle outcomes. Synthetic benchmark result files were removed from the active results directory; see the [benchmark evidence status](evaluation/benchmark/results/BENCHMARK_REPORT.md). Use raw, provenance-bearing live trial records for empirical RQ1/RQ2 results; keep fixture, shadow, deployed-runtime, and live-acceptance results distinct.
 
-The checked-in `report.md` and files under `docs/` are dated evidence snapshots, not live status pages. Confirm their artifact paths and timestamps before reusing any operational claim. In particular, a successful Moodle staging shadow drill demonstrates alert-to-agent processing and observation, not AI remediation.
+Files under `docs/` are dated evidence snapshots, not live status pages. Confirm their artifact paths and timestamps before reusing any operational claim. In particular, a successful Moodle staging shadow drill demonstrates alert-to-agent processing and observation, not AI remediation.
 
 ## ERPNext generalization
 

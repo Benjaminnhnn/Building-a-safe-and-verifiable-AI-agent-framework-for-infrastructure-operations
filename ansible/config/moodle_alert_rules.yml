@@ -119,3 +119,38 @@ groups:
         for: 1m
         labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-node-probes}
         annotations: {summary: "Moodle node-local probes have not refreshed on {{ $labels.instance }}"}
+
+  # Thesis scenarios BIZ-01, BIZ-02 and SEC-01. Each alert is an
+  # infrastructure symptom; the agent diagnoses it from fresh evidence and
+  # never mutates Moodle application data.
+  - name: moodle-thesis-infrastructure
+    interval: 15s
+    rules:
+      - alert: MoodleMaintenanceModeStuck
+        expr: moodle_cli_maintenance_mode_enabled{job="moodle_node"} == 1
+        for: 5m
+        labels: {severity: critical, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-maintenance-mode}
+        annotations: {summary: "Moodle CLI maintenance mode has stayed enabled for 5 minutes on {{ $labels.instance }}"}
+      - alert: MoodleAdhocTaskQueueStuck
+        expr: moodle_adhoc_tasks_overdue_count{job="moodle_node"} >= 1
+        for: 5m
+        labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-cron-service}
+        annotations: {summary: "Moodle ad-hoc tasks are more than 10 minutes overdue ({{ $value }} tasks seen from {{ $labels.instance }})"}
+      - alert: MoodleAdhocQueueProbeFailed
+        expr: moodle_adhoc_queue_probe_success{job="moodle_node"} == 0 and on(instance) moodle_node_web_running{job="moodle_node"} == 1
+        for: 5m
+        labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-node-probes}
+        annotations: {summary: "Read-only ad-hoc queue probe is failing on {{ $labels.instance }}"}
+      - alert: MoodleDatabasePortExposure
+        expr: moodle_rds_sg_unreviewed_ingress_rules{job="moodle_synthetic",instance="monitor-ai-01"} > 0
+        for: 1m
+        labels: {severity: critical, service: moodle, environment: staging, resource_id: postgres-db, runbook: moodle-rds-ingress}
+        annotations: {summary: "RDS security group has {{ $value }} unreviewed ingress source(s); human-only remediation"}
+      - alert: MoodleRdsIngressAuditFailed
+        expr: |
+          moodle_rds_sg_audit_success{job="moodle_synthetic",instance="monitor-ai-01"} == 0
+          or time() - moodle_rds_sg_audit_timestamp_seconds{job="moodle_synthetic",instance="monitor-ai-01"} > 300
+          or absent(moodle_rds_sg_audit_timestamp_seconds{job="moodle_synthetic",instance="monitor-ai-01"})
+        for: 5m
+        labels: {severity: warning, service: moodle, environment: staging, resource_id: postgres-db, runbook: moodle-rds-ingress}
+        annotations: {summary: RDS security-group audit is failing or stale; SEC-01 detection is blind}

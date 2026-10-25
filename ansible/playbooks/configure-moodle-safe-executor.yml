@@ -88,6 +88,21 @@
             NET-01) docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml up -d --force-recreate moodle-web ;;
             CON-01) docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml up -d --wait moodle-web ;;
             SEC-02) install -d -o 1000 -g 1000 -m 0770 '{{ moodledata_path }}/synthetic-fixtures'; chown 1000:1000 '{{ moodledata_path }}/synthetic-fixtures'; chmod 0770 '{{ moodledata_path }}/synthetic-fixtures' ;;
+            BIZ-01)
+              # Re-check at execution time: disabling maintenance during an
+              # upgrade is never safe, and an unreadable process table counts
+              # as an upgrade in progress.
+              for container in release-moodle-web-1 release-moodle-cron-1; do
+                test -n "$(docker ps -q --filter "name=^${container}$" --filter status=running)" || continue
+                processes=$(docker top "$container" -eo args) || { echo "cannot read $container processes" >&2; exit 75; }
+                if printf '%s\n' "$processes" | grep -Fq 'admin/cli/upgrade.php'; then
+                  echo 'Moodle upgrade is running; refusing to disable maintenance mode' >&2
+                  exit 75
+                fi
+              done
+              docker exec -u 1000 release-moodle-web-1 php /var/www/html/admin/cli/maintenance.php --disable ;;
+            BIZ-01-ROLLBACK) docker exec -u 1000 release-moodle-web-1 php /var/www/html/admin/cli/maintenance.php --enable ;;
+            BIZ-02) docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml --profile cron up -d --wait moodle-cron ;;
             *) echo 'action is not allowlisted' >&2; exit 64 ;;
           esac
     - ansible.builtin.copy:
@@ -109,6 +124,12 @@
               scenario=CON-01 ;;
             SEC-02|restore_fixture_directory_mode|reconcile_sec02_safe_baseline)
               scenario=SEC-02 ;;
+            BIZ-01|disable_moodle_cli_maintenance_mode)
+              scenario=BIZ-01 ;;
+            BIZ-01-ROLLBACK|enable_moodle_cli_maintenance_mode)
+              scenario=BIZ-01-ROLLBACK ;;
+            BIZ-02|restart_moodle_cron_service|reconcile_biz02_cron_baseline)
+              scenario=BIZ-02 ;;
             *) echo 'forced command rejected' >&2; exit 64 ;;
           esac
           exec sudo /usr/local/sbin/moodle-safe-executor "$scenario"

@@ -133,7 +133,7 @@
           [Service]
           Type=oneshot
           ExecStart=/usr/local/sbin/moodle-node-probes
-          TimeoutStartSec=25
+          TimeoutStartSec=45
 
     - name: Install node-local Moodle probe timer
       tags: [moodle_node_probes]
@@ -493,6 +493,66 @@
     - name: Enable Moodle synthetic transaction timer
       ansible.builtin.systemd:
         name: moodle-synthetic-transaction.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+      when: not ansible_check_mode
+
+    # SEC-01 telemetry. Needs the read-only instance role and the RDS tags from
+    # terraform/monitor-iam.tf; without them the audit reports failure, which
+    # raises MoodleRdsIngressAuditFailed instead of looking healthy.
+    - name: Install read-only RDS security-group audit
+      tags: [moodle_rds_audit]
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../files/moodle-monitoring/moodle-rds-ingress-audit.sh"
+        dest: /usr/local/sbin/moodle-rds-ingress-audit
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Install RDS security-group audit service
+      tags: [moodle_rds_audit]
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/moodle-rds-ingress-audit.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Publish read-only Moodle RDS security-group ingress metrics
+          After=network-online.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/moodle-rds-ingress-audit
+          TimeoutStartSec=40
+          PrivateTmp=true
+          NoNewPrivileges=true
+
+    - name: Install RDS security-group audit timer
+      tags: [moodle_rds_audit]
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/moodle-rds-ingress-audit.timer
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Audit the Moodle RDS security group every minute
+
+          [Timer]
+          OnBootSec=30s
+          OnUnitActiveSec=60s
+          AccuracySec=1s
+          Unit=moodle-rds-ingress-audit.service
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Enable RDS security-group audit timer
+      tags: [moodle_rds_audit]
+      ansible.builtin.systemd:
+        name: moodle-rds-ingress-audit.timer
         enabled: true
         state: started
         daemon_reload: true

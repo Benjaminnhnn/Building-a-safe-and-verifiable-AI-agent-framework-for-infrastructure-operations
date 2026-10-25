@@ -5,11 +5,15 @@ set -euo pipefail
 
 output_dir="${MOODLE_NODE_PROBE_OUTPUT_DIR:-/var/lib/node_exporter/textfile_collector}"
 container="${MOODLE_NODE_PROBE_CONTAINER:-release-moodle-web-1}"
+cron_container="${MOODLE_NODE_PROBE_CRON_CONTAINER:-release-moodle-cron-1}"
+moodledata_path="${MOODLE_NODE_PROBE_MOODLEDATA:-/mnt/efs/moodledata}"
 [[ "$output_dir" == /* && -d "$output_dir" && ! -L "$output_dir" ]] || {
   echo "Moodle probe output directory must be an existing, non-symlink absolute path." >&2
   exit 64
 }
 [[ "$container" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || exit 64
+[[ "$cron_container" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || exit 64
+[[ "$moodledata_path" == /* ]] || exit 64
 
 web_running=0
 web_exists=0
@@ -25,6 +29,12 @@ fault_res01_cpu_fixture_running=0
 fault_net01_hosts_override=0
 fault_con01_web_stopped=0
 fault_sec02_fixture_mode_zero=0
+cli_maintenance_enabled=0
+upgrade_in_progress=0
+cron_running=0
+cron_stopped=0
+adhoc_probe_success=0
+adhoc_overdue=""
 
 if docker inspect "$container" >/dev/null 2>&1; then
   web_exists=1
@@ -94,6 +104,50 @@ if (( web_running == 1 )); then
   fi
 fi
 
+# BIZ-01: the CLI maintenance flag is a file in the shared dataroot. Reading
+# it is a filesystem fact; the probe never edits Moodle configuration.
+if [[ -f "$moodledata_path/climaintenance.html" ]]; then
+  cli_maintenance_enabled=1
+fi
+
+# BIZ-01 guard: an upgrade process in either Moodle container makes disabling
+# maintenance unsafe. If the process table cannot be read, report 1 so the
+# agent escalates instead of assuming the upgrade has finished.
+for upgrade_container in "$container" "$cron_container"; do
+  docker inspect "$upgrade_container" >/dev/null 2>&1 || continue
+  [[ "$(docker inspect --format '{{.State.Running}}' "$upgrade_container" 2>/dev/null || true)" == true ]] || continue
+  if ! process_table="$(timeout 5 docker top "$upgrade_container" -eo args 2>/dev/null)"; then
+    upgrade_in_progress=1
+  elif grep -Fq 'admin/cli/upgrade.php' <<<"$process_table"; then
+    upgrade_in_progress=1
+  fi
+done
+
+# BIZ-02: cron runs as a Compose service on the cron node only. A container
+# that exists but is not running is the infrastructure-level fault.
+if docker inspect "$cron_container" >/dev/null 2>&1; then
+  if [[ "$(docker inspect --format '{{.State.Running}}' "$cron_container" 2>/dev/null || true)" == true ]]; then
+    cron_running=1
+  else
+    cron_stopped=1
+  fi
+fi
+
+# BIZ-02 symptom: read-only count of ad-hoc tasks overdue by 10 minutes. The
+# count line is omitted on failure, so the agent sees missing evidence rather
+# than a healthy zero.
+if (( web_running == 1 )); then
+  overdue="$(timeout 10 docker exec "$container" php -r '
+    define("CLI_SCRIPT", true);
+    require "/var/www/html/config.php";
+    echo (int) $DB->count_records_select("task_adhoc", "nextruntime < :cutoff", ["cutoff" => time() - 600]);
+  ' 2>/dev/null || true)"
+  if [[ "$overdue" =~ ^[0-9]+$ ]]; then
+    adhoc_probe_success=1
+    adhoc_overdue="$overdue"
+  fi
+fi
+
 scratch_path=/var/lib/moodle-faults/res03-scratch
 if [[ -d "$scratch_path" ]] && [[ "$(findmnt --noheadings --output FSTYPE --target "$scratch_path" 2>/dev/null || true)" == tmpfs ]]; then
   scratch_available="$(df -Pk "$scratch_path" 2>/dev/null | awk 'NR==2 {print $4}')"
@@ -143,10 +197,31 @@ printf '%s\n' \
   '# HELP moodle_node_web_restart_count Docker restart count for the Moodle web container.' \
   '# TYPE moodle_node_web_restart_count gauge' \
   "moodle_node_web_restart_count $restart_count" \
+  '# HELP moodle_cli_maintenance_mode_enabled Whether climaintenance.html exists in the shared Moodle dataroot.' \
+  '# TYPE moodle_cli_maintenance_mode_enabled gauge' \
+  "moodle_cli_maintenance_mode_enabled $cli_maintenance_enabled" \
+  '# HELP moodle_upgrade_in_progress Whether admin/cli/upgrade.php is running in a Moodle container (1 when unreadable).' \
+  '# TYPE moodle_upgrade_in_progress gauge' \
+  "moodle_upgrade_in_progress $upgrade_in_progress" \
+  '# HELP moodle_node_cron_running Whether the Moodle cron container is running on this node.' \
+  '# TYPE moodle_node_cron_running gauge' \
+  "moodle_node_cron_running $cron_running" \
+  '# HELP moodle_cron_container_stopped Whether the Moodle cron container exists on this node but is not running.' \
+  '# TYPE moodle_cron_container_stopped gauge' \
+  "moodle_cron_container_stopped $cron_stopped" \
+  '# HELP moodle_adhoc_queue_probe_success Whether the read-only ad-hoc task backlog query succeeded.' \
+  '# TYPE moodle_adhoc_queue_probe_success gauge' \
+  "moodle_adhoc_queue_probe_success $adhoc_probe_success" \
   '# HELP moodle_node_probe_timestamp_seconds Unix timestamp of this local probe.' \
   '# TYPE moodle_node_probe_timestamp_seconds gauge' \
   "moodle_node_probe_timestamp_seconds $(date -u +%s)" \
   > "$temporary_file"
+if (( adhoc_probe_success == 1 )); then
+  printf '%s\n' \
+    '# HELP moodle_adhoc_tasks_overdue_count Moodle ad-hoc tasks whose next run is more than 10 minutes overdue.' \
+    '# TYPE moodle_adhoc_tasks_overdue_count gauge' \
+    "moodle_adhoc_tasks_overdue_count $adhoc_overdue" >> "$temporary_file"
+fi
 chmod 0644 "$temporary_file"
 mv -- "$temporary_file" "$output_dir/moodle_node_probes.prom"
 trap - EXIT

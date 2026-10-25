@@ -21,6 +21,7 @@ from core.evidence.dependency_graph import DependencyGraph
 from core.evidence.evidence_collectors import (
     BUSINESS_METRIC_QUERIES_BY_ALERT,
     METRIC_QUERIES_BY_ALERT,
+    SECURITY_METRIC_QUERIES_BY_ALERT,
     collect_shadow_evidence,
 )
 from core.moodle.contract import (
@@ -56,6 +57,9 @@ MOODLE_ALERT_RESOURCE_MAP: dict[str, str] = {
     "MoodleNodeProbeStale": "moodle-app",
     "MoodleMaintenanceModeStuck": "moodle-app",
     "MoodleAdhocTaskQueueStuck": "moodle-app",
+    "MoodleAdhocQueueProbeFailed": "moodle-app",
+    "MoodleDatabasePortExposure": "postgres-db",
+    "MoodleRdsIngressAuditFailed": "postgres-db",
     "LogFileErrorDetected": "ai-agent",
 }
 
@@ -165,7 +169,11 @@ class MoodlePlatformAdapter:
         return DependencyGraph(self.get_resources())
 
     def get_alert_queries(self, alert_name: str) -> tuple[tuple[str, str], ...]:
-        return METRIC_QUERIES_BY_ALERT.get(alert_name) or BUSINESS_METRIC_QUERIES_BY_ALERT.get(alert_name, ())
+        return (
+            METRIC_QUERIES_BY_ALERT.get(alert_name)
+            or BUSINESS_METRIC_QUERIES_BY_ALERT.get(alert_name)
+            or SECURITY_METRIC_QUERIES_BY_ALERT.get(alert_name, ())
+        )
 
     def collect_evidence(
         self,

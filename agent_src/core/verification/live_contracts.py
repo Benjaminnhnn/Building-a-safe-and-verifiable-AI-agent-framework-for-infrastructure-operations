@@ -58,10 +58,12 @@ MOODLE_LIVE_CONTRACTS: dict[str, dict[str, list[str]]] = {
     },
     # -----------------------------------------------------------------------
     # Business / Infrastructure Scenarios (BIZ-01, BIZ-02)
+    # Check names must equal the ids automation/moodle-scenario-verify.sh
+    # emits; the verifier rejects any coverage mismatch.
     # -----------------------------------------------------------------------
     "BIZ-01": {
-        "allowed": ["common_synthetic_transaction", "verify_student_course_access"],
-        "forbidden": ["internet_to_postgresql_blocked", "maintenance_banner_blocking_students"],
+        "allowed": ["common_synthetic_transaction"],
+        "forbidden": ["internet_to_postgresql_blocked"],
         "related": [
             "scenario_alert_resolved",
             "moodle_cli_maintenance_disabled",
@@ -69,8 +71,8 @@ MOODLE_LIVE_CONTRACTS: dict[str, dict[str, list[str]]] = {
         ],
     },
     "BIZ-02": {
-        "allowed": ["common_synthetic_transaction", "verify_moodle_cron_running"],
-        "forbidden": ["internet_to_postgresql_blocked", "moodle_cron_container_unhealthy"],
+        "allowed": ["common_synthetic_transaction"],
+        "forbidden": ["internet_to_postgresql_blocked"],
         "related": [
             "scenario_alert_resolved",
             "moodle_cron_service_active",

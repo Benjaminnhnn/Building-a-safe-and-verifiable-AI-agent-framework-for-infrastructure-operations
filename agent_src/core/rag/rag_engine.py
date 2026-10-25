@@ -37,10 +37,15 @@ RUNBOOK_ALERT_NAMES = {
     ),
     "moodle/runbook_moodle_monitoring.md": (
         "MoodleNodeExporterDown", "MoodleCAdvisorDown", "MoodleNodeProbeStale", "MoodleSyntheticTransactionStale",
+        "MoodleAdhocQueueProbeFailed", "MoodleRdsIngressAuditFailed",
     ),
     "moodle/runbook_moodle_security.md": (
         "MoodleDatabasePortExposure", "MoodleTrustedProxyMisconfigured", "MoodleTrustedProxyConfigDrift",
         "MoodleSsoLoginOptionMissing",
+        "MoodleRdsIngressAuditFailed",
+    ),
+    "moodle/runbook_moodle_platform_operations.md": (
+        "MoodleMaintenanceModeStuck", "MoodleAdhocTaskQueueStuck",
     ),
 }
 
