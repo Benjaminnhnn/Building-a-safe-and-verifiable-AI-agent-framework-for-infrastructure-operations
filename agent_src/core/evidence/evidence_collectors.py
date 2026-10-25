@@ -38,11 +38,8 @@ def alert_context_evidence(
     labels = alert.get("labels") or {}
     annotations = alert.get("annotations") or {}
     alert_name = str(labels.get("alertname") or "unknown")[:120]
-    is_log_alert = alert_name == "LogFileErrorDetected"
-    description = annotations.get("description")
-    context = description if is_log_alert and description else annotations.get("summary")
-    source = "log_watcher" if is_log_alert and description else "alertmanager"
-    kind = "sanitized_log_excerpt" if source == "log_watcher" else "alert_context"
+    context = annotations.get("summary")
+    source, kind = "alertmanager", "alert_context"
     payload = {
         "alertname": alert_name,
         "status": str(alert.get("status") or "unknown")[:24],

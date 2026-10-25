@@ -21,8 +21,8 @@ def _base_alert(**overrides) -> dict:
         "status": "firing",
         "labels": {
             "alertname": "TestAlert",
-            "instance": "bank-core-01",
-            "service": "payment-api",
+            "instance": "moodle-app-b",
+            "service": "moodle",
             "environment": "staging",
             "severity": "critical",
         },
@@ -118,8 +118,8 @@ def test_redaction_override_applied() -> None:
 def test_validation_pass_for_normalized_batch() -> None:
     payload = {
         "alerts": [
-            _base_alert(fingerprint="a1", labels={"alertname": "PostgreSQLDown", "service": "payment-api", "severity": "critical"}),
-            _base_alert(fingerprint="a2", labels={"alertname": "PaymentAPIEndpointDown", "service": "payment-api", "severity": "critical"}),
+            _base_alert(fingerprint="a1", labels={"alertname": "MoodleNodeRdsTcpFailed", "service": "moodle", "severity": "critical"}),
+            _base_alert(fingerprint="a2", labels={"alertname": "MoodleRdsTcpProbeFailed", "service": "moodle", "severity": "critical"}),
         ]
     }
     batch = normalize_alertmanager_payload(payload, received_at="2026-09-01T02:00:02Z")

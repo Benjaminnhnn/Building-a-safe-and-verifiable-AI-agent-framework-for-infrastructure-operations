@@ -218,19 +218,19 @@ def test_sanitize_untrusted_data_redacts_nested_fields_and_bounds_shape() -> Non
     ]
 
 
-def test_log_watcher_annotation_becomes_redacted_log_evidence() -> None:
+def test_alert_context_is_redacted_and_excludes_raw_labels() -> None:
     evidence = alert_context_evidence(
         {
             "status": "firing",
-            "labels": {"alertname": "LogFileErrorDetected", "source_file": "/private/path.log"},
-            "annotations": {"description": "authorization=Bearer secret-value"},
+            "labels": {"alertname": "MoodlePublicProbeFailed", "source_file": "/private/path.log"},
+            "annotations": {"summary": "authorization=Bearer secret-value"},
         },
-        resource_id="ai-agent",
+        resource_id="moodle-web-endpoint",
         incident_id="incident-1",
     )
 
-    assert evidence.source == "log_watcher"
-    assert evidence.kind == "sanitized_log_excerpt"
+    assert evidence.source == "alertmanager"
+    assert evidence.kind == "alert_context"
     assert evidence.payload["context"] == "authorization=[REDACTED]"
     assert "/private/path.log" not in json.dumps(evidence.payload)
 

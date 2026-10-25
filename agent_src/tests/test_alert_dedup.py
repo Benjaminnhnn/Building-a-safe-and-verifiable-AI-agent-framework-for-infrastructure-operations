@@ -10,8 +10,8 @@ def _alert(fingerprint: str | None = None) -> dict:
     alert = {
         "status": "firing",
         "labels": {
-            "alertname": "WebEndpointDown",
-            "instance": "bank-web-01",
+            "alertname": "MoodlePublicProbeFailed",
+            "instance": "moodle-app-a",
             "job": "blackbox_http_web",
             "service": "availability",
             "target": "http://52.220.34.44/health",

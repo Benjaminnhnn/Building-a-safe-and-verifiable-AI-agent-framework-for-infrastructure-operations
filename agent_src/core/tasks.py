@@ -1,5 +1,3 @@
-# tasks.py
-# FIX #5: Sắp xếp lại imports — stdlib trước, third-party sau, local cuối cùng
 import asyncio
 import hashlib
 import json
@@ -141,8 +139,6 @@ def _alert_notification_key(alert: dict, notification_type: str) -> str:
     return f"alert-ai-notification:{notification_type}:{_alert_identity(alert)}:{_alert_event_hash(alert)}"
 
 
-
-
 def _reserve_alert_notification(alert: dict, notification_type: str) -> bool:
     if not ALERT_DEDUP_ENABLED or ALERT_NOTIFICATION_TTL_SECONDS <= 0:
         return True
@@ -207,47 +203,6 @@ def _clear_alert_notification(alert: dict, notification_type: str) -> None:
         logger.warning("Redis notification cleanup failed: %s", e)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-RUNBOOK_FILES_BY_ALERT = {
-    "WebEndpointDown": "runbook_nginx.md",
-    "FrontendAPIProxyDown": "runbook_nginx.md",
-    "PaymentAPIEndpointDown": "runbook_postgresql.md",
-    "PostgreSQLDown": "runbook_postgresql.md",
-    "RedisDown": "runbook_redis.md",
-    "RedisBrokerDown": "runbook_redis.md",
-    "DockerContainerDown": "runbook_docker.md",
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def _incident_field(details: str, field_name: str, default: str = "unknown") -> str:
     match = re.search(rf"^{re.escape(field_name)}:\s*(.+)$", details, flags=re.MULTILINE)
     return match.group(1).strip() if match else default
@@ -267,8 +222,6 @@ def _labels_from_incident_context(ctx: dict) -> dict:
         key, value = item.split("=", 1)
         parsed[key.strip()] = value.strip()
     return parsed
-
-
 
 
 def _compact_review_text(value: str, max_chars: int = 900) -> str:
@@ -299,8 +252,6 @@ def _format_admin_feedback_response(
         f"Nhận xét ngắn:\n{_compact_review_text(admin_message, 500)}\n\n"
         f"✅ Làm theo:\n{_compact_review_text(reviewed_solution, 900)}"
     )
-
-
 
 
 def _runbook_approval_keyboard(draft_id: str) -> dict:
@@ -347,11 +298,6 @@ def _load_incident_from_redis(incident_id: str) -> dict | None:
         return None
 
 
-
-
-
-
-
 def _parse_review_json(full_text: str) -> dict | None:
     match = re.search(r"REVIEW_JSON:\s*(\{.*\})", full_text, flags=re.DOTALL)
     if not match:
@@ -392,35 +338,6 @@ def _destructive_feedback_review(admin_feedback: str) -> dict | None:
         "admin_message": (
             "Góp ý chứa thao tác phá dữ liệu nhưng chưa có backup hoặc xác nhận rõ ràng. "
             "Agent từ chối lưu góp ý này vào RAG."
-        ),
-    }
-
-
-def _configuration_feedback_review(incident_context: dict, admin_feedback: str) -> dict | None:
-    if incident_context.get("alert_name") != "FrontendAPIProxyDown":
-        return None
-
-    labels = _labels_from_incident_context(incident_context)
-    expected_upstream = str(labels.get("expected_upstream", "")).strip()
-    feedback_lower = admin_feedback.lower()
-    if not expected_upstream or "payment_api_upstream" not in feedback_lower:
-        return None
-    if expected_upstream.lower() in feedback_lower:
-        return None
-
-    return {
-        "status": "revised",
-        "reviewed_solution": (
-            "cd /home/ec2-user/aws-hybrid\n"
-            "grep '^PAYMENT_API_UPSTREAM=' release/.env.staging\n"
-            f"sed -i 's|^PAYMENT_API_UPSTREAM=.*|PAYMENT_API_UPSTREAM={expected_upstream}|' release/.env.staging\n"
-            "TAG=$(cat release/.state/staging.tag)\n"
-            "./automation/app-release-deploy.sh staging \"$TAG\" web\n"
-            "curl -i http://127.0.0.1:18081/api/ready"
-        ),
-        "admin_message": (
-            "Góp ý đúng hướng nhưng chưa nêu giá trị PAYMENT_API_UPSTREAM cần khôi phục. "
-            "Agent đã bổ sung upstream mong đợi từ alert context."
         ),
     }
 
@@ -473,10 +390,6 @@ async def review_admin_feedback(incident_context: dict, admin_feedback: str) -> 
     destructive_review = _destructive_feedback_review(admin_feedback)
     if destructive_review:
         return destructive_review
-
-    configuration_review = _configuration_feedback_review(incident_context, admin_feedback)
-    if configuration_review:
-        return configuration_review
 
     if not GEMINI_API_KEY:
         return _basic_feedback_review(admin_feedback)
@@ -605,8 +518,6 @@ async def process_admin_feedback(incident_id: str, admin_feedback: str, chat_id:
     return {"status": review_status, "saved": saved, "message": message}
 
 
-
-
 async def process_single_alert(alert: dict) -> None:
     """Process firing Moodle alerts through evidence investigation only."""
     ACTIVE_TASKS.inc()
@@ -691,18 +602,6 @@ async def process_single_alert(alert: dict) -> None:
     finally:
         ACTIVE_TASKS.dec()
 
-# PHASE 9: Automatic Verification Task
-# ─────────────────────────────────────────────────────────────────────
-
-
-
-
-# - FIX #2: Chạy TẤT CẢ alerts trong một lần asyncio.run() duy nhất với gather()
-#   thay vì gọi asyncio.run() lặp lại trong vòng for → tốn tài nguyên tạo/hủy event loop
-# - FIX #1: Tách xử lý lỗi per-alert ra khỏi retry của toàn bộ task.
-#   Logic cũ: 1 alert lỗi → retry TOÀN BỘ task → các alert đã thành công bị xử lý lại.
-#   Logic mới: gather(return_exceptions=True) thu thập lỗi từng alert riêng biệt;
-#   chỉ retry task nếu có lỗi hệ thống thực sự (ví dụ Redis/network down).
 @celery_app.task(name="process_admin_feedback_task", bind=True, max_retries=2)
 def process_admin_feedback_task(self, incident_id: str, admin_feedback: str, chat_id: str | None = None):
     """Celery task xử lý góp ý của admin gửi qua Telegram."""

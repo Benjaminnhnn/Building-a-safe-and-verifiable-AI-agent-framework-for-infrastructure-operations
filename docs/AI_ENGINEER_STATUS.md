@@ -1,5 +1,43 @@
 # AI Engineer scope status
 
+## Legacy cleanup (2026-10-25)
+
+Removed:
+- the bank-lane leftovers: the dead `RUNBOOK_FILES_BY_ALERT` and the `FrontendAPIProxyDown` configuration review in `core/tasks.py` (it pointed at the removed `app-release-deploy.sh`), the nginx/PostgreSQL/Redis/Docker runbooks and their alert mappings, and `log_watcher.py` with its log-evidence branch (it was never deployed for Moodle);
+- unreferenced tools: `automation/ai-engineer-sprint1-4-replay.py`, `automation/sprint7-offline-demo.py`, `automation/moodle-safe-gate-verifier-demo.py`, `evaluation/agent_replay/verification/celery_tasks.py`, and `agent_src/tools/prometheus_check.py`, which the Independent Verifier supersedes;
+- the dated report `docs/BAO_CAO_HOAN_THIEN_7_KICH_BAN_VA_HERMES_AGENT.md`.
+
+Also:
+- Test fixtures were renamed from bank hosts and alerts to Moodle ones.
+- `agent_src/config/README.md` was rewritten to match the real files.
+- Dead links were fixed in README, AGENTS and docs.
+- Kept: the tool auto-discovery/runbook-draft feature, the Hermes prototype and the SSO tooling, by owner decision. `watchdog` is still in the hash-locked requirements but unused, because removing it requires regenerating the lock.
+
+Local checks: critical Ruff passed; **1136 passed**. Unified replay accepted 15/15, the Sprint 2 replay passed for 15 scenarios, SEC-01 verify exited 64, and every automation shell script passes `bash -n`. Docker builds were not run.
+
+## RAG-grounded diagnosis, runtime role agents and AI evaluation (2026-10-25)
+
+Scope: agent, offline evaluation and the scorer. `automation/` and CI files are unchanged. Docs: `docs/LLM_DIAGNOSIS_DESIGN.md`, `docs/RUNTIME_AGENT_ROLES.md`.
+
+1. **RAG in the diagnosis path.**
+   - `core/rag/runbook_chunks.py` provides ChromaDB-free chunking, stable chunk IDs and a deterministic retriever; the vector store also returns chunk records.
+   - LLM prompts get alert-scoped runbook chunks, and hypotheses may cite them. The validator rejects runbook references to chunks that were not shown, and citations of contradictory samples.
+   - Each diagnosis decision persists `knowledge_links` (evidence ↔ runbook chunk ↔ conclusion).
+   - `AIOPS_DIAGNOSIS_RAG=off` is the ablation switch. Prompt labels now pass through the secret sanitizer.
+2. **Runtime role agents.**
+   - `core/agents/` has the Observer, Diagnosis and Planner agents on the alert path, and the Execution and Verification agents on the handoff endpoints.
+   - Messages are typed and share `incident_id`, evidence IDs and `action_id`.
+   - Stage events are hash-chained in the evidence store: run `incident_id`, embedded in the checkpoint, for the alert path; run `<incident_id>:handoff` for the handoff.
+   - The public API responses are unchanged, apart from a new `agent_trace` field in the pipeline result.
+3. **AI evaluation.**
+   - `diagnosis_ablation.py` now compares rules, llm, llm_rag, hybrid, hybrid_rag and llm_unvalidated on accuracy, stability across repeats, robustness (noise, contradiction, label injection and poisoned runbook, with a secret-leak count), cost (tokens, latency, USD) and 96 adversarial outputs.
+   - The scorer carries LLM tokens and latency.
+   - New `llm_gate_ablation.py` measures an unconstrained LLM planner with and without the Safety Gate (RQ1).
+   - Scripted wiring results: the validator blocked 96/96 adversarial outputs (84/96 passed without it). There were zero validated false diagnoses under every perturbation and zero secret leaks. In the gate ablation, the naive plan had 25/25 unsafe proposals blocked by the gate, 25/25 would-execute without it, and 0 reviewed proposals blocked.
+
+Local checks (Python 3.14): critical Ruff passed; **1143 passed**, including 16 new tests in `test_agent_roles_and_rag.py`. Unified replay accepted 15/15, and the Sprint 2 replay passed for 15 scenarios. Not run: the Gemini experiments (real-model accuracy, stability, cost, and natural RQ1 proposals are still unmeasured), Docker image builds, and any live drill.
+
+
 ## Evidence-cited LLM diagnosis layer (2026-10-25)
 
 Scope: agent and offline evaluation only. `automation/` and CI files are unchanged. Design: `docs/LLM_DIAGNOSIS_DESIGN.md`.

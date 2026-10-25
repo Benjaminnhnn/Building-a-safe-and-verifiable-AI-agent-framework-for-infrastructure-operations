@@ -2,7 +2,7 @@
 
 **Môi trường:** AWS account `<ACCOUNT_ID>`, region `ap-southeast-1` (Singapore), staging Moodle
 **Người thực hiện:** quản trị viên AWS (admin). Các role trong tài liệu này **không** có quyền quản lý IAM
-**Tài liệu liên quan:** [Triển khai Moodle–Entra–Okta](MOODLE_ENTRA_OKTA_OIDC_IMPLEMENTATION.md) · [Moodle Operations Runbook](MOODLE_OPERATIONS_RUNBOOK.md) · [AI Engineer test runbook](AI_ENGINEER_MOODLE_TEST_RUNBOOK.md)
+**Tài liệu liên quan:** [Triển khai Moodle–Entra–Okta](MOODLE_ENTRA_OKTA_OIDC_IMPLEMENTATION.md) · [Moodle Operations Runbook](MOODLE_OPERATIONS_RUNBOOK.md)
 
 Thay `<ACCOUNT_ID>`, `<infra-user>`, `<ai-user>` và `<mfa-device>` bằng giá trị thật khi thực hiện. **Không** commit giá trị thật của access key, mật khẩu hay link kích hoạt vào repo.
 

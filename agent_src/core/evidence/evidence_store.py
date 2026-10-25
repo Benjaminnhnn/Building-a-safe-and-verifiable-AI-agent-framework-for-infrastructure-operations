@@ -316,6 +316,23 @@ class SQLiteEvidenceStore:
                 )
             previous_hash = expected_hash
 
+    def append_audit_events(self, *, run_id: str, events: list[dict[str, Any]]) -> None:
+        """Append events to a run's hash-chained ledger outside a checkpoint claim."""
+        self._connection.execute("BEGIN IMMEDIATE")
+        try:
+            existing = [
+                json.loads(row["payload_json"])
+                for row in self._connection.execute(
+                    "SELECT payload_json FROM incident_audit_events WHERE run_id = ? ORDER BY sequence_number",
+                    (run_id,),
+                ).fetchall()
+            ]
+            self._append_audit_events_in_transaction(run_id=run_id, events=existing + events)
+            self._connection.commit()
+        except Exception:
+            self._connection.rollback()
+            raise
+
     def list_audit_events(self, run_id: str) -> list[dict[str, Any]]:
         self.verify_audit_integrity(run_id=run_id)
         rows = self._connection.execute(

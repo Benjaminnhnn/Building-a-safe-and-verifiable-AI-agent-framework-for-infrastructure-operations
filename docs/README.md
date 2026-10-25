@@ -14,6 +14,9 @@ Use [AI Engineer status](AI_ENGINEER_STATUS.md) for the current ownership and ev
 ## Architecture and implementation
 
 - [AI agent architecture and threat model](AI_AGENT_ARCHITECTURE_AND_THREAT_MODEL.md)
+- [Runtime agent roles](RUNTIME_AGENT_ROLES.md) — Observer, Diagnosis, Planner, Execution and Verification agents and the stage ledger.
+- [Evidence-cited LLM diagnosis](LLM_DIAGNOSIS_DESIGN.md) — modes, citation validator, RAG knowledge links, and the AI evaluation.
+- [Hermes agent research](HERMES_AGENT_RESEARCH.md) — read-only MCP prototype, outside the runtime pipeline.
 - [Infrastructure design](MOODLE_INFRASTRUCTURE_DESIGN.md)
 - [Entra/Okta OIDC implementation](MOODLE_ENTRA_OKTA_OIDC_IMPLEMENTATION.md)
 - [SSO incident scenarios](MOODLE_SSO_INCIDENT_SCENARIOS.md)

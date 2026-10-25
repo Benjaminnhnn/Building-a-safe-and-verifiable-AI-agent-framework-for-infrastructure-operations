@@ -1,39 +1,25 @@
-# System Configuration & Knowledge Base (`agent_src/config/`)
+# Cấu hình và kho tri thức (`agent_src/config/`)
 
-Thư mục này chứa toàn bộ các **tệp cấu hình hạ tầng (Configuration Files)** và **kho tri thức vận hành chuẩn hóa (Knowledge Base Runbooks)** được nạp vào cơ sở dữ liệu vector RAG (`ChromaDB`) khi khởi động hệ thống.
+Thư mục này chứa các hợp đồng và danh mục tài nguyên mà Agent đọc lúc chạy, cùng các runbook được dùng làm ngữ cảnh RAG.
 
----
+## Danh mục tài nguyên và hợp đồng
 
-## Danh mục các file và chức năng chi tiết
+- **`moodle_resource_inventory.json`**: danh mục tài nguyên Moodle (`moodle-app`, `postgres-db`, `moodle-rds-security-group`, `moodledata-volume`, `moodle-web-endpoint`, giám sát và chính Agent) cùng quan hệ phụ thuộc. Planner chỉ nhắm vào tài nguyên có trong danh mục; dependency graph dùng file này để tính phạm vi ảnh hưởng.
+- **`moodle_capability_contract.json`**: hợp đồng bằng chứng, năng lực, phạm vi đích và năng lực theo kịch bản. `core/moodle/contract.py` kiểm tra hợp đồng này khớp với action catalog.
+- **`erpnext_resource_inventory.json`**: danh mục tài nguyên ERPNext cho `ERPNextPlatformAdapter` (kiểm chứng khả năng áp dụng cho nền tảng thứ hai).
+- **`contracts/`**: communication contract ở dạng YAML. `moodle_communication_contract.yaml` dùng cho Independent Verifier trong replay; `demo_web_communication_contract.yaml` chỉ là fixture kiểm thử của verifier.
 
-### 1. Cấu hình hệ thống (JSON Configurations)
+## Kho tri thức runbook (`knowledge_base/moodle/`)
 
-- **`moodle_capability_contract.json`**:
-  - **Tác dụng**: Khai báo danh mục năng lực (capabilities) và các hành động được phép thực thi trên hạ tầng Moodle (ví dụ: `RESTART_SERVICE`, `CLEAR_CACHE`, `SCALE_RESOURCES`), kèm theo danh sách rủi ro và các tham số hợp lệ.
-  - **Ảnh hưởng tới toàn bộ AI Agent**: Là nguồn tham chiếu để `SafeExecutionGate` và `ActionCatalog` kiểm tra tính hợp lệ của mọi đề xuất hành động từ AI.
-- **`moodle_resource_inventory.json`**:
-  - **Tác dụng**: Định nghĩa danh mục tài nguyên thực tế của cụm Moodle trên AWS (Application nodes: `moodle-app-01`, `moodle-app-02`, cơ sở dữ liệu RDS PostgreSQL, hệ thống tệp chia sẻ EFS, và Load Balancer ALB).
-  - **Ảnh hưởng tới toàn bộ AI Agent**: Thiết lập ranh giới tài nguyên (Resource Boundary), đảm bảo AI Agent chỉ được phép tương tác với các tài nguyên đã đăng ký.
-- **`services_config.json`**:
-  - **Tác dụng**: Cấu hình các dịch vụ cần giám sát bởi tiến trình `service_monitor.py` (cổng mạng, trạng thái kích hoạt, thời gian cooldown cảnh báo).
-  - **Ảnh hưởng tới toàn bộ AI Agent**: Quyết định những cổng dịch vụ và tiến trình nào trên host sẽ được kiểm tra và kích hoạt cảnh báo khi gặp sự cố.
+Runbook Markdown do con người soạn và review. `core/rag/runbook_chunks.py` tách runbook theo heading thành các chunk có `chunk_id` và SHA-256. ChromaDB (`standard_runbooks`) và retriever tất định đều dùng cùng các chunk này. `RUNBOOK_ALERT_NAMES` gán runbook cho từng alert.
 
-### 2. Kho tri thức Runbooks (`knowledge_base/`)
+| Runbook | Alert áp dụng |
+|---|---|
+| `runbook_moodle_connectivity.md` | Kết nối Moodle → RDS (TCP, độ trễ, synthetic transaction) |
+| `runbook_moodle_service.md` | Web container, ALB, Apache router, trusted proxy |
+| `runbook_moodle_storage_resources.md` | EFS, scratch ENOSPC, CPU, bộ nhớ |
+| `runbook_moodle_monitoring.md` | Chất lượng tín hiệu giám sát (exporter, probe, audit) |
+| `runbook_moodle_security.md` | Phơi bày cổng RDS, trusted proxy |
+| `runbook_moodle_platform_operations.md` | Maintenance mode bị kẹt, hàng đợi cron ad-hoc |
 
-Thư mục `knowledge_base/` chứa các tài liệu hướng dẫn vận hành chuẩn (SOP / Runbooks) viết bằng định dạng Markdown. Khi AI Agent khởi động, `runbook_registry.py` sẽ phân tách các tài liệu này theo tiêu đề và đưa vào ChromaDB (`standard_runbooks` collection):
-
-- **Hạ tầng cơ sở**:
-  - `runbook_docker.md`: Quy trình xử lý sự cố container Docker, OOMKilled, lỗi daemon, lỗi network bridge.
-  - `runbook_nginx.md`: Hướng dẫn chẩn đoán lỗi Web Server Nginx (502 Bad Gateway, 504 Gateway Timeout, cấu hình upstream).
-  - `runbook_postgresql.md`: Khắc phục sự cố cơ sở dữ liệu PostgreSQL (kết nối pool cạn kiệt, lock contention, chậm truy vấn, lỗi replication).
-  - `runbook_redis.md`: Xử lý sự cố bộ nhớ đệm Redis (memory exhaustion, rớt kết nối cache).
-
-- **Đặc thù ứng dụng Moodle (`knowledge_base/moodle/`)**:
-  - `runbook_moodle_connectivity.md`: Chẩn đoán và xử lý mất kết nối giữa Moodle Web Nodes và cơ sở dữ liệu RDS PostgreSQL hoặc Redis Session Cache.
-  - `runbook_moodle_monitoring.md`: Hướng dẫn kiểm tra các chỉ số sức khỏe của Moodle qua Prometheus và endpoint `/healthz.php`.
-  - `runbook_moodle_security.md`: Quy tắc an toàn, quản lý quyền hạn tệp tin và bí mật chứng thực trên cụm Moodle.
-  - `runbook_moodle_service.md`: Hướng dẫn khởi động lại, bảo trì và kiểm tra trạng thái dịch vụ Apache/PHP-FPM của Moodle.
-  - `runbook_moodle_storage_resources.md`: Hướng dẫn xử lý sự cố gắn kết EFS (`/var/www/moodledata`), đầy dung lượng ổ đĩa và phân quyền thư mục dữ liệu.
-
-- **Ảnh hưởng tới toàn bộ AI Agent**: Cung cấp tri thức chuyên môn thực nghiệm cho công cụ RAG (`rag_engine.py`), giúp LLM đưa ra các suy luận chẩn đoán và kế hoạch xử lý bám sát quy chuẩn vận hành của doanh nghiệp.
-
+Runbook chỉ là ngữ cảnh cho chẩn đoán LLM. Chúng không cấp quyền hành động: mọi hành động vẫn phải nằm trong action catalog và đi qua Safety Gate.

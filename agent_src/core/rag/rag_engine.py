@@ -7,6 +7,12 @@ from typing import Any
 
 import chromadb
 from chromadb.utils import embedding_functions
+from core.rag.runbook_chunks import (  # noqa: F401 - re-exported for callers
+    RUNBOOK_ALERT_NAMES,
+    RUNBOOK_CHUNK_CHARS,
+    _chunk_markdown,
+    chunk_record,
+)
 from core.safety.sanitization import sanitize_log_excerpt
 
 logger = logging.getLogger(__name__)
@@ -14,72 +20,7 @@ logger = logging.getLogger(__name__)
 STANDARD_RUNBOOKS_COLLECTION = "standard_runbooks"
 INCIDENT_MEMORY_COLLECTION = "incident_memory"
 LEGACY_COLLECTION = "ops_runbooks"
-RUNBOOK_CHUNK_CHARS = int(os.getenv("RAG_RUNBOOK_CHUNK_CHARS", "1200"))
 RAG_MAX_DISTANCE = float(os.getenv("RAG_MAX_DISTANCE", "1.2"))
-RUNBOOK_ALERT_NAMES = {
-    "runbook_nginx.md": ("WebEndpointDown", "FrontendAPIProxyDown"),
-    "runbook_postgresql.md": ("PostgreSQLDown", "PaymentAPIEndpointDown"),
-    "runbook_redis.md": ("RedisDown", "RedisBrokerDown"),
-    "runbook_docker.md": ("DockerContainerDown",),
-    "moodle/runbook_moodle_connectivity.md": (
-        "MoodleRdsTcpProbeFailed", "MoodleNodeRdsTcpFailed", "MoodleNodeRdsTcpLatencyHigh",
-        "MoodleDatabaseEndpointInvalid", "MoodleDatabasePortBlocked", "MoodleDatabaseLatencyHigh",
-        "MoodleSyntheticTransactionFailed",
-    ),
-    "moodle/runbook_moodle_service.md": (
-        "MoodlePublicProbeFailed", "MoodleWebContainerMissing", "MoodleWebContainerRestarting",
-        "MoodleApacheRouterMissing", "MoodleNodeRouterFallbackFailed", "MoodleTrustedProxyConfigDrift",
-        "MoodleProxyUnavailable", "MoodleContainerCrashLoop", "MoodleSyntheticTransactionFailed",
-    ),
-    "moodle/runbook_moodle_storage_resources.md": (
-        "MoodleEfsMountMissing", "MoodleScratchEnospc", "MoodleNodeCpuHigh", "MoodleNodeMemoryPressure",
-        "MoodleDataVolumePressure", "MoodleSyntheticTransactionFailed",
-    ),
-    "moodle/runbook_moodle_monitoring.md": (
-        "MoodleNodeExporterDown", "MoodleCAdvisorDown", "MoodleNodeProbeStale", "MoodleSyntheticTransactionStale",
-        "MoodleAdhocQueueProbeFailed", "MoodleRdsIngressAuditFailed",
-    ),
-    "moodle/runbook_moodle_security.md": (
-        "MoodleDatabasePortExposure", "MoodleTrustedProxyMisconfigured", "MoodleTrustedProxyConfigDrift",
-        "MoodleRdsIngressAuditFailed",
-    ),
-    "moodle/runbook_moodle_platform_operations.md": (
-        "MoodleMaintenanceModeStuck", "MoodleAdhocTaskQueueStuck",
-    ),
-}
-
-
-def _chunk_markdown(content: str, max_chars: int = RUNBOOK_CHUNK_CHARS) -> list[tuple[str, str]]:
-    """Split Markdown into heading-aware chunks with stable, bounded sizes."""
-    sections = re.split(r"(?=^#{1,6}\s+)", content.strip(), flags=re.MULTILINE)
-    chunks: list[tuple[str, str]] = []
-
-    for section in sections:
-        section = section.strip()
-        if not section:
-            continue
-
-        first_line = section.splitlines()[0].strip()
-        heading = first_line.lstrip("#").strip() if first_line.startswith("#") else "Overview"
-        paragraphs = [part.strip() for part in re.split(r"\n\s*\n", section) if part.strip()]
-        current = ""
-
-        for paragraph in paragraphs:
-            candidate = f"{current}\n\n{paragraph}".strip() if current else paragraph
-            if current and len(candidate) > max_chars:
-                chunks.append((heading, current))
-                current = paragraph
-            else:
-                current = candidate
-
-            while len(current) > max_chars:
-                chunks.append((heading, current[:max_chars].rstrip()))
-                current = current[max_chars:].lstrip()
-
-        if current:
-            chunks.append((heading, current))
-
-    return chunks
 
 
 def _source_provenance(source: str, content: str, *, source_path: str | None = None) -> dict[str, str]:
@@ -425,6 +366,7 @@ class RAGEngine:
             )
             rendered = []
             provenance = []
+            chunks = []
             for document, metadata, _distance in ranked:
                 metadata = metadata or {}
                 source = str(metadata.get("source_file") or metadata.get("source") or "unknown")
@@ -441,9 +383,20 @@ class RAGEngine:
                         "chunk_index": int(metadata.get("chunk_index", 0)),
                     }
                 )
+                chunk = chunk_record(
+                    source_file=source,
+                    chunk_index=int(metadata.get("chunk_index", 0)),
+                    heading=str(metadata.get("heading") or "Overview"),
+                    text=document,
+                    source_sha256=source_hash,
+                )
+                provenance[-1]["chunk_id"] = chunk["chunk_id"]
+                provenance[-1]["chunk_sha256"] = chunk["chunk_sha256"]
+                chunks.append(chunk)
             return {
                 "text": "\n\n---\n\n".join(rendered),
                 "provenance": provenance,
+                "chunks": chunks,
             }
         except Exception as exc:
             logger.error("RAG provenance retrieval failed: %s", exc)

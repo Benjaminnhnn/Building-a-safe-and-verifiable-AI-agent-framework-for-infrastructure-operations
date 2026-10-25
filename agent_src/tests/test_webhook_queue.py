@@ -15,8 +15,8 @@ def _payload(fingerprint: str = "alert-1") -> dict:
             {
                 "status": "firing",
                 "labels": {
-                    "alertname": "WebEndpointDown",
-                    "instance": "bank-web-01",
+                    "alertname": "MoodlePublicProbeFailed",
+                    "instance": "moodle-app-a",
                 },
                 "annotations": {},
                 "startsAt": "2026-06-02T00:00:00Z",

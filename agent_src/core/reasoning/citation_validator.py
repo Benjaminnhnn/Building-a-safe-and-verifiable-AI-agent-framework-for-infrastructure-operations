@@ -25,6 +25,7 @@ MAX_FUTURE_SKEW_SECONDS = 30
 MAX_CITATION_WINDOW_SECONDS = 60
 MAX_HYPOTHESES = 3
 MAX_CITATIONS = 12
+MAX_RUNBOOK_REFS = 5
 _VALUE_TOLERANCE = 1e-6
 
 # Diagnosis output must never carry an action; planning stays in the catalog.
@@ -49,6 +50,8 @@ CITATION_STALE = "citation_stale"
 CITATION_WINDOW_TOO_WIDE = "citation_window_too_wide"
 REQUIRED_SIGNAL_NOT_CITED = "required_signal_not_cited"
 SIGNAL_PREDICATE_NOT_SATISFIED = "signal_predicate_not_satisfied"
+RUNBOOK_REF_NOT_FOUND = "runbook_ref_not_found"
+CITATION_CONFLICTS_WITH_STORED = "citation_conflicts_with_stored_sample"
 
 
 class Citation(BaseModel):
@@ -67,6 +70,7 @@ class LLMHypothesis(BaseModel):
     confidence: float
     rationale: str = Field(default="", max_length=2000)
     citations: list[Citation] = Field(default_factory=list, max_length=MAX_CITATIONS)
+    runbook_refs: list[str] = Field(default_factory=list, max_length=MAX_RUNBOOK_REFS)
 
 
 class LLMDiagnosisOutput(BaseModel):
@@ -185,8 +189,13 @@ def validate_hypothesis(
     *,
     now: datetime,
     index: int = 0,
+    runbook_chunk_ids: set[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Return citation violations for one hypothesis; empty means accepted."""
+    """Return citation violations for one hypothesis; empty means accepted.
+
+    ``runbook_chunk_ids`` is the set of chunk IDs shown to the model; ``None``
+    skips the runbook check (used when re-validating a cached decision).
+    """
     violations: list[dict[str, Any]] = []
 
     def flag(code: str, detail: str) -> None:
@@ -197,6 +206,10 @@ def validate_hypothesis(
         flag(UNKNOWN_CAUSE_CODE, f"{hypothesis.cause_code!r} is not in the reviewed cause vocabulary")
     if not math.isfinite(hypothesis.confidence) or not 0.0 <= hypothesis.confidence <= 1.0:
         flag(CONFIDENCE_OUT_OF_RANGE, "confidence must be within [0, 1]")
+    if runbook_chunk_ids is not None:
+        for ref in hypothesis.runbook_refs:
+            if ref not in runbook_chunk_ids:
+                flag(RUNBOOK_REF_NOT_FOUND, f"{ref} was not among the runbook chunks provided")
     if not hypothesis.citations:
         flag(NO_CITATIONS, "a hypothesis must cite stored evidence")
         return violations
@@ -226,6 +239,14 @@ def validate_hypothesis(
         age = (now - stored.collected_at.astimezone(timezone.utc)).total_seconds()
         if age > MAX_SAMPLE_AGE_SECONDS or age < -MAX_FUTURE_SKEW_SECONDS:
             flag(CITATION_STALE, f"{citation.evidence_id} is {age:.0f}s old")
+            continue
+        # A model cannot pick one side of contradictory telemetry.
+        conflicting = {
+            sample.value for sample in samples.values()
+            if sample.query_id == stored.query_id and sample.instance == stored.instance and sample.value is not None
+        }
+        if len(conflicting) > 1:
+            flag(CITATION_CONFLICTS_WITH_STORED, f"{citation.evidence_id} conflicts with another stored sample for the same query and instance")
             continue
         cited_values.setdefault(stored.query_id, []).append(stored.value)
         cited_times.append(stored.collected_at.astimezone(timezone.utc))
@@ -258,6 +279,7 @@ def validate_llm_output(
     evidence: list[Any],
     *,
     now: datetime | None = None,
+    runbook_chunk_ids: set[str] | None = None,
 ) -> ValidationResult:
     """Parse and validate model output; select the first fully cited hypothesis."""
     parsed, violations = parse_llm_output(text)
@@ -269,7 +291,9 @@ def validate_llm_output(
     current = now or datetime.now(timezone.utc)
     all_violations: list[dict[str, Any]] = []
     for index, hypothesis in enumerate(parsed.hypotheses):
-        found = validate_hypothesis(hypothesis, samples, now=current, index=index)
+        found = validate_hypothesis(
+            hypothesis, samples, now=current, index=index, runbook_chunk_ids=runbook_chunk_ids or set()
+        )
         if not found:
             return ValidationResult(
                 accepted=True,

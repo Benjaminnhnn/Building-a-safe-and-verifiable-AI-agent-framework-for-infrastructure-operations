@@ -42,7 +42,7 @@ Follow the commands in `AGENTS.md`. CI runs the critical Ruff checks and agent t
 
 ### Safe execution and verification
 
-The agent proposes typed actions. The Safety Gate checks policy and execution context; unknown or disallowed actions fail closed. Approval and live execution are separate from replay. Recovery requires fresh allowed, forbidden, and related probes plus the configured stability window. See `docs/MOODLE_OPERATIONS_RUNBOOK.md` and `docs/SPRINT3_S3_3_SAFE_EXECUTOR.md` for operational detail.
+The agent proposes typed actions. The Safety Gate checks policy and execution context; unknown or disallowed actions fail closed. Approval and live execution are separate from replay. Recovery requires fresh allowed, forbidden, and related probes plus the configured stability window. See `docs/MOODLE_OPERATIONS_RUNBOOK.md` for operational detail, `docs/RUNTIME_AGENT_ROLES.md` for the role agents and stage ledger, and `docs/LLM_DIAGNOSIS_DESIGN.md` for the evidence-cited LLM diagnosis and its evaluation.
 
 ## Evidence and benchmark status
 
@@ -52,11 +52,11 @@ Files under `docs/` are dated evidence snapshots, not live status pages. Confirm
 
 ## ERPNext generalization
 
-The approved proposal also requires ERPNext generalization after Moodle acceptance. See [ERPNext staging runbook](docs/ERPNEXT_STAGING_RUNBOOK.md); its runtime and drill tooling are prepared, but no AWS deployment or empirical recovery evidence is claimed.
+The approved proposal also requires ERPNext generalization after Moodle acceptance. The ERPNext adapter (`agent_src/core/erpnext/`), Terraform (`terraform/erpnext.tf`), Compose (`release/erpnext/`), playbook (`ansible/playbooks/deploy-erpnext-staging.yml`) and fault scripts (`automation/erpnext-fault-*.sh`) are prepared, but no AWS deployment or empirical recovery evidence is claimed.
 
 ## Legacy components
 
-The banking/payment demo (bank-web-01 / bank-core-01, payment-api, frontend, its release Compose files, deploy script and Ansible stack) and the local OpenLDAP auth lab were removed on 2026-10-14. The two legacy security groups are destroyed by the next reviewed `terraform apply`. A dormant legacy alert-diagnosis branch remains in `agent_src/core/tasks.py` pending refactor. Dated documents may still describe the removed components.
+The banking/payment demo (bank-web-01 / bank-core-01, payment-api, frontend, its release Compose files, deploy script and Ansible stack) and the local OpenLDAP auth lab were removed on 2026-10-14. The two legacy security groups are destroyed by the next reviewed `terraform apply`. Its remaining agent code (the legacy alert-diagnosis branch in `agent_src/core/tasks.py`, the nginx/PostgreSQL/Redis/Docker runbooks and the host log watcher) was removed on 2026-10-25. Dated documents may still describe the removed components.
 
 ## Core invariants
 

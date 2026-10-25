@@ -37,6 +37,7 @@ from core.coordination.tool_auto_discovery import (
     verify_github_signature,
 )
 from core.moodle.live_handoff import execute_moodle_live_handoff, prepare_moodle_live_handoff
+from core.agents.roles import ExecutionAgent, VerificationAgent
 from core.safety.safe_execution_gate import ApprovalRecord
 from core.safety.verifier_attestation import (
     InvalidVerifierSignature,
@@ -165,13 +166,21 @@ def _authorize_safe_action(authorization: str | None, token_path: Path) -> None:
         raise HTTPException(status_code=401, detail="invalid safe action API credential")
 
 
+def _execution_agent(evidence_db) -> ExecutionAgent:
+    # Resolved per call so the handoff functions stay patchable in tests.
+    return ExecutionAgent(
+        evidence_db=evidence_db,
+        prepare=prepare_moodle_live_handoff,
+        execute=execute_moodle_live_handoff,
+    )
+
+
 @app.post("/api/moodle/remediation/{candidate_id}/prepare")
 def prepare_moodle_remediation(candidate_id: str, authorization: str | None = Header(default=None)):
     evidence_db, public_key, actors, _, token_path = _safe_action_config()
     _authorize_safe_action(authorization, token_path)
     try:
-        return prepare_moodle_live_handoff(
-            evidence_db=evidence_db,
+        return _execution_agent(evidence_db).prepare(
             candidate_id=candidate_id,
             gate_public_key=public_key,
             gate_actors=actors,
@@ -189,8 +198,7 @@ def execute_moodle_remediation(
     evidence_db, public_key, actors, audit_db, token_path = _safe_action_config(require_live=True)
     _authorize_safe_action(authorization, token_path)
     try:
-        return execute_moodle_live_handoff(
-            evidence_db=evidence_db,
+        return _execution_agent(evidence_db).execute(
             candidate_id=candidate_id,
             request_data=body.request,
             gate_approval=body.gate_approval,
@@ -213,7 +221,9 @@ def record_moodle_verification(request_id: str, body: VerifierAttestation):
     except (KeyError, OSError) as exc:
         raise HTTPException(status_code=503, detail="verifier key configuration is unavailable") from exc
     try:
-        return accept_verifier_attestation(
+        return VerificationAgent(
+            evidence_db=os.getenv("AIOPS_EVIDENCE_DB_PATH"), accept=accept_verifier_attestation
+        ).run(
             audit_db=audit_db,
             public_key_path=public_key_path,
             request_id=request_id,

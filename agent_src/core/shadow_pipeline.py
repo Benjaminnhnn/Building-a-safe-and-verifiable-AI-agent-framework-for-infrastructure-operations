@@ -15,10 +15,15 @@ from core.evidence.evidence_collectors import collect_shadow_evidence
 from core.safety.sanitization import sanitize_log_excerpt
 from core.evidence.evidence_store import SQLiteEvidenceStore, evidence_content_hash
 from core.platform_adapter import PlatformAdapter, PlatformAdapterRegistry
+from core.agents.roles import (
+    DiagnosisAgent,
+    ObserverAgent,
+    PlannerAgent,
+    alert_path_stage_events,
+)
 from core.reasoning.llm_diagnosis import (
-    DiagnosisMode,
+    build_knowledge_links,
     get_diagnosis_mode,
-    reason_about_alert,
     revalidate_cached_diagnosis,
 )
 from core.schema.evidence import Evidence
@@ -151,28 +156,52 @@ def _resolve_resource_id(
     return None
 
 
+def _diagnosis_rag_enabled() -> bool:
+    return os.getenv("AIOPS_DIAGNOSIS_RAG", "on").strip().lower() not in {"off", "false", "0"}
+
+
+def _runbook_chunks_for_diagnosis(
+    alert: dict[str, Any], vector_chunks: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Runbook chunks shown to the LLM: vector-store hits, else the static retriever."""
+    if not _diagnosis_rag_enabled():
+        return []
+    chunks = [chunk for chunk in vector_chunks if chunk.get("chunk_id") and chunk.get("text")]
+    if chunks:
+        return chunks
+    from core.rag.runbook_chunks import get_static_retriever
+
+    labels = alert.get("labels") or {}
+    summary = sanitize_log_excerpt((alert.get("annotations") or {}).get("summary") or "", max_chars=240)
+    return get_static_retriever().retrieve(str(labels.get("alertname") or ""), summary)
+
+
 def _retrieve_runbook_with_provenance(
     alert: dict[str, Any],
-) -> tuple[str, list[dict[str, Any]]]:
-    """Fetch alert-scoped authored runbook context and structured provenance."""
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    """Fetch alert-scoped authored runbook context, provenance and chunk records."""
     if not os.getenv("VECTOR_DB_PATH"):
-        return "", []
+        return "", [], []
     labels = alert.get("labels") or {}
     alert_name = str(labels.get("alertname") or "")
     if not alert_name:
-        return "", []
+        return "", [], []
     from core.rag.rag_engine import get_rag_instance
 
     rag = get_rag_instance()
     if rag is None:
-        return "", []
+        return "", [], []
     summary = sanitize_log_excerpt(
         (alert.get("annotations") or {}).get("summary") or alert_name
     )
     if hasattr(rag, "retrieve_runbook_with_provenance"):
         data = rag.retrieve_runbook_with_provenance(summary, alert_name=alert_name)
         if isinstance(data, dict):
-            return str(data.get("text") or ""), list(data.get("provenance") or [])
+            return (
+                str(data.get("text") or ""),
+                list(data.get("provenance") or []),
+                list(data.get("chunks") or []),
+            )
     text = rag.query_standard_runbooks(summary, alert_name=alert_name)
     provenance: list[dict[str, Any]] = []
     if text:
@@ -189,7 +218,7 @@ def _retrieve_runbook_with_provenance(
                     "source_sha256": match.group(3).strip(),
                 }
             )
-    return text, provenance
+    return text, provenance, []
 
 
 def _retrieve_runbook_context(alert: dict[str, Any]) -> str:
@@ -334,52 +363,34 @@ def run_shadow_if_enabled(
                 store.append(evidence)
             else:
                 evidence = stored_alert
-            collection = collect_shadow_evidence(
-                alert,
+            observer = ObserverAgent(
+                effective_adapter, collect_shadow_evidence, os.getenv("PROMETHEUS_URL")
+            )
+            observation, evidence_items = observer.run(
+                alert=alert,
                 incident_id=incident_id,
                 resource_id=resource_id,
-                evidence_store=store,
-                prometheus_url=os.getenv("PROMETHEUS_URL"),
-                queries=effective_adapter.get_alert_queries(
-                    str(labels.get("alertname") or "unknown")
-                ),
+                alert_evidence_id=evidence.evidence_id,
+                store=store,
             )
-            current_evidence_refs = [evidence.evidence_id, *collection["evidence_refs"]]
-            evidence_items = [
-                item
-                for evidence_id in current_evidence_refs
-                if (item := store.get_by_id(evidence_id)) is not None
-            ]
-            alert_name_str = str(labels.get("alertname") or "unknown")
-            diagnosis = effective_adapter.diagnose(
-                alert_name_str,
-                evidence_items,
-            )
-            runbook_context, runbook_provenance = _retrieve_runbook_with_provenance(alert)
-            diagnosis_mode = get_diagnosis_mode()
-            if diagnosis_mode != DiagnosisMode.RULES and getattr(effective_adapter, "platform_name", None) == "moodle":
-                diagnosis = reason_about_alert(
-                    alert_name_str,
-                    evidence_items,
-                    rule_diagnosis=diagnosis,
-                    mode=diagnosis_mode,
-                    runbook_context=runbook_context,
-                )
-            plan_candidate = effective_adapter.plan_investigation(
-                incident_id=incident_id,
-                diagnosis=diagnosis,
-            )
-            remediation_candidate = None
-            if get_unified_core_mode() == "investigate":
-                remediation_candidate = effective_adapter.plan_remediation(
-                    incident_id=incident_id,
-                    alert_name=alert_name_str,
-                    diagnosis=diagnosis,
-                    evidence=evidence_items,
-                )
-            confirmed_affected_resources, potentially_affected_resources = (
-                _compute_dependency_impact(resource_id, effective_adapter)
-            )
+            current_evidence_refs = list(observation.evidence_ids)
+            runbook_context, runbook_provenance, vector_chunks = _retrieve_runbook_with_provenance(alert)
+            diagnosis_report, diagnosis_chunks = DiagnosisAgent(
+                effective_adapter,
+                mode=get_diagnosis_mode(),
+                runbook_chunks=lambda: _runbook_chunks_for_diagnosis(alert, vector_chunks),
+            ).run(observation, evidence_items)
+            diagnosis = diagnosis_report.diagnosis
+            plan_proposal = PlannerAgent(
+                effective_adapter,
+                allow_remediation=get_unified_core_mode() == "investigate",
+                dependency_impact=_compute_dependency_impact,
+            ).run(observation, diagnosis_report, evidence_items)
+            plan_candidate = plan_proposal.read_only_plan
+            remediation_candidate = plan_proposal.remediation_candidate
+            remediation_disposition = plan_proposal.disposition
+            confirmed_affected_resources = plan_proposal.confirmed_affected_resources
+            potentially_affected_resources = plan_proposal.potentially_affected_resources
             evidence_provenance = [
                 {
                     "evidence_id": item.evidence_id,
@@ -395,27 +406,6 @@ def run_shadow_if_enabled(
                 for item in evidence_provenance
                 if item["evidence_id"] in supporting_refs_set
             ]
-            if hasattr(effective_adapter, "describe_remediation_disposition"):
-                remediation_disposition = effective_adapter.describe_remediation_disposition(
-                    alert_name=alert_name_str,
-                    diagnosis=diagnosis,
-                    remediation_candidate=remediation_candidate,
-                )
-            else:
-                remediation_disposition = {
-                    "disposition": (
-                        "candidate_proposed"
-                        if remediation_candidate is not None
-                        else (
-                            "escalated_awaiting_operator_isolation"
-                            if diagnosis.get("status") == "hypothesis"
-                            else "awaiting_valid_evidence"
-                        )
-                    ),
-                    "reason": str(diagnosis.get("reason") or ""),
-                    "execution_permitted": False,
-                    "approval_required": bool(remediation_candidate),
-                }
             explanation = {
                 "status": str(diagnosis.get("status", "unknown")),
                 "cause_code": diagnosis.get("cause_code"),
@@ -443,6 +433,9 @@ def run_shadow_if_enabled(
                 "runbook_provenance": runbook_provenance,
                 "disposition": str(remediation_disposition.get("disposition", "unknown")),
             }
+            diagnosis_record["knowledge_links"] = build_knowledge_links(
+                diagnosis, diagnosis_chunks or vector_chunks
+            )
             reasoning = diagnosis.get("reasoning")
             if isinstance(reasoning, dict):
                 llm_record = reasoning.get("llm") or {}
@@ -491,9 +484,13 @@ def run_shadow_if_enabled(
                         incident_id=incident_id,
                         resource_id=resource_id,
                         kind="read_only_plan",
-                        payload=plan_candidate.model_dump(mode="json"),
+                        payload=plan_candidate,
                     )
                 )
+            stage_events = alert_path_stage_events(observation, diagnosis_report, plan_proposal)
+            # The checkpoint embeds the full ledger; load_latest_checkpoint
+            # rejects any divergence between the two.
+            audit_events = store.list_audit_events(incident_id) + stage_events
             result = {
                 "status": "observed",
                 "incident_id": incident_id,
@@ -507,15 +504,21 @@ def run_shadow_if_enabled(
                 "runbook_provenance": runbook_provenance,
                 "remediation_disposition": remediation_disposition,
                 "explanation": explanation,
-                "plan_candidate": plan_candidate.model_dump(mode="json") if plan_candidate else None,
+                "plan_candidate": plan_candidate,
                 "remediation_candidate": remediation_candidate,
                 "remediation_candidate_evidence_id": remediation_candidate_evidence_id,
                 "decision_evidence_refs": decision_evidence_refs,
                 "runbook_context": runbook_context,
-                "evidence_status": collection["status"],
+                "evidence_status": observation.evidence_status,
                 "evidence_refs": current_evidence_refs,
-                "evidence_sources": collection["sources"],
-                "collector_errors": collection["errors"],
+                "evidence_sources": observation.evidence_sources,
+                "collector_errors": observation.collector_errors,
+                "agent_trace": [
+                    {"stage": event["stage"], "actor": event["actor"], "outcome": event["outcome"],
+                     "output_digest": event["output_digest"]}
+                    for event in stage_events
+                ],
+                "audit_events": audit_events,
                 "execution_permitted": False,
                 "resolution_eligible": False,
             }
@@ -527,6 +530,7 @@ def run_shadow_if_enabled(
                 sequence_number=1,
                 payload=result,
                 updated_at=datetime.now(timezone.utc),
+                audit_events=audit_events,
             )
         except BaseException:
             store.release_checkpoint_run(run_id=incident_id, owner_token=owner_token)
@@ -535,8 +539,8 @@ def run_shadow_if_enabled(
         "Unified-core shadow observed alert and collected context: incident_id=%s resource_id=%s sources=%s status=%s",
         incident_id,
         resource_id,
-        collection["sources"],
-        collection["status"],
+        observation.evidence_sources,
+        observation.evidence_status,
     )
     return result
 

@@ -121,5 +121,4 @@ outcomes are claimed in dated reports, but their `moodle-faults` and
 `moodle-sprint2-live` raw artifact directories are empty in the 2026-10-07
 checkout audit. Treat those historical outcomes as unverified here; they do not
 prove AI remediation. See
-[AI Engineer status](AI_ENGINEER_STATUS.md) and
-[Planning](PLANNING.md) for the remaining evidence requirements.
+[AI Engineer status](AI_ENGINEER_STATUS.md) for the remaining evidence requirements.

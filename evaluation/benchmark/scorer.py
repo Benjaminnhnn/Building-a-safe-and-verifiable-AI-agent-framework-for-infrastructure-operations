@@ -41,6 +41,9 @@ class ScenarioScore(BaseModel):
     verifier_resolved_count: int
     action_count: int = 0
     llm_call_count: int = 0
+    llm_prompt_tokens: int = 0
+    llm_output_tokens: int = 0
+    llm_latency_seconds: float | None = None
     runtime_seconds: float | None = None
     aws_cost_usd: float | None = None
 
@@ -78,6 +81,8 @@ class AggregateMetrics(BaseModel):
     avg_remediation_time_seconds: float | None
     total_action_count: int
     total_llm_call_count: int
+    total_llm_tokens: int = 0
+    avg_llm_latency_seconds: float | None = None
     avg_runtime_seconds: float | None
     total_aws_cost_usd: float | None
 
@@ -331,6 +336,9 @@ class Scorer:
                 verifier_resolved_count=int(run.get("verifier_resolved_count", 0)),
                 action_count=int(run.get("action_count", 0)),
                 llm_call_count=int(run.get("llm_call_count", 0)),
+                llm_prompt_tokens=int(run.get("llm_prompt_tokens") or 0),
+                llm_output_tokens=int(run.get("llm_output_tokens") or 0),
+                llm_latency_seconds=run.get("llm_latency_seconds"),
                 runtime_seconds=run.get("runtime_seconds"),
                 aws_cost_usd=run.get("aws_cost_usd"),
             )
@@ -394,6 +402,8 @@ class Scorer:
         cost_values: list[float] = []
         total_action_count = 0
         total_llm_call_count = 0
+        total_llm_tokens = 0
+        llm_latencies: list[float] = []
         has_trial_records = any("repetition" in run for run in runs)
 
         for original in runs:
@@ -439,6 +449,9 @@ class Scorer:
                 cost_values.append(float(run["aws_cost_usd"]))
             total_action_count += int(run.get("action_count", 0))
             total_llm_call_count += int(run.get("llm_call_count", 0))
+            total_llm_tokens += int(run.get("llm_prompt_tokens") or 0) + int(run.get("llm_output_tokens") or 0)
+            if run.get("llm_latency_seconds") is not None:
+                llm_latencies.append(float(run["llm_latency_seconds"]))
 
         rca_accuracy = total_rca_correct / total_repetitions if total_repetitions > 0 else 0.0
         recovery_denominator = (
@@ -494,6 +507,8 @@ class Scorer:
             avg_remediation_time_seconds=avg_remediation,
             total_action_count=total_action_count,
             total_llm_call_count=total_llm_call_count,
+            total_llm_tokens=total_llm_tokens,
+            avg_llm_latency_seconds=sum(llm_latencies) / len(llm_latencies) if llm_latencies else None,
             avg_runtime_seconds=sum(runtime_values) / len(runtime_values) if runtime_values else None,
             total_aws_cost_usd=sum(cost_values) if cost_values else None,
             meets_rca_threshold=rca_accuracy >= self.RCA_THRESHOLD,
@@ -684,3 +699,19 @@ class Scorer:
         with output_path.open("w", encoding="utf-8") as fh:
             for run in runs:
                 fh.write(json.dumps(run, ensure_ascii=False) + "\n")
+
+
+def llm_usage_run_fields(diagnosis: dict[str, Any]) -> dict[str, Any]:
+    """Benchmark-run LLM cost fields from a diagnosis ``reasoning`` block.
+
+    Accepts the pipeline diagnosis or the persisted decision record; a rules
+    decision yields zero calls.
+    """
+    reasoning = diagnosis.get("reasoning") or {}
+    usage = (reasoning.get("llm") or {}).get("usage") or reasoning.get("llm_usage") or {}
+    return {
+        "llm_call_count": int(usage.get("llm_call_count") or 0),
+        "llm_prompt_tokens": int(usage.get("prompt_tokens") or 0),
+        "llm_output_tokens": int(usage.get("output_tokens") or 0),
+        "llm_latency_seconds": usage.get("latency_seconds"),
+    }

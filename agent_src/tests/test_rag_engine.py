@@ -22,7 +22,7 @@ def test_save_admin_solution_writes_to_incident_memory() -> None:
 
     engine.save_admin_solution(
         incident_id="abc12345",
-        alert_name="WebEndpointDown",
+        alert_name="MoodlePublicProbeFailed",
         incident_details="frontend is down",
         admin_feedback="check logs first",
         reviewed_solution="check logs, then restart",
@@ -44,7 +44,7 @@ def test_save_admin_solution_redacts_secrets_at_storage_boundary() -> None:
 
     engine.save_admin_solution(
         incident_id="abc12345",
-        alert_name="WebEndpointDown",
+        alert_name="MoodlePublicProbeFailed",
         incident_details="Alert context db_password=context-secret",
         admin_feedback="Use token=feedback-secret",
         reviewed_solution="Restart with api_key=solution-secret",

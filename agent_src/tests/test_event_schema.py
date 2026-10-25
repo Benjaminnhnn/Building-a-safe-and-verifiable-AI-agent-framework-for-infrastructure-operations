@@ -8,9 +8,9 @@ def test_postgresql_chain_gets_one_replayable_correlation_id() -> None:
             {
                 "status": "firing",
                 "labels": {
-                    "alertname": "PostgreSQLDown",
-                    "instance": "bank-core-01",
-                    "service": "payment-api",
+                    "alertname": "MoodleNodeRdsTcpFailed",
+                    "instance": "moodle-app-b",
+                    "service": "moodle",
                     "component": "postgres-staging",
                     "environment": "staging",
                     "severity": "critical",
@@ -21,9 +21,9 @@ def test_postgresql_chain_gets_one_replayable_correlation_id() -> None:
             {
                 "status": "firing",
                 "labels": {
-                    "alertname": "PaymentAPIEndpointDown",
-                    "instance": "bank-core-01",
-                    "service": "payment-api",
+                    "alertname": "MoodleRdsTcpProbeFailed",
+                    "instance": "moodle-app-b",
+                    "service": "moodle",
                     "environment": "staging",
                     "severity": "critical",
                 },
@@ -33,8 +33,8 @@ def test_postgresql_chain_gets_one_replayable_correlation_id() -> None:
             {
                 "status": "firing",
                 "labels": {
-                    "alertname": "FrontendAPIProxyDown",
-                    "instance": "bank-web-01",
+                    "alertname": "MoodleWebContainerMissing",
+                    "instance": "moodle-app-a",
                     "service": "frontend",
                     "environment": "staging",
                     "severity": "critical",
@@ -54,4 +54,4 @@ def test_postgresql_chain_gets_one_replayable_correlation_id() -> None:
         event["event_id"] for event in second["alerts"]
     ]
     assert first["alerts"][0]["component_id"] == "postgres-staging"
-    assert first["alerts"][2]["host_id"] == "bank-web-01"
+    assert first["alerts"][2]["host_id"] == "moodle-app-a"
