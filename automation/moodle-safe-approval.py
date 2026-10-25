@@ -33,6 +33,14 @@ CATALOG = {
         "restore_fixture_directory_mode": "moodledata_synthetic_fixture_directory",
         "reconcile_sec02_safe_baseline": "moodledata_synthetic_fixture_directory",
     },
+    "BIZ-01": {
+        "disable_moodle_cli_maintenance_mode": "staging_moodle_app",
+        "enable_moodle_cli_maintenance_mode": "staging_moodle_app",
+    },
+    "BIZ-02": {
+        "restart_moodle_cron_service": "staging_moodle_app",
+        "reconcile_biz02_cron_baseline": "staging_moodle_app",
+    },
 }
 
 

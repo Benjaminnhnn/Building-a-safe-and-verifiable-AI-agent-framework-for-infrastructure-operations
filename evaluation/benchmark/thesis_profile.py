@@ -13,7 +13,9 @@ BIZ-02, the two thesis scenarios it does not know. The policy partitions of
 the five shared scenarios are identical in both profiles.
 
 Nothing here generates observations: an audit of a missing or partial
-dataset is reported as incomplete.
+dataset is reported as incomplete. Trials come from
+``automation/thesis-campaign-trial.py``; the RQ1 opportunities are injected by
+``dangerous_injection.py`` from ``dangerous_actions`` below.
 """
 
 from __future__ import annotations

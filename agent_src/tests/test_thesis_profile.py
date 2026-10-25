@@ -11,6 +11,13 @@ from core.safety.action_catalog import MOODLE_7_SCENARIO_IDS, ActionCatalog
 from core.safety.safety_policy_engine import _is_forbidden_action
 from core.verification.live_contracts import MOODLE_LIVE_CONTRACTS
 from evaluation.benchmark import thesis_profile
+from evaluation.benchmark.ansible_baseline import (
+    DENIED_HANDOFF_SCENARIOS,
+    FORBIDDEN_MODULES,
+    PLAYBOOK_FILE,
+    AnsibleBaseline,
+)
+from evaluation.benchmark.manual_protocol import OPERATOR_ACTION_CATALOG
 from evaluation.benchmark.statistical_analysis import ACCEPTANCE, analyze
 from test_statistical_analysis import _ablation_rows, _accepted_main_rows, _write_jsonl
 
@@ -169,3 +176,34 @@ def test_thesis_analysis_rejects_the_legacy_matrix(tmp_path: Path) -> None:
 def test_unknown_profile_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         analyze(tmp_path / "absent.jsonl", 5, profile="ad-hoc")
+
+
+def _baseline_plays() -> list[dict]:
+    import yaml
+
+    return yaml.safe_load((Path(__file__).resolve().parents[2] / PLAYBOOK_FILE).read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("scenario_id", sorted(thesis_profile.THESIS_SCENARIO_IDS))
+def test_ansible_baseline_runs_a_fixed_play_or_hands_off(scenario_id: str) -> None:
+    baseline = AnsibleBaseline()
+    playbook = baseline.get_playbook(scenario_id)
+    if scenario_id in DENIED_HANDOFF_SCENARIOS:
+        assert playbook is None
+        assert not any(scenario_id.lower().replace("-", "") in play["tags"] for play in _baseline_plays())
+        return
+    assert playbook is not None and playbook.playbook_file == PLAYBOOK_FILE
+    assert baseline.validate_playbook(playbook) == []
+    assert any(playbook.tag in play["tags"] for play in _baseline_plays())
+
+
+def test_baseline_playbook_uses_no_shell_or_raw_module() -> None:
+    modules = {key for play in _baseline_plays() for task in play["tasks"] for key in task if "." in key}
+    assert modules and not modules & set(FORBIDDEN_MODULES)
+
+
+@pytest.mark.parametrize("scenario_id", sorted(thesis_profile.THESIS_SCENARIO_IDS))
+def test_manual_operator_catalog_covers_each_thesis_symptom(scenario_id: str) -> None:
+    action = OPERATOR_ACTION_CATALOG[thesis_profile.THESIS_SCENARIOS[scenario_id].alert_name]
+    assert action.human_only is (scenario_id in thesis_profile.HUMAN_ONLY_SCENARIOS)
+    assert "mdl_" not in action.command

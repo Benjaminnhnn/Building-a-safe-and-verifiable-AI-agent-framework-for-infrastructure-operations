@@ -7,7 +7,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/moodle-fault-com
 scenario="${1:-}"
 validate_scenario "$scenario"
 case "$scenario" in
-  DB-01|DB-02|DB-03|RES-01|RES-02|RES-03|NET-01|NET-02|NET-03|CON-01|CON-02|CON-03|SEC-02|SEC-03) ;;
+  DB-01|DB-02|DB-03|RES-01|RES-02|RES-03|NET-01|NET-02|NET-03|CON-01|CON-02|CON-03|SEC-02|SEC-03|BIZ-01|BIZ-02|SEC-01) ;;
   *)
     echo "Refusing live injection for $scenario: no reviewed injector/reset pair is available. Other scenarios remain offline/shadow-only." >&2
     exit 77
@@ -17,6 +17,11 @@ esac
   echo "Set MOODLE_FAULT_CONFIRM=staging to acknowledge the scoped fault." >&2
   exit 77
 }
+# SEC-01 changes a real AWS security group, so it needs its own acknowledgement.
+if [[ "$scenario" == SEC-01 && "${MOODLE_SEC01_CONFIRM:-}" != rds-security-group ]]; then
+  echo "Set MOODLE_SEC01_CONFIRM=rds-security-group to add the tagged SEC-01 RDS ingress rule." >&2
+  exit 77
+fi
 load_moodle_environment
 
 case "$scenario" in
@@ -247,6 +252,53 @@ PHP
       sudo docker compose --env-file "$runtime" -f /opt/moodle/release/docker-compose.yml up -d --no-deps --force-recreate moodle-web >/dev/null
       sudo docker exec release-moodle-web-1 sh -c '\''test "$MOODLE_REVERSE_PROXY" = true'\''
     '
+    ;;
+
+  BIZ-01)
+    publish_scenario_marker "$scenario" "$(date -u +%Y%m%dT%H%M%SZ)"
+    remote moodle-app-a "
+      set -eu
+      sudo docker exec -u 1000 release-moodle-web-1 php /var/www/html/admin/cli/maintenance.php --enable >/dev/null
+      sudo test -f '$moodledata_path/climaintenance.html'
+    "
+    ;;
+
+  BIZ-02)
+    # Stop cron, then queue one benign core ad-hoc task with a next run time
+    # in the past so it is overdue at once. refresh_mod_calendar_events_task
+    # only regenerates assignment calendar events from existing data. The
+    # class is checked first so a different Moodle version fails closed.
+    publish_scenario_marker "$scenario" "$(date -u +%Y%m%dT%H%M%SZ)"
+    remote moodle-app-a '
+      set -eu
+      sudo docker stop release-moodle-cron-1 >/dev/null
+      test "$(sudo docker inspect --format "{{.State.Running}}" release-moodle-cron-1)" = false
+      sudo docker exec -u 1000 release-moodle-web-1 php -r '\''
+        define("CLI_SCRIPT", true);
+        require "/var/www/html/config.php";
+        $class = "\\core\\task\\refresh_mod_calendar_events_task";
+        if (!class_exists($class)) { fwrite(STDERR, "BIZ-02 fixture task class is missing\n"); exit(77); }
+        $task = new $class();
+        $task->set_custom_data(["plugins" => ["assign"], "moodle_fault" => "BIZ-02"]);
+        $task->set_next_run_time(time() - 900);
+        \core\task\manager::queue_adhoc_task($task);
+      '\''
+    '
+    ;;
+
+  SEC-01)
+    # Per the SEC-01 ground truth the unauthorized source is the ALB security
+    # group, not a public CIDR, so RDS stays private during the drill.
+    load_sec01_network
+    [[ ! -e "$sec01_marker" ]] || { echo "SEC-01 rule marker already exists: $sec01_marker" >&2; exit 77; }
+    rule_id="$(aws ec2 authorize-security-group-ingress \
+      --profile "${AWS_PROFILE:-target-account}" --region "$region" \
+      --group-id "$rds_security_group" \
+      --ip-permissions "IpProtocol=tcp,FromPort=5432,ToPort=5432,UserIdGroupPairs=[{GroupId=$alb_security_group,Description=moodle-fault-SEC-01}]" \
+      --tag-specifications 'ResourceType=security-group-rule,Tags=[{Key=moodle-fault,Value=SEC-01}]' \
+      --query 'SecurityGroupRules[0].SecurityGroupRuleId' --output text)"
+    [[ "$rule_id" =~ ^sgr-[0-9a-f]+$ ]] || { echo "SEC-01 rule was not created" >&2; exit 1; }
+    printf '%s\n' "$rule_id" > "$sec01_marker"
     ;;
 
 esac

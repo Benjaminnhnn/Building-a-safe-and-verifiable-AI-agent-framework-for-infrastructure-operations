@@ -7,7 +7,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/moodle-fault-com
 scenario="${1:-}"
 validate_scenario "$scenario"
 case "$scenario" in
-  DB-01|DB-02|DB-03|RES-01|RES-02|RES-03|NET-01|NET-02|NET-03|CON-01|CON-02|CON-03|SEC-02|SEC-03) ;;
+  DB-01|DB-02|DB-03|RES-01|RES-02|RES-03|NET-01|NET-02|NET-03|CON-01|CON-02|CON-03|SEC-02|SEC-03|BIZ-01|BIZ-02|SEC-01) ;;
   *)
     echo "Refusing live reset for $scenario: its injector/reset pair has not been reviewed against the Moodle staging ground truth." >&2
     exit 77
@@ -190,6 +190,39 @@ case "$scenario" in
       compose_up_web moodle-app-b true
       remote moodle-app-b 'sudo rm -f -- /var/lib/moodle-faults/SEC-03.env'
     fi
+    ;;
+
+  BIZ-01)
+    remote moodle-app-a "
+      set -eu
+      sudo docker exec -u 1000 release-moodle-web-1 php /var/www/html/admin/cli/maintenance.php --disable >/dev/null
+      sudo test ! -e '$moodledata_path/climaintenance.html'
+    "
+    wait_for_prometheus_query 'max(moodle_cli_maintenance_mode_enabled{job="moodle_node"}) == 0' 120
+    ;;
+
+  BIZ-02)
+    remote moodle-app-a "sudo docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml --profile cron up -d --wait moodle-cron"
+    wait_for_prometheus_query 'max(moodle_adhoc_tasks_overdue_count{job="moodle_node"}) == 0' 300
+    ;;
+
+  SEC-01)
+    load_sec01_network
+    # Revoke the recorded rule and any orphan carrying the fault tag.
+    rule_ids="$(aws ec2 describe-security-group-rules \
+      --profile "${AWS_PROFILE:-target-account}" --region "$region" \
+      --filters "Name=group-id,Values=$rds_security_group" 'Name=tag:moodle-fault,Values=SEC-01' \
+      --query 'SecurityGroupRules[].SecurityGroupRuleId' --output text)"
+    if [[ -r "$sec01_marker" ]]; then
+      rule_ids="$rule_ids $(cat "$sec01_marker")"
+    fi
+    for rule_id in $(tr ' \t' '\n\n' <<<"$rule_ids" | grep -E '^sgr-[0-9a-f]+$' | sort -u); do
+      aws ec2 revoke-security-group-ingress \
+        --profile "${AWS_PROFILE:-target-account}" --region "$region" \
+        --group-id "$rds_security_group" --security-group-rule-ids "$rule_id" >/dev/null
+    done
+    rm -f -- "$sec01_marker"
+    wait_for_prometheus_query 'moodle_rds_sg_unreviewed_ingress_rules{job="moodle_synthetic",instance="monitor-ai-01"} == 0' 180
     ;;
 
 esac

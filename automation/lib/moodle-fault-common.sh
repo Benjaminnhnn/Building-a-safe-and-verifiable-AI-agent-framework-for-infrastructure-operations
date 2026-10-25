@@ -49,9 +49,9 @@ load_moodle_environment() {
 
 validate_scenario() {
   case "${1:-}" in
-    DB-01|DB-02|DB-03|RES-01|RES-02|RES-03|NET-01|NET-02|NET-03|CON-01|CON-02|CON-03|SEC-01|SEC-02|SEC-03) ;;
+    DB-01|DB-02|DB-03|RES-01|RES-02|RES-03|NET-01|NET-02|NET-03|CON-01|CON-02|CON-03|SEC-01|SEC-02|SEC-03|BIZ-01|BIZ-02) ;;
     *)
-      echo "Scenario must be one of the 15 Moodle scenarios (DB-01..03, RES-01..03, NET-01..03, CON-01..03, SEC-01..03)" >&2
+      echo "Scenario must be one of the Moodle scenarios (DB-01..03, RES-01..03, NET-01..03, CON-01..03, SEC-01..03, BIZ-01, BIZ-02)" >&2
       exit 64
       ;;
   esac
@@ -62,7 +62,9 @@ scenario_hosts() {
     DB-01|NET-01) printf '%s\n' moodle-app-a moodle-app-b ;;
     DB-02) printf '%s\n' moodle-app-a ;;
     DB-03|RES-01|RES-02|RES-03|NET-02|NET-03|CON-01|CON-02|CON-03|SEC-03) printf '%s\n' moodle-app-b ;;
-    SEC-02) printf '%s\n' moodle-app-a ;;
+    SEC-02|BIZ-01|BIZ-02) printf '%s\n' moodle-app-a ;;
+    # The SEC-01 fault is an AWS security-group rule; its marker is local.
+    SEC-01) return 0 ;;
     *) echo "Scenario has no live-drill marker scope: ${1:-}" >&2; return 64 ;;
   esac
 }
@@ -150,6 +152,34 @@ wait_for_alb_healthy() {
 
 run_synthetic_once() {
   remote monitor-ai-01 "sudo /usr/local/sbin/moodle-synthetic-transaction --once --url '$public_url' --username admin --password-file /opt/moodle-observability/secrets/moodle-synthetic-password --output-dir /var/lib/moodle-synthetic/manual --metrics-file /var/lib/moodle-synthetic/moodle_synthetic.prom"
+}
+
+# Wait until a reviewed PromQL expression returns at least one series.
+wait_for_prometheus_query() {
+  local query="$1" timeout_seconds="${2:-120}" elapsed=0
+  while (( elapsed < timeout_seconds )); do
+    if remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=$query' http://127.0.0.1:9090/api/v1/query | jq -e '.data.result | length > 0' >/dev/null"; then
+      return 0
+    fi
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+  echo "Prometheus query did not match within ${timeout_seconds}s: $query" >&2
+  return 1
+}
+
+# SEC-01 needs the RDS and ALB security group IDs and keeps its marker on the
+# operator host, because the fault is an AWS rule rather than host state.
+load_sec01_network() {
+  local network_json
+  network_json="$(terraform -chdir="$terraform_dir" output -json moodle_network)"
+  rds_security_group="$(jq -r '.security_group_ids.rds' <<<"$network_json")"
+  alb_security_group="$(jq -r '.security_group_ids.alb' <<<"$network_json")"
+  [[ "$rds_security_group" =~ ^sg-[0-9a-f]+$ && "$alb_security_group" =~ ^sg-[0-9a-f]+$ ]] || {
+    echo "Terraform did not return the Moodle RDS and ALB security group IDs." >&2
+    exit 66
+  }
+  sec01_marker="$fault_artifacts/SEC-01.rule"
 }
 
 wait_for_prometheus_alert() {

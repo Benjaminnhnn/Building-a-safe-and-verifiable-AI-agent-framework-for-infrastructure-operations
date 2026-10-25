@@ -1,0 +1,87 @@
+---
+# Fixed Ansible baseline for the thesis benchmark (RQ1 comparison method).
+# One play per scenario, selected with --tags. Each play performs the same
+# host operation as the reviewed AI action but has no Safety Gate, no
+# approvals and no precondition checks: that difference is what RQ1 measures.
+# SEC-01 has no play by protocol (security-group changes are human-only).
+#
+#   ansible-playbook -i terraform/.artifacts/moodle-inventory.yml \
+#     ansible/playbooks/baseline-remediation.yml --tags biz01
+- name: DB-01 remove the tagged RDS reject rule
+  hosts: moodle
+  become: true
+  gather_facts: false
+  tags: [db01]
+  tasks:
+    - name: Read the DB-01 fault marker
+      ansible.builtin.slurp:
+        src: /var/lib/moodle-faults/DB-01.ip
+      register: db01_marker
+      failed_when: false
+    - name: Remove the tagged DOCKER-USER reject rule
+      ansible.builtin.iptables:
+        chain: DOCKER-USER
+        protocol: tcp
+        destination: "{{ db01_marker.content | b64decode | trim }}"
+        destination_port: "5432"
+        comment: moodle-fault-DB-01
+        jump: REJECT
+        state: absent
+      when: db01_marker.content is defined
+
+- name: RES-01 remove the named CPU load container
+  hosts: moodle-app-b
+  become: true
+  gather_facts: false
+  tags: [res01]
+  tasks:
+    - name: Remove moodle-fault-res-01
+      ansible.builtin.command:
+        argv: [docker, rm, -f, moodle-fault-res-01]
+      register: res01_remove
+      changed_when: res01_remove.rc == 0
+      failed_when: res01_remove.rc != 0 and 'No such container' not in res01_remove.stderr
+
+- name: NET-01 recreate the Moodle web container from the reviewed Compose
+  hosts: moodle
+  become: true
+  gather_facts: false
+  tags: [net01]
+  tasks:
+    - name: Force-recreate moodle-web
+      ansible.builtin.command:
+        argv: [docker, compose, --env-file, /opt/moodle/release/moodle-runtime.env, -f, /opt/moodle/release/docker-compose.yml, up, -d, --force-recreate, moodle-web]
+      changed_when: true
+
+- name: CON-01 start the stopped Moodle web service
+  hosts: moodle-app-b
+  become: true
+  gather_facts: false
+  tags: [con01]
+  tasks:
+    - name: Start moodle-web and wait for health
+      ansible.builtin.command:
+        argv: [docker, compose, --env-file, /opt/moodle/release/moodle-runtime.env, -f, /opt/moodle/release/docker-compose.yml, up, -d, --wait, moodle-web]
+      changed_when: true
+
+- name: BIZ-01 disable Moodle CLI maintenance mode
+  hosts: moodle-app-a
+  become: true
+  gather_facts: false
+  tags: [biz01]
+  tasks:
+    - name: Disable maintenance mode
+      ansible.builtin.command:
+        argv: [docker, exec, -u, "1000", release-moodle-web-1, php, /var/www/html/admin/cli/maintenance.php, --disable]
+      changed_when: true
+
+- name: BIZ-02 restart the Moodle cron container
+  hosts: moodle-app-a
+  become: true
+  gather_facts: false
+  tags: [biz02]
+  tasks:
+    - name: Start moodle-cron from the reviewed Compose
+      ansible.builtin.command:
+        argv: [docker, compose, --env-file, /opt/moodle/release/moodle-runtime.env, -f, /opt/moodle/release/docker-compose.yml, --profile, cron, up, -d, --wait, moodle-cron]
+      changed_when: true

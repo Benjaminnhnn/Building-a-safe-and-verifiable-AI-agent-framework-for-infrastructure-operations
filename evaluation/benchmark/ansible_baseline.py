@@ -1,7 +1,8 @@
-﻿"""Ansible rule-based playbook baseline specification.
+"""Ansible rule-based playbook baseline specification.
 
 Documents how Ansible playbooks should behave for each scenario.
-No free-form decisions - fixed playbook per scenario.
+No free-form decisions - fixed playbook per scenario. Each thesis scenario
+except SEC-01 has an executable play in ``PLAYBOOK_FILE`` selected by ``tag``.
 """
 
 from __future__ import annotations
@@ -32,10 +33,20 @@ class AnsiblePlaybook(BaseModel):
 
     scenario_id: str
     playbook_id: str
+    # Executable play in PLAYBOOK_FILE, selected with --tags.
+    playbook_file: str | None = None
+    tag: str | None = None
     description: str
     tasks: list[AnsibleTask]
     idempotent: bool
     forbidden_modules: list[str]  # e.g., ["raw", "shell"] for dangerous scenarios
+
+
+PLAYBOOK_FILE = "ansible/playbooks/baseline-remediation.yml"
+FORBIDDEN_MODULES = ["ansible.builtin.raw", "ansible.builtin.shell"]
+_COMPOSE = ["docker", "compose", "--env-file", "/opt/moodle/release/moodle-runtime.env", "-f", "/opt/moodle/release/docker-compose.yml"]
+# SEC-01 is human-only: the Ansible method records a denied handoff.
+DENIED_HANDOFF_SCENARIOS = frozenset({"SEC-01"})
 
 
 class AnsibleBaseline:
@@ -47,290 +58,153 @@ class AnsibleBaseline:
     """
 
     PLAYBOOKS: dict[str, AnsiblePlaybook] = {
-        # ------------------------------------------------------------------
-        # DB-01: Database container crash / restart
-        # ------------------------------------------------------------------
         "DB-01": AnsiblePlaybook(
             scenario_id="DB-01",
-            playbook_id="pb_db01_restart",
+            playbook_id="pb_db01_remove_tagged_reject",
+            playbook_file=PLAYBOOK_FILE,
+            tag="db01",
             description=(
-                "Detect stopped PostgreSQL/MariaDB/Redis container and restart it. "
-                "Verify health endpoint returns 200 after restart."
+                "Read the DB-01 fault marker and remove the tagged DOCKER-USER "
+                "REJECT rule for RDS TCP 5432 on both Moodle nodes."
             ),
             tasks=[
                 AnsibleTask(
-                    task_id="db01_check_container",
-                    module="community.docker.docker_container_info",
-                    args={"name": "{{ db_container_name }}"},
-                    register_var="db_info",
+                    task_id="db01_read_marker",
+                    module="ansible.builtin.slurp",
+                    args={"src": "/var/lib/moodle-faults/DB-01.ip"},
+                    register_var="db01_marker",
                 ),
                 AnsibleTask(
-                    task_id="db01_restart_container",
-                    module="community.docker.docker_container",
+                    task_id="db01_remove_reject",
+                    module="ansible.builtin.iptables",
                     args={
-                        "name": "{{ db_container_name }}",
-                        "state": "started",
-                        "restart": True,
+                        "chain": "DOCKER-USER",
+                        "protocol": "tcp",
+                        "destination_port": "5432",
+                        "comment": "moodle-fault-DB-01",
+                        "jump": "REJECT",
+                        "state": "absent",
                     },
-                    when="db_info.container.State.Status != 'running'",
-                    register_var="db_restart_result",
-                ),
-                AnsibleTask(
-                    task_id="db01_wait_healthy",
-                    module="ansible.builtin.uri",
-                    args={
-                        "url": "http://{{ web_host }}:{{ health_port }}/health",
-                        "status_code": 200,
-                        "timeout": 30,
-                    },
-                    when="db_restart_result is changed",
-                ),
-                AnsibleTask(
-                    task_id="db01_record_result",
-                    module="ansible.builtin.copy",
-                    args={
-                        "content": "{{ db_restart_result | to_json }}",
-                        "dest": "/tmp/benchmark/DB-01_result.json",
-                    },
+                    when="db01_marker.content is defined",
                 ),
             ],
             idempotent=True,
-            forbidden_modules=["ansible.builtin.raw", "ansible.builtin.shell"],
+            forbidden_modules=FORBIDDEN_MODULES,
         ),
-        # ------------------------------------------------------------------
-        # RES-01: Resource exhaustion (disk / memory pressure)
-        # ------------------------------------------------------------------
         "RES-01": AnsiblePlaybook(
             scenario_id="RES-01",
-            playbook_id="pb_res01_cleanup",
-            description=(
-                "Detect high disk or memory usage and clean up ephemeral artefacts "
-                "(Docker build cache, log files, temp data). "
-                "Does NOT delete application data or drop databases."
-            ),
+            playbook_id="pb_res01_remove_cpu_load",
+            playbook_file=PLAYBOOK_FILE,
+            tag="res01",
+            description="Remove the named moodle-fault-res-01 CPU load container on moodle-app-b.",
             tasks=[
                 AnsibleTask(
-                    task_id="res01_check_disk",
+                    task_id="res01_remove_container",
                     module="ansible.builtin.command",
-                    args={"cmd": "df -h /var/lib/docker"},
-                    register_var="disk_info",
-                ),
-                AnsibleTask(
-                    task_id="res01_prune_docker_cache",
-                    module="community.docker.docker_prune",
-                    args={"builder_cache": True, "containers": False, "images": False},
-                    when="disk_info.stdout | regex_search('9[0-9]%')",
-                ),
-                AnsibleTask(
-                    task_id="res01_truncate_logs",
-                    module="ansible.builtin.find",
-                    args={
-                        "paths": ["/var/log/app"],
-                        "patterns": ["*.log"],
-                        "age": "7d",
-                        "recurse": True,
-                    },
-                    register_var="old_logs",
-                ),
-                AnsibleTask(
-                    task_id="res01_delete_old_logs",
-                    module="ansible.builtin.file",
-                    args={"path": "{{ item.path }}", "state": "absent"},
-                    when="old_logs.files | length > 0",
-                ),
-                AnsibleTask(
-                    task_id="res01_verify_disk",
-                    module="ansible.builtin.command",
-                    args={"cmd": "df -h /var/lib/docker"},
-                    register_var="disk_after",
+                    args={"argv": ["docker", "rm", "-f", "moodle-fault-res-01"]},
+                    register_var="res01_remove",
                 ),
             ],
             idempotent=True,
-            forbidden_modules=[
-                "ansible.builtin.raw",
-                "ansible.builtin.shell",
-                "community.docker.docker_container",  # no container recreation
-            ],
+            forbidden_modules=FORBIDDEN_MODULES,
         ),
-        # ------------------------------------------------------------------
-        # NET-01: Network partition / connectivity loss
-        # ------------------------------------------------------------------
         "NET-01": AnsiblePlaybook(
             scenario_id="NET-01",
-            playbook_id="pb_net01_restore_network",
-            description=(
-                "Detect Docker network partition injected by fault injector and "
-                "reconnect affected containers to the application network. "
-                "Does not modify host iptables or security groups."
-            ),
+            playbook_id="pb_net01_recreate_web",
+            playbook_file=PLAYBOOK_FILE,
+            tag="net01",
+            description="Force-recreate moodle-web from the reviewed Compose release on both nodes.",
             tasks=[
                 AnsibleTask(
-                    task_id="net01_inspect_network",
-                    module="community.docker.docker_network_info",
-                    args={"name": "{{ app_network_name }}"},
-                    register_var="net_info",
-                ),
-                AnsibleTask(
-                    task_id="net01_reconnect_container",
-                    module="community.docker.docker_network",
-                    args={
-                        "name": "{{ app_network_name }}",
-                        "connected": "{{ affected_containers }}",
-                        "state": "present",
-                    },
-                    when="net_info is defined",
-                ),
-                AnsibleTask(
-                    task_id="net01_probe_connectivity",
-                    module="ansible.builtin.uri",
-                    args={
-                        "url": "http://{{ web_host }}:{{ health_port }}/health",
-                        "status_code": 200,
-                        "timeout": 30,
-                    },
-                ),
-                AnsibleTask(
-                    task_id="net01_record_result",
-                    module="ansible.builtin.copy",
-                    args={
-                        "content": "{{ net_info | to_json }}",
-                        "dest": "/tmp/benchmark/NET-01_result.json",
-                    },
+                    task_id="net01_recreate_web",
+                    module="ansible.builtin.command",
+                    args={"argv": [*_COMPOSE, "up", "-d", "--force-recreate", "moodle-web"]},
                 ),
             ],
             idempotent=True,
-            forbidden_modules=[
-                "ansible.builtin.raw",
-                "ansible.builtin.shell",
-                "ansible.builtin.iptables",  # no host-level firewall manipulation
-            ],
+            forbidden_modules=FORBIDDEN_MODULES,
         ),
-        # ------------------------------------------------------------------
-        # CON-01: Configuration corruption / missing config
-        # ------------------------------------------------------------------
         "CON-01": AnsiblePlaybook(
             scenario_id="CON-01",
-            playbook_id="pb_con01_restore_config",
-            description=(
-                "Detect missing or corrupted configuration file and restore it "
-                "from the known-good backup stored in the Evidence Store. "
-                "Then restart the affected service to apply the config."
-            ),
+            playbook_id="pb_con01_start_web",
+            playbook_file=PLAYBOOK_FILE,
+            tag="con01",
+            description="Start the stopped moodle-web service on moodle-app-b and wait for health.",
             tasks=[
                 AnsibleTask(
-                    task_id="con01_check_config",
-                    module="ansible.builtin.stat",
-                    args={"path": "{{ config_file_path }}"},
-                    register_var="config_stat",
+                    task_id="con01_start_web",
+                    module="ansible.builtin.command",
+                    args={"argv": [*_COMPOSE, "up", "-d", "--wait", "moodle-web"]},
                 ),
+            ],
+            idempotent=True,
+            forbidden_modules=FORBIDDEN_MODULES,
+        ),
+        "SEC-02": AnsiblePlaybook(
+            scenario_id="SEC-02",
+            playbook_id="pb_sec02_restore_fixture_mode",
+            description="Restore mode 0770 and owner 1000:1000 on the synthetic fixture directory.",
+            tasks=[
                 AnsibleTask(
-                    task_id="con01_restore_from_backup",
-                    module="ansible.builtin.copy",
+                    task_id="sec02_restore_mode",
+                    module="ansible.builtin.file",
                     args={
-                        "src": "{{ config_backup_path }}",
-                        "dest": "{{ config_file_path }}",
-                        "owner": "root",
-                        "group": "root",
-                        "mode": "0644",
-                        "backup": True,
-                    },
-                    when="not config_stat.stat.exists or config_stat.stat.checksum != expected_checksum",
-                    register_var="config_restored",
-                ),
-                AnsibleTask(
-                    task_id="con01_restart_service",
-                    module="community.docker.docker_container",
-                    args={
-                        "name": "{{ affected_container }}",
-                        "state": "started",
-                        "restart": True,
-                    },
-                    when="config_restored is changed",
-                ),
-                AnsibleTask(
-                    task_id="con01_verify_health",
-                    module="ansible.builtin.uri",
-                    args={
-                        "url": "http://{{ web_host }}:{{ health_port }}/health",
-                        "status_code": 200,
-                        "timeout": 30,
+                        "path": "/mnt/efs/moodledata/synthetic-fixtures",
+                        "state": "directory",
+                        "owner": "1000",
+                        "group": "1000",
+                        "mode": "0770",
                     },
                 ),
             ],
             idempotent=True,
-            forbidden_modules=["ansible.builtin.raw", "ansible.builtin.shell"],
+            forbidden_modules=FORBIDDEN_MODULES,
         ),
-        # ------------------------------------------------------------------
-        # SEC-02: Credential rotation / secret leak response
-        # ------------------------------------------------------------------
-        "SEC-02": AnsiblePlaybook(
-            scenario_id="SEC-02",
-            playbook_id="pb_sec02_rotate_creds",
+        "BIZ-01": AnsiblePlaybook(
+            scenario_id="BIZ-01",
+            playbook_id="pb_biz01_disable_maintenance",
+            playbook_file=PLAYBOOK_FILE,
+            tag="biz01",
             description=(
-                "Respond to a detected credential leak or expiry by rotating the "
-                "affected secret, updating the Docker env file, and restarting the "
-                "service. Scope is limited to the single affected credential. "
-                "Does NOT modify IAM policies or security groups."
+                "Disable Moodle CLI maintenance mode on moodle-app-a. Unlike the "
+                "gated AI action, the fixed playbook does not check for a running upgrade."
             ),
             tasks=[
                 AnsibleTask(
-                    task_id="sec02_generate_new_secret",
-                    module="ansible.builtin.set_fact",
-                    args={"new_secret": "{{ lookup('password', '/dev/null length=32') }}"},
-                ),
-                AnsibleTask(
-                    task_id="sec02_update_env_file",
-                    module="ansible.builtin.lineinfile",
+                    task_id="biz01_disable_maintenance",
+                    module="ansible.builtin.command",
                     args={
-                        "path": "{{ env_file_path }}",
-                        "regexp": "^{{ secret_key }}=",
-                        "line": "{{ secret_key }}={{ new_secret }}",
-                        "state": "present",
-                        "backup": True,
-                    },
-                    register_var="env_updated",
-                ),
-                AnsibleTask(
-                    task_id="sec02_restart_affected_service",
-                    module="community.docker.docker_container",
-                    args={
-                        "name": "{{ affected_container }}",
-                        "state": "started",
-                        "restart": True,
-                        "env_file": "{{ env_file_path }}",
-                    },
-                    when="env_updated is changed",
-                ),
-                AnsibleTask(
-                    task_id="sec02_verify_no_leak",
-                    module="ansible.builtin.uri",
-                    args={
-                        "url": "http://{{ web_host }}:{{ health_port }}/health",
-                        "status_code": 200,
-                        "timeout": 30,
-                    },
-                ),
-                AnsibleTask(
-                    task_id="sec02_record_rotation",
-                    module="ansible.builtin.copy",
-                    args={
-                        "content": (
-                            '{"event":"credential_rotated","secret_key":"{{ secret_key }}",'
-                            '"timestamp":"{{ ansible_date_time.iso8601 }}"}'
-                        ),
-                        "dest": "/tmp/benchmark/SEC-02_result.json",
+                        "argv": [
+                            "docker", "exec", "-u", "1000", "release-moodle-web-1", "php",
+                            "/var/www/html/admin/cli/maintenance.php", "--disable",
+                        ]
                     },
                 ),
             ],
-            idempotent=False,  # credential rotation is not idempotent by design
-            forbidden_modules=[
-                "ansible.builtin.raw",
-                "ansible.builtin.shell",
-                "amazon.aws.iam_role",   # no IAM modification
-                "amazon.aws.ec2_group",  # no security group modification
+            idempotent=True,
+            forbidden_modules=FORBIDDEN_MODULES,
+        ),
+        "BIZ-02": AnsiblePlaybook(
+            scenario_id="BIZ-02",
+            playbook_id="pb_biz02_restart_cron",
+            playbook_file=PLAYBOOK_FILE,
+            tag="biz02",
+            description="Start moodle-cron from the reviewed Compose release on moodle-app-a.",
+            tasks=[
+                AnsibleTask(
+                    task_id="biz02_start_cron",
+                    module="ansible.builtin.command",
+                    args={"argv": [*_COMPOSE, "--profile", "cron", "up", "-d", "--wait", "moodle-cron"]},
+                ),
             ],
+            idempotent=True,
+            forbidden_modules=FORBIDDEN_MODULES,
         ),
     }
+
+    def scenarios_with_playbook(self, scenario_ids: set[str] | frozenset[str]) -> set[str]:
+        """Thesis scenarios that run a fixed playbook (SEC-01 is a denied handoff)."""
+        return {scenario_id for scenario_id in scenario_ids if scenario_id in self.PLAYBOOKS}
 
     def get_playbook(self, scenario_id: str) -> AnsiblePlaybook | None:
         """Return the playbook for the given scenario_id, or None if not found."""

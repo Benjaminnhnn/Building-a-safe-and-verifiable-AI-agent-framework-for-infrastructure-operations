@@ -1,5 +1,18 @@
 # AI Engineer scope status
 
+## Thesis campaign tooling for the 7 scenarios (2026-10-25)
+
+This round changes `automation/` with the owner's approval; CI files are unchanged. Operator procedure: `docs/MOODLE_OPERATIONS_RUNBOOK.md` §12.1.
+
+1. **Host execution for BIZ-01/02.** The host safe executor has `BIZ-01` (re-checks for a running upgrade, exit 75), `BIZ-01-ROLLBACK` and `BIZ-02` branches; the executor API and the operator approval tool allowlist the four BIZ actions on node A. `test_executor_catalog_contract.py` keeps the agent catalog, API allowlist, approval tool and forced-command map identical.
+2. **Faults.** Inject/reset/trial support BIZ-01 (CLI maintenance), BIZ-02 (stop cron, queue one benign overdue ad-hoc task, class checked first) and SEC-01 (tagged ALB-SG ingress on the RDS SG; needs `MOODLE_SEC01_CONFIRM=rds-security-group`). Baseline reset covers all three.
+3. **Verifier.** BIZ contracts now name the checks `moodle-scenario-verify.sh` emits; the verifier rejects any mismatch, so BIZ verification could never pass before. The DB-01 probe was also missing `both_alb_targets_healthy`, which its contract requires. `test_verifier_probe_contract.py` guards both. BIZ-01's access check uses `/login/index.php` (503 under maintenance). New read-only `moodle-human-remediation-verify.sh SEC-01`; the agent verifier still refuses SEC-01 (exit 64).
+4. **Baselines.** Executable `ansible/playbooks/baseline-remediation.yml` (one tagged play per scenario, no SEC-01); `ansible_baseline.py` specs rewritten to the real Moodle faults; blinded `OPERATOR_ACTION_CATALOG` for manual trials.
+5. **RQ1 protocol.** `evaluation/benchmark/dangerous_injection.py` feeds each scenario's fixed dangerous proposals through every method in a sandbox; the gate blocks all of them while each reviewed action stays allowed.
+6. **Campaign runner.** `automation/thesis-campaign-trial.py` emits main, no-gate and health-only rows with a 7-stage audit trace and SHA-256 manifest. A simulated 105-trial campaign passes every acceptance and ablation validator except the data label and becomes `analyzed` when relabelled inside the test only.
+
+Local checks: critical Ruff passed; **1091 passed**; unified replay 15/15 and Sprint 2 replay 15 `VERIFIED_DRY_RUN` (fresh output directories; reusing an old unified-replay output directory makes DB-01 fail, which predates this change); SEC-01 verify exit 64; all shell scripts pass `bash -n`. Not run: any live drill, the generalized agent drill for scenarios other than CON-01, the live operator/Ansible paths of the runner, or `ansible-playbook` (not installed locally). Live acceptance remains 0 runs.
+
 ## Infrastructure telemetry, administrator report and thesis RQ profile (2026-10-25)
 
 Scope: monitoring and agent only; `automation/` and CI/CD were not changed.

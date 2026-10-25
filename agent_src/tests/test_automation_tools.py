@@ -252,6 +252,14 @@ def test_safe_executor_compensation_ids_match_operator_approval_and_forced_comma
             "restore_fixture_directory_mode": ("moodledata_synthetic_fixture_directory", ("a",)),
             "reconcile_sec02_safe_baseline": ("moodledata_synthetic_fixture_directory", ("a",)),
         },
+        "BIZ-01": {
+            "disable_moodle_cli_maintenance_mode": ("staging_moodle_app", ("a",)),
+            "enable_moodle_cli_maintenance_mode": ("staging_moodle_app", ("a",)),
+        },
+        "BIZ-02": {
+            "restart_moodle_cron_service": ("staging_moodle_app", ("a",)),
+            "reconcile_biz02_cron_baseline": ("staging_moodle_app", ("a",)),
+        },
     }
     assert api.CATALOG == {
         (scenario, action_id, scope): nodes

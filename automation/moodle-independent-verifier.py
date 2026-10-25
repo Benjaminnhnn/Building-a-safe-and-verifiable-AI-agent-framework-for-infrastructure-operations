@@ -47,6 +47,8 @@ _SCENARIO_RELATED_CHECKS = {
     "CON-03": ["con03_backup_removed", "app_b_wwwroot_approved", "app_b_web_container_healthy", "both_alb_targets_healthy"],
     "SEC-02": ["fixture_directory_mode_restored", "efs_mount_metric_is_one"],
     "SEC-03": ["sec03_backup_removed", "app_b_reverse_proxy_setting_approved", "app_b_reverse_proxy_metric_approved", "both_alb_targets_healthy"],
+    "BIZ-01": ["moodle_cli_maintenance_disabled", "student_course_view_http_200"],
+    "BIZ-02": ["moodle_cron_service_active", "overdue_adhoc_tasks_zero"],
 }
 _ALL_VERIFIED_SCENARIOS = sorted(set(_SCENARIO_RELATED_CHECKS) | set(MOODLE_LIVE_CONTRACTS))
 _PROBE_SCRIPT = REPO_ROOT / "automation" / "moodle-scenario-verify.sh"

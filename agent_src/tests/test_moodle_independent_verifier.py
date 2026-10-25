@@ -62,8 +62,9 @@ def test_live_contracts_match_all_reviewed_staging_verification_scenarios() -> N
     assert set(verifier._SCENARIO_RELATED_CHECKS) == {
         "DB-01", "DB-02", "DB-03", "RES-01", "RES-02", "RES-03",
         "NET-01", "NET-02", "NET-03", "CON-01", "CON-02", "CON-03",
-        "SEC-02", "SEC-03",
+        "SEC-02", "SEC-03", "BIZ-01", "BIZ-02",
     }
+    assert "SEC-01" not in verifier._ALL_VERIFIED_SCENARIOS
     for scenario_id in verifier._SCENARIO_RELATED_CHECKS:
         contract = verifier._contract_for_scenario(scenario_id)
         assert contract["allowed"] == ["common_synthetic_transaction"]
