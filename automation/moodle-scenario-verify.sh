@@ -26,6 +26,8 @@ case "$scenario" in
   CON-03) alert_name=MoodleWebContainerRestarting ;;
   SEC-02) alert_name=MoodleSyntheticTransactionFailed ;;
   SEC-03) alert_name=MoodleTrustedProxyConfigDrift ;;
+  BIZ-01) alert_name=MoodleMaintenanceModeStuck ;;
+  BIZ-02) alert_name=MoodleAdhocTaskQueueStuck ;;
   *)
     echo "Scenario must be one of the fourteen staging live cases: DB-01, DB-02, DB-03, RES-01, RES-02, RES-03, NET-01, NET-02, NET-03, CON-01, CON-02, CON-03, SEC-02, SEC-03." >&2
     exit 64
@@ -298,6 +300,22 @@ case "$scenario" in
       remote monitor-ai-01 'curl --fail --silent --get --data-urlencode '\''query=moodle_node_reverse_proxy_enabled{job="moodle_node",instance="moodle-app-b"} == 0'\'' http://127.0.0.1:9090/api/v1/query | jq -e '\''.data.result | length > 0'\'' >/dev/null'
     run_check both_alb_targets_healthy \
       'Both Moodle ALB targets are healthy' check_two_healthy_alb_targets
+    ;;
+  BIZ-01)
+    run_check moodle_cli_maintenance_disabled \
+      'The Moodle CLI maintenance mode flag file climaintenance.html is absent' \
+      remote moodle-app-a "test ! -e '$moodledata_path/climaintenance.html'"
+    run_check student_course_view_http_200 \
+      'The non-admin student course page returns HTTP 200' \
+      curl --fail --silent -o /dev/null "$public_url"
+    ;;
+  BIZ-02)
+    run_check moodle_cron_service_active \
+      'The moodle-cron container on moodle-app-a is running and healthy' \
+      remote moodle-app-a 'test "$(sudo docker inspect --format "{{.State.Running}}" release-moodle-cron-1 2>/dev/null)" = "true"'
+    run_check overdue_adhoc_tasks_zero \
+      'Prometheus reports overdue Moodle adhoc tasks count is zero' \
+      remote monitor-ai-01 'curl --fail --silent --get --data-urlencode '''query=moodle_adhoc_tasks_overdue_count{job="moodle_node"} == 0''' http://127.0.0.1:9090/api/v1/query | jq -e '''.data.result | length > 0''' >/dev/null'
     ;;
 esac
 

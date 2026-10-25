@@ -87,6 +87,13 @@ _ACTION_TYPES: dict[str, ActionType] = {
     "probe_erpnext_mariadb_connectivity": ActionType.READ_HEALTH,
     "probe_erpnext_redis_connectivity": ActionType.READ_HEALTH,
     "probe_erpnext_http_health": ActionType.READ_HEALTH,
+    # Business / Infrastructure workflow actions (BIZ-01, BIZ-02)
+    "disable_moodle_cli_maintenance_mode": ActionType.RECONFIGURE_SERVICE,
+    "enable_moodle_cli_maintenance_mode": ActionType.RECONFIGURE_SERVICE,
+    "verify_student_course_access": ActionType.READ_HEALTH,
+    "restart_moodle_cron_service": ActionType.START_CONTAINER,
+    "reconcile_biz02_cron_baseline": ActionType.START_CONTAINER,
+    "verify_moodle_cron_running": ActionType.READ_HEALTH,
 }
 
 _TARGET_RESOURCE_TYPES: dict[str, set[ResourceType]] = {
@@ -138,6 +145,13 @@ _TARGET_RESOURCE_TYPES: dict[str, set[ResourceType]] = {
     "probe_erpnext_mariadb_connectivity": {ResourceType.DATABASE},
     "probe_erpnext_redis_connectivity": {ResourceType.CONTAINER},
     "probe_erpnext_http_health": {ResourceType.APPLICATION, ResourceType.ENDPOINT},
+    # Business / Infrastructure workflow target resource types (BIZ-01, BIZ-02)
+    "disable_moodle_cli_maintenance_mode": {ResourceType.APPLICATION},
+    "enable_moodle_cli_maintenance_mode": {ResourceType.APPLICATION},
+    "verify_student_course_access": {ResourceType.APPLICATION, ResourceType.ENDPOINT},
+    "restart_moodle_cron_service": {ResourceType.APPLICATION, ResourceType.CONTAINER},
+    "reconcile_biz02_cron_baseline": {ResourceType.APPLICATION, ResourceType.CONTAINER},
+    "verify_moodle_cron_running": {ResourceType.APPLICATION, ResourceType.CONTAINER},
 }
 
 
@@ -171,6 +185,32 @@ _S3_3_STAGING_EXECUTION_SCOPES: dict[str, dict[str, str]] = {
         "verify_efs_write": "moodle-synthetic-transaction",
     },
 }
+
+# Business / Infrastructure workflow scenarios permitted for staging execution.
+_BIZ_STAGING_EXECUTION_SCOPES: dict[str, dict[str, str]] = {
+    "BIZ-01": {
+        "disable_moodle_cli_maintenance_mode": "staging_moodle_app",
+        "enable_moodle_cli_maintenance_mode": "staging_moodle_app",
+        "verify_student_course_access": "staging_moodle_app",
+    },
+    "BIZ-02": {
+        "restart_moodle_cron_service": "staging_moodle_app",
+        "reconcile_biz02_cron_baseline": "staging_moodle_app",
+        "verify_moodle_cron_running": "staging_moodle_app",
+    },
+}
+
+# Canonical 7-scenario suite: 2 Business/Infra (BIZ-01, BIZ-02) + 5 Technical (CON-01, DB-01, RES-01, NET-01, SEC-01)
+MOODLE_7_SCENARIO_IDS: tuple[str, ...] = (
+    "BIZ-01",
+    "BIZ-02",
+    "CON-01",
+    "DB-01",
+    "RES-01",
+    "NET-01",
+    "SEC-01",
+)
+MOODLE_10_SCENARIO_IDS: tuple[str, ...] = MOODLE_7_SCENARIO_IDS
 
 
 # ---------------------------------------------------------------------------
@@ -228,8 +268,8 @@ class ActionCatalog:
     def is_safe_execution_allowed(
         self, action_id: str, *, scenario_id: str, target_scope: str, environment: str, role: str
     ) -> bool:
-        """Fail closed unless a request matches the reviewed S3.3 live boundary."""
-        scope = _S3_3_STAGING_EXECUTION_SCOPES.get(scenario_id)
+        """Fail closed unless a request matches the reviewed S3.3 or Business live boundary."""
+        scope = _S3_3_STAGING_EXECUTION_SCOPES.get(scenario_id) or _BIZ_STAGING_EXECUTION_SCOPES.get(scenario_id)
         if scope is None or environment != "staging" or scope.get(action_id) != target_scope:
             return False
         return self.is_allowed(action_id, environment=environment, role=role)
@@ -720,6 +760,108 @@ class ActionCatalog:
             for action_id in actions
         }
         return cls(entries=[full_catalog._entries[action_id] for action_id in sorted(action_ids)])
+
+    @classmethod
+    def load_moodle_business_catalog(cls) -> ActionCatalog:
+        """Return a catalog pre-loaded with the 5 Moodle Business/Admin scenarios (BIZ-01..BIZ-05)."""
+        _executor_staging = ActionPermission(
+            required_role="executor",
+            environment_scope=["staging"],
+        )
+        _operator_staging = ActionPermission(
+            required_role="operator",
+            environment_scope=["staging"],
+        )
+        _verifier_staging_ro = ActionPermission(
+            required_role="verifier",
+            environment_scope=["staging"],
+            read_only=True,
+        )
+        entries: list[CatalogEntry] = [
+            # BIZ-01: Maintenance Mode Stuck
+            CatalogEntry(
+                action_id="disable_moodle_cli_maintenance_mode",
+                description="Disable stuck Moodle CLI maintenance mode (php admin/cli/maintenance.php --disable).",
+                adapter="ansible",
+                permission=_executor_staging,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action="enable_moodle_cli_maintenance_mode",
+                idempotent=True,
+                forbidden_in_production=True,
+            ),
+            CatalogEntry(
+                action_id="enable_moodle_cli_maintenance_mode",
+                description="Re-enable Moodle CLI maintenance mode if rollback is required.",
+                adapter="ansible",
+                permission=_executor_staging,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action="disable_moodle_cli_maintenance_mode",
+                idempotent=True,
+                forbidden_in_production=True,
+            ),
+            CatalogEntry(
+                action_id="verify_student_course_access",
+                description="Probe non-admin student course view to confirm maintenance mode is cleared.",
+                adapter="probe",
+                permission=_verifier_staging_ro,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action=None,
+                idempotent=True,
+                forbidden_in_production=False,
+            ),
+            # BIZ-02: Ad-hoc / Scheduled Task Queue Stuck (Infrastructure Level: Restart moodle-cron)
+            CatalogEntry(
+                action_id="restart_moodle_cron_service",
+                description="Restart moodle-cron container on node A when ad-hoc task queue is overdue; does not mutate Moodle DB tables.",
+                adapter="docker",
+                permission=_executor_staging,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action="reconcile_biz02_cron_baseline",
+                idempotent=True,
+                forbidden_in_production=True,
+            ),
+            CatalogEntry(
+                action_id="reconcile_biz02_cron_baseline",
+                description="Ensure moodle-cron container is running at baseline configuration after restart attempt.",
+                adapter="docker",
+                permission=_executor_staging,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action="restart_moodle_cron_service",
+                idempotent=True,
+                forbidden_in_production=True,
+            ),
+            CatalogEntry(
+                action_id="verify_moodle_cron_running",
+                description="Probe moodle-cron container state and verify task queue processing recovers.",
+                adapter="probe",
+                permission=_verifier_staging_ro,
+                blast_radius="LOW",
+                is_reversible=True,
+                rollback_action=None,
+                idempotent=True,
+                forbidden_in_production=False,
+            ),
+        ]
+        return cls(entries=entries)
+
+    @classmethod
+    def load_moodle_7_scenario_catalog(cls) -> ActionCatalog:
+        """Load the focused 7-scenario catalog: 5 Technical (CON-01, DB-01, RES-01, NET-01, SEC-01) + 2 Business/Infra (BIZ-01, BIZ-02) and S3.3 slice."""
+        s3_3 = cls.load_moodle_s3_3_execution_catalog()
+        moodle_full = cls.load_moodle_catalog()
+        tech_entries = [moodle_full._entries["remove_tagged_database_ingress_rule"]]
+        biz_entries = list(cls.load_moodle_business_catalog()._entries.values())
+        return cls(entries=list(s3_3._entries.values()) + tech_entries + biz_entries)
+
+    @classmethod
+    def load_moodle_10_scenario_catalog(cls) -> ActionCatalog:
+        """Backward-compatibility alias pointing to the focused 7-scenario catalog."""
+        return cls.load_moodle_7_scenario_catalog()
 
     @classmethod
     def load_erpnext_catalog(cls) -> ActionCatalog:

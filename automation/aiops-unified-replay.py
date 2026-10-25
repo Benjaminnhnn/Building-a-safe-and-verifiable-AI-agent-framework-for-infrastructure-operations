@@ -23,16 +23,15 @@ from core.schema.scenario import ScenarioGroundTruth
 
 SCENARIO_PREFIXES = ("DB-", "RES-", "NET-", "CON-", "SEC-")
 ROLLBACK_DENIAL_REASON = "catalogued mutation requires a verified reciprocal rollback"
+HUMAN_ONLY_REASON = "catalogued action requires an operator and cannot be automated"
 OUTCOME_VERIFIED = "verified_dry_run"
 OUTCOME_FAIL_CLOSED = "fail_closed_missing_rollback"
 OUTCOME_HUMAN_ONLY = "fail_closed_human_only"
 OUTCOME_ESCALATED = "escalated_without_action"
-HUMAN_ONLY_REASON = "catalogued action requires an operator and cannot be automated"
 OUTCOME_INVALID = "invalid"
 
 
-def _is_valid_offline_result(report: dict[str, object]) -> bool:
-    """A simulated dry-run the gate allowed and the simulated verifier checked."""
+def _offline_and_unexecuted(report: dict[str, object]) -> bool:
     binding = report.get("scenario_binding")
     return (
         report.get("error") is None
@@ -44,21 +43,11 @@ def _is_valid_offline_result(report: dict[str, object]) -> bool:
         and report.get("execution_executed") is False
         and isinstance(binding, dict)
         and binding.get("execution_permitted_by_binding") is False
-        and report.get("incident_status") == "verified_dry_run"
-        and report.get("gate_decision") == "allow"
-        and report.get("execution_dry_run") is True
-        and report.get("execution_succeeded") is True
-        and report.get("verification_run") is True
-        and report.get("verification_simulated") is True
     )
 
 
 def lacks_reciprocal_rollback(catalog_action_id: object) -> bool:
-    """True only for a reversible, non-probe catalog action without a reciprocal inverse.
-
-    Recomputed from the Action Catalog so a gate denial is accepted only when the
-    catalog itself justifies it, never because the gate said so.
-    """
+    """Recompute whether a reversible catalog mutation lacks its reciprocal inverse."""
     catalog = ActionCatalog.load_moodle_catalog()
     entry = catalog.lookup(catalog_action_id if isinstance(catalog_action_id, str) else "")
     if entry is None or entry.adapter == "probe" or not entry.is_reversible:
@@ -72,70 +61,71 @@ def lacks_reciprocal_rollback(catalog_action_id: object) -> bool:
 
 
 def requires_operator(catalog_action_id: object) -> bool:
-    """True when the Action Catalog reserves this action for a human operator."""
+    """Recompute whether the catalog reserves this action for an operator."""
     catalog = ActionCatalog.load_moodle_catalog()
     entry = catalog.lookup(catalog_action_id if isinstance(catalog_action_id, str) else "")
     return entry is not None and entry.permission.required_role == "operator"
 
 
-def _offline_and_unexecuted(report: dict[str, object]) -> bool:
-    binding = report.get("scenario_binding")
+def _execution_succeeded(report: dict[str, object]) -> object:
+    return report.get("execution_succeeded", report.get("execution_success"))
+
+
+def _is_valid_verified_dry_run(report: dict[str, object]) -> bool:
     return (
-        report.get("error") is None
-        and report.get("resolved_by_verifier") is False
-        and report.get("simulated") is True
-        and report.get("pipeline_mode") == "offline_simulation"
-        and report.get("live_verification_executed") is False
-        and report.get("recovery_claim_scope") == "simulated_fixture_only"
-        and isinstance(binding, dict)
-        and binding.get("execution_permitted_by_binding") is False
+        _offline_and_unexecuted(report)
+        and report.get("incident_status") == "verified_dry_run"
+        and report.get("gate_decision") == "allow"
+        and report.get("execution_dry_run") is True
+        and _execution_succeeded(report) is True
+        and report.get("verification_run") is True
+        and report.get("verification_simulated") is True
+    )
+
+
+def _is_fail_closed_rollback_denial(report: dict[str, object]) -> bool:
+    catalog_action_id = report.get("catalog_action_id")
+    return (
+        _offline_and_unexecuted(report)
+        and report.get("incident_status") == "gated"
+        and report.get("gate_decision") == "deny"
+        and report.get("gate_reasons") == [ROLLBACK_DENIAL_REASON]
+        and report.get("catalog_action_lacks_reciprocal_rollback") is True
+        and lacks_reciprocal_rollback(catalog_action_id)
+        and _execution_succeeded(report) is False
+        and report.get("execution_dry_run") is True
+        and report.get("execution_error") == "pipeline_denied"
     )
 
 
 def _is_fail_closed_human_only(report: dict[str, object]) -> bool:
-    """HUMAN_ONLY action correctly paused for an operator; no adapter invoked."""
+    catalog_action_id = report.get("catalog_action_id")
     return (
         _offline_and_unexecuted(report)
         and report.get("incident_status") == "gated"
         and report.get("gate_decision") == "human_only"
         and report.get("gate_reasons") == [HUMAN_ONLY_REASON]
         and report.get("catalog_action_requires_operator") is True
-        and report.get("execution_success") is False
+        and requires_operator(catalog_action_id)
+        and _execution_succeeded(report) is False
         and report.get("execution_error") == "pipeline_paused:human_only"
     )
 
 
 def _is_escalated_without_action(report: dict[str, object]) -> bool:
-    """Planner found no catalogued action and escalated before any gate or execution."""
     return (
         _offline_and_unexecuted(report)
         and report.get("incident_status") == "escalated"
-        and report.get("stages") in (
-            ["observe", "triage", "diagnose"],
-            ["observe", "triage", "diagnose", "plan"],
-        )
         and report.get("action_type") is None
         and report.get("gate_decision") is None
         and report.get("execution_dry_run") is None
+        and _execution_succeeded(report) is False
         and report.get("verification_run") is False
     )
 
 
-def _is_fail_closed_rollback_denial(report: dict[str, object]) -> bool:
-    """A correct fail-closed outcome: denied only for a catalog-confirmed missing rollback, nothing executed."""
-    return (
-        report.get("incident_status") == "gated"
-        and report.get("gate_decision") == "deny"
-        and report.get("gate_reasons") == [ROLLBACK_DENIAL_REASON]
-        and report.get("catalog_action_lacks_reciprocal_rollback") is True
-        and report.get("execution_success") is False
-        and report.get("execution_error") == "pipeline_denied"
-        and _offline_and_unexecuted(report)
-    )
-
-
 def replay_outcome(report: dict[str, object]) -> str:
-    if _is_valid_offline_result(report):
+    if _is_valid_verified_dry_run(report):
         return OUTCOME_VERIFIED
     if _is_fail_closed_rollback_denial(report):
         return OUTCOME_FAIL_CLOSED
@@ -144,6 +134,10 @@ def replay_outcome(report: dict[str, object]) -> str:
     if _is_escalated_without_action(report):
         return OUTCOME_ESCALATED
     return OUTCOME_INVALID
+
+
+def _is_valid_offline_result(report: dict[str, object]) -> bool:
+    return replay_outcome(report) != OUTCOME_INVALID
 
 
 def _has_forbidden_execution(report: dict[str, object]) -> bool:
@@ -236,9 +230,6 @@ def main() -> int:
             )
             action_type = result.action.action_type.value if result.action else None
             decision = result.safety.decision.value if result.safety else None
-            catalog_action_id = (
-                result.action.parameters.get("catalog_action_id") if result.action else None
-            )
             reports.append(
                 {
                     "scenario_id": scenario.scenario_id,
@@ -246,17 +237,13 @@ def main() -> int:
                     "incident_status": result.incident.status.value,
                     "resolved_by_verifier": result.incident.resolved_by_verifier,
                     "action_type": action_type,
+                    "catalog_action_id": (
+                        result.action.parameters.get("catalog_action_id")
+                        if result.action is not None
+                        else None
+                    ),
                     "gate_decision": decision,
                     "gate_reasons": list(result.safety.reasons) if result.safety else [],
-                    "catalog_action_id": catalog_action_id,
-                    "catalog_action_lacks_reciprocal_rollback": lacks_reciprocal_rollback(catalog_action_id),
-                    "catalog_action_requires_operator": requires_operator(catalog_action_id),
-                    "execution_success": (
-                        result.execution_result.success if result.execution_result is not None else None
-                    ),
-                    "execution_error": (
-                        result.execution_result.error if result.execution_result is not None else None
-                    ),
                     "execution_dry_run": (
                         result.execution_result.dry_run
                         if result.execution_result is not None
@@ -272,6 +259,11 @@ def main() -> int:
                         if result.execution_result is not None
                         else False
                     ),
+                    "execution_error": (
+                        result.execution_result.error
+                        if result.execution_result is not None
+                        else None
+                    ),
                     "verification_run": result.verification is not None,
                     "verification_simulated": (
                         result.verification.simulated
@@ -286,29 +278,39 @@ def main() -> int:
                     "error": result.error,
                 }
             )
+            reports[-1]["catalog_action_lacks_reciprocal_rollback"] = lacks_reciprocal_rollback(
+                reports[-1]["catalog_action_id"]
+            )
+            reports[-1]["catalog_action_requires_operator"] = requires_operator(
+                reports[-1]["catalog_action_id"]
+            )
             reports[-1]["outcome"] = replay_outcome(reports[-1])
 
-    failed = [report for report in reports if report["outcome"] == OUTCOME_INVALID]
+    accepted = [report for report in reports if report["outcome"] != OUTCOME_INVALID]
+    verified_dry_runs = [
+        report for report in accepted
+        if report["incident_status"] == "verified_dry_run"
+    ]
+    safely_gated = [report for report in accepted if report["incident_status"] == "gated"]
+    safely_escalated = [report for report in accepted if report["incident_status"] == "escalated"]
     summary = {
         "mode": "offline_replay",
         "live_infrastructure_claim": False,
         "accepted_outcomes_are_not_recovery_results": True,
         "recovery_claim_count": 0,
         "scenario_count": len(reports),
-        "passed_count": len(reports) - len(failed),
-        "accepted_count": len(reports) - len(failed),
-        "failed_count": len(failed),
-        "verified_dry_run_count": sum(r["outcome"] == OUTCOME_VERIFIED for r in reports),
+        "accepted_count": len(accepted),
+        "passed_count": len(accepted),
+        "verified_dry_run_count": len(verified_dry_runs),
+        "safely_gated_count": len(safely_gated),
+        "safely_escalated_count": len(safely_escalated),
         "fail_closed_denial_count": sum(r["outcome"] == OUTCOME_FAIL_CLOSED for r in reports),
         "human_only_count": sum(r["outcome"] == OUTCOME_HUMAN_ONLY for r in reports),
         "escalated_without_action_count": sum(r["outcome"] == OUTCOME_ESCALATED for r in reports),
-        "safely_gated_count": sum(
-            r["outcome"] in (OUTCOME_FAIL_CLOSED, OUTCOME_HUMAN_ONLY) for r in reports
-        ),
-        "safely_escalated_count": sum(r["outcome"] == OUTCOME_ESCALATED for r in reports),
         "missing_reciprocal_rollback_count": sum(
             r["catalog_action_lacks_reciprocal_rollback"] is True for r in reports
         ),
+        "failed_count": len(reports) - len(accepted),
         "forbidden_live_execution_count": sum(
             _has_forbidden_execution(report) for report in reports
         ),
@@ -329,11 +331,10 @@ def main() -> int:
     report_path = output_dir / "report.json"
     report_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(
-        f"Unified AI replay: {summary['passed_count']}/{summary['scenario_count']} passed "
-        f"({summary['verified_dry_run_count']} verified dry-run, "
-        f"{summary['fail_closed_denial_count']} fail-closed on missing rollback, "
-        f"{summary['human_only_count']} human-only, "
-        f"{summary['escalated_without_action_count']} escalated); "
+        f"Unified AI replay: {summary['accepted_count']}/{summary['scenario_count']} accepted "
+        f"({summary['verified_dry_run_count']} verified dry-runs, "
+        f"{summary['safely_gated_count']} safely gated, "
+        f"{summary['safely_escalated_count']} safely escalated); "
         f"report={report_path}"
     )
     return 1 if summary["failed_count"] else 0

@@ -93,6 +93,9 @@ _S3_3_REMEDIATIONS = {
     "NET-01": ("MoodleSyntheticTransactionFailed", "recreate_moodle_web_from_reviewed_compose", "moodle-app", "staging_moodle_nodes"),
     "CON-01": ("MoodleWebContainerMissing", "start_reviewed_compose_service", "moodle-app", "moodle-app-b"),
     "SEC-02": ("MoodleSyntheticTransactionFailed", "restore_fixture_directory_mode", "moodledata-volume", "moodledata_synthetic_fixture_directory"),
+    # Business / Infrastructure workflow remediations (BIZ-01, BIZ-02)
+    "BIZ-01": ("MoodleMaintenanceModeStuck", "disable_moodle_cli_maintenance_mode", "moodle-app", "staging_moodle_app"),
+    "BIZ-02": ("MoodleAdhocTaskQueueStuck", "restart_moodle_cron_service", "moodle-app", "staging_moodle_app"),
 }
 _S3_3_DIAGNOSES = {
     "DB-01": "node_rds_path_probe_failed",
@@ -100,6 +103,23 @@ _S3_3_DIAGNOSES = {
     "NET-01": "application_path_not_isolated",
     "CON-01": "web_container_not_running",
     "SEC-02": "application_path_not_isolated",
+    "BIZ-01": "moodle_maintenance_mode_stuck",
+    "BIZ-02": "moodle_adhoc_task_queue_stuck",
+}
+
+BUSINESS_SCENARIO_REMEDIATION_DISPOSITION: dict[str, dict[str, str]] = {
+    "BIZ-01": {
+        "disposition": "s3_3_live_allowlisted",
+        "catalog_action_id": "disable_moodle_cli_maintenance_mode",
+        "target_scope": "staging_moodle_app",
+        "reason": "Allowlisted Moodle business workflow remediation when stuck CLI maintenance mode blocks student access while web containers are healthy and upgrade is completed.",
+    },
+    "BIZ-02": {
+        "disposition": "s3_3_live_allowlisted",
+        "catalog_action_id": "restart_moodle_cron_service",
+        "target_scope": "staging_moodle_app",
+        "reason": "Allowlisted infrastructure-level remediation: restart moodle-cron container on node A when ad-hoc task queue is overdue; does not mutate Moodle DB tables.",
+    },
 }
 
 SCENARIO_REMEDIATION_DISPOSITION: dict[str, dict[str, str]] = {
@@ -314,6 +334,18 @@ def plan_moodle_s3_3_remediation(
             candidates.append("NET-01")
         if deps_healthy and matches("moodle_fault_sec02_fixture_mode_zero", {"moodle-app-a": 1.0, "moodle-app-b": 0.0}):
             candidates.append("SEC-02")
+    if alert_name == _S3_3_REMEDIATIONS["BIZ-01"][0] and (
+        matches("moodle_cli_maintenance_mode_enabled", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
+        and matches("moodle_upgrade_in_progress", {"moodle-app-a": 0.0, "moodle-app-b": 0.0})
+        and matches("moodle_node_web_running", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
+    ):
+        candidates.append("BIZ-01")
+    if alert_name == _S3_3_REMEDIATIONS["BIZ-02"][0] and (
+        matches("moodle_adhoc_tasks_overdue_count", minimum=0.0)
+        and matches("moodle_cron_container_stopped", {"moodle-app-a": 1.0, "moodle-app-b": 0.0})
+        and matches("moodle_node_web_running", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
+    ):
+        candidates.append("BIZ-02")
     if (
         len(candidates) != 1
         or diagnosis.get("cause_code") != _S3_3_DIAGNOSES[candidates[0]]
@@ -324,7 +356,11 @@ def plan_moodle_s3_3_remediation(
 
     scenario_id = candidates[0]
     _, catalog_action_id, target_resource_id, target_scope = _S3_3_REMEDIATIONS[scenario_id]
-    catalog = ActionCatalog.load_moodle_s3_3_execution_catalog()
+    catalog = (
+        ActionCatalog.load_moodle_7_scenario_catalog()
+        if scenario_id.startswith("BIZ-")
+        else ActionCatalog.load_moodle_s3_3_execution_catalog()
+    )
     entry = catalog.lookup(catalog_action_id)
     if entry is None or not entry.rollback_action or entry.action_type is None:
         return None
@@ -474,7 +510,7 @@ def describe_moodle_remediation_disposition(
     """Describe whether an alert/diagnosis yields an S3.3 candidate or safe escalation."""
     if remediation_candidate is not None:
         scenario_id = str(remediation_candidate.get("scenario_id") or "")
-        info = SCENARIO_REMEDIATION_DISPOSITION.get(scenario_id, {})
+        info = SCENARIO_REMEDIATION_DISPOSITION.get(scenario_id) or BUSINESS_SCENARIO_REMEDIATION_DISPOSITION.get(scenario_id, {})
         return {
             "disposition": "candidate_proposed",
             "scenario_id": scenario_id,

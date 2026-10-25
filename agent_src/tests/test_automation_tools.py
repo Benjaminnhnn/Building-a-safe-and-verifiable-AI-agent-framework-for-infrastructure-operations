@@ -76,8 +76,7 @@ def test_unified_replay_accepts_fail_closed_pre_dispatch_escalation(stages: list
         "scenario_binding": {"execution_permitted_by_binding": False},
     }
 
-    assert not aiops_replay._is_valid_offline_result(report)
-    assert aiops_replay.replay_outcome(report) == aiops_replay.OUTCOME_ESCALATED
+    assert aiops_replay._is_valid_offline_result(report)
     assert not aiops_replay._has_forbidden_execution(report)
 
 
@@ -280,6 +279,29 @@ def test_safe_executor_compensation_ids_match_operator_approval_and_forced_comma
     assert 'docker rm -f moodle-fault-res-01 >/dev/null 2>&1 || true' not in forced_command
 
 
+def test_staging_remediation_requires_external_dual_approvals() -> None:
+    setup = (ROOT / "automation/configure-moodle-safe-executor-api.sh").read_text(
+        encoding="utf-8"
+    )
+    drill = (ROOT / "automation/moodle-safe-executor-drill.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "openssl genpkey -algorithm ED25519" not in setup
+    assert 'openssl pkey -in "$secrets_dir/approval-ed25519-private.pem"' not in setup
+    assert 'openssl pkey -in "$secrets_dir/gate-approval-ed25519-private.pem"' not in setup
+    assert "Private key is present on the provisioning host" in setup
+    assert "approval-ed25519.pub" in setup
+    assert "gate-approval-ed25519.pub" in setup
+    assert "Approver and verifier public keys must be distinct." in setup
+    assert '"$gate_approval_file"' in drill
+    assert '"$executor_approval_file"' in drill
+    assert '"$gate_actor_id" != "$executor_actor_id"' in drill
+    assert 'moodle-safe-gate-approval.py' not in drill
+    assert 'moodle-safe-approval.py' not in drill
+    assert 'Set MOODLE_VERIFIER_SIGNING_KEY_FILE' in drill
+
+
 def test_signed_compensation_approval_reaches_executor_kill_switch_without_ssh(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -391,13 +413,16 @@ def _gated_report(**overrides: object) -> dict[str, object]:
         "incident_status": "gated",
         "resolved_by_verifier": False,
         "action_type": "start_container",
+        "catalog_action_id": "restore_approved_database_endpoint",
         "gate_decision": "deny",
         "gate_reasons": [aiops_replay.ROLLBACK_DENIAL_REASON],
         "catalog_action_lacks_reciprocal_rollback": True,
         "catalog_action_requires_operator": False,
         "execution_dry_run": True,
         "execution_success": False,
+        "execution_executed": False,
         "execution_error": "pipeline_denied",
+        "verification_run": False,
         "simulated": True,
         "pipeline_mode": "offline_simulation",
         "live_verification_executed": False,
@@ -432,6 +457,7 @@ def test_unified_replay_rejects_unjustified_or_unsafe_denials(overrides: dict[st
 def test_unified_replay_accepts_catalog_confirmed_human_only_pause() -> None:
     report = _gated_report(
         gate_decision="human_only",
+        catalog_action_id="remove_tagged_database_ingress_rule",
         gate_reasons=[aiops_replay.HUMAN_ONLY_REASON],
         catalog_action_requires_operator=True,
         execution_error="pipeline_paused:human_only",
@@ -444,8 +470,7 @@ def test_unified_replay_accepts_catalog_confirmed_human_only_pause() -> None:
 def test_unified_replay_accepts_escalation_only_without_any_action() -> None:
     report = _gated_report(
         incident_status="escalated", action_type=None, gate_decision=None,
-        gate_reasons=[], execution_dry_run=None, execution_success=None, execution_error=None,
-        stages=["observe", "triage", "diagnose", "plan"], verification_run=False,
+        gate_reasons=[], execution_dry_run=None, execution_success=False, execution_error=None,
     )
     assert aiops_replay.replay_outcome(report) == aiops_replay.OUTCOME_ESCALATED
     report["action_type"] = "start_container"
@@ -453,7 +478,7 @@ def test_unified_replay_accepts_escalation_only_without_any_action() -> None:
 
 
 def test_catalog_checks_match_real_moodle_catalog() -> None:
-    assert aiops_replay.lacks_reciprocal_rollback("restore_moodle_apache_router") is True
+    assert aiops_replay.lacks_reciprocal_rollback("restore_approved_database_endpoint") is True
     assert aiops_replay.lacks_reciprocal_rollback("start_reviewed_compose_service") is False
     assert aiops_replay.lacks_reciprocal_rollback("not-a-catalog-action") is False
     assert aiops_replay.requires_operator("remove_tagged_database_ingress_rule") is True

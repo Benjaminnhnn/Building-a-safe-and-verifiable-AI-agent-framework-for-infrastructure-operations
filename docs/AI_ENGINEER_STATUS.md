@@ -1,5 +1,62 @@
 # AI Engineer scope status
 
+## Focused 7-Scenario Suite & Hermes Agent Integration Check (2026-10-24)
+
+Following thesis review and advisory feedback (*"Quản trị hạ tầng không quản trị ứng dụng"*), the operational scope was standardized to **7 focused scenarios** (2 Business/Infra + 5 Technical: `BIZ-01`, `BIZ-02`, `CON-01`, `DB-01`, `RES-01`, `NET-01`, `SEC-01`):
+1. **Application-layer mutations pruned**: `BIZ-03`, `BIZ-04`, `BIZ-05` were removed. `BIZ-02` was refactored from database row mutation (`mdl_task_adhoc`) to infrastructure-level container lifecycle management (`restart_moodle_cron_service` on node A). `BIZ-01` added a strict safety check refusing remediation if an upgrade process (`upgrade.php`) is active.
+2. **Audit gaps resolved**: Metric telemetry queries added for business alerts in `evidence_collectors.py`, Moodle platform adapter updated to provide the 7-scenario catalog, Independent Verifier updated to accept BIZ-01/02, offline runner `run-moodle-7-scenarios.py` updated with explicit `simulated=True` labeling, and the 15-scenario legacy CI disposition was cleanly decoupled from the 7 thesis scenarios.
+3. **Hermes Agent research & prototype integration**: Implemented in `integrations/hermes/` and documented in `docs/HERMES_AGENT_RESEARCH.md` and `docs/BAO_CAO_HOAN_THIEN_7_KICH_BAN_VA_HERMES_AGENT.md`:
+   - Verified that Hermes cannot natively serve as the Safety Gate or Independent Verifier (Safety Gate requires external out-of-process multi-party Ed25519 signatures; Verifier requires deterministic multi-sample telemetry measurement without an LLM in the loop).
+   - Implemented `HermesMcpServer` adhering strictly to read-only telemetry and proposal tools (no execution or verification tools).
+   - Implemented `HermesSafetyHook` intercepting shell execution and database table mutations.
+   - Designed Multi-AI Task Rotation (Investigator, Critic, Operator Liaison).
+4. **Automated verification**: `agent_src/tests/test_moodle_7_scenario_suite.py` (16/16 passed), `agent_src/tests/test_hermes_integration.py` (16/16 passed).
+
+## Current staging readiness check (2026-10-20)
+
+The current checkout contains the evidence-derived `investigate` candidate,
+operator prepare/execute API, Safety Gate and Executor approval checks,
+conditional rollback, Independent Verifier attestation path, and a dedicated
+`CON-01` staging drill. This code path is separate from alert intake: alerts
+produce candidates but never dispatch actions. The drill now requires signed
+approval artifacts from separate approvers rather than signing both approvals
+with private keys stored on the drill host.
+
+Focused lifecycle, alert integration, handoff, executor, and automation
+validation: **97 passed, 1 skipped, 44 warnings** on Windows/Python 3.14 using
+a repo-local pytest base directory. Critical Ruff, changed-module compilation,
+drill/setup shell syntax, and `git diff --check` passed. Offline replay accepted
+15/15 outcomes (2 verified dry-runs, 11 fail-closed rollback denials, 1
+human-only pause, 1 no-action escalation), with zero forbidden execution and
+zero recovery claims. These are local checks and simulated outcomes only.
+
+Staging is **not ready** in this environment: AWS STS returned
+`InvalidClientTokenId` in both Windows and WSL. WSL has Ansible 2.16.3, but
+Docker Desktop integration is unavailable there; the repo mount is also marked
+world-writable by Ansible. No current account/state reconciliation, image
+build, deployment, baseline capture, fault injection, or live verifier run was
+performed. Recheck identity and runtime prerequisites from the intended
+control host before any canary.
+
+## Local recheck (2026-10-22)
+
+On Python 3.11.9, the full AI-agent suite passed: **907 passed, 1 skipped,
+12 warnings**. Critical Ruff rules, Python compilation, changed drill/probe
+shell syntax, and `git diff --check` passed. The unified offline replay
+accepted **15/15** outcomes (2 verified dry-runs, 12 safely gated, 1 safely
+escalated), with zero forbidden executions and zero recovery claims. The
+Sprint 2 replay produced 15 `VERIFIED_DRY_RUN` outcomes. The SEC-01 live probe
+refused the request with its expected exit code; this is refusal evidence, not
+a live verifier result. All replay results are simulated. The Sprint 6
+acceptance audit remains **0/225 empirical runs**.
+
+The current environment still cannot pass staging preflight: AWS STS returned
+`InvalidClientTokenId`, and Docker Engine is unavailable at
+`npipe:////./pipe/dockerDesktopLinuxEngine`. No image build, deployment,
+baseline capture, fault injection, live verifier run, empirical benchmark, or
+ERPNext generalization trial was performed. Moodle live acceptance and its
+empirical benchmark remain prerequisites before the planned ERPNext lane.
+
 ## Current checkout audit (2026-10-11)
 
 The local `HEAD` and `origin/develop` refs both resolve to `fd4b748`; this audit did not fetch the remote. The worktree contains broad uncommitted source, test, automation, infrastructure, and documentation changes; validation results apply only to this worktree and are not hosted-CI or release-image evidence. AWS STS currently returns `InvalidClientTokenId`, and Docker cannot connect to `npipe:////./pipe/dockerDesktopLinuxEngine`. Local CI-equivalent checks and their scope are recorded at the end of this file. No AWS runtime check, image build, deployment, or live fault trial was performed in this audit.

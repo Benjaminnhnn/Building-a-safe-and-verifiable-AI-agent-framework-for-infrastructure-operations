@@ -42,7 +42,30 @@ _ALL_QUERY_IDS = (
     "moodle_fault_sec02_fixture_mode_zero",
     "moodle_sso_login_option",
     "moodle_login_page_probe",
+    # Business / Infrastructure workflow query IDs (BIZ-01, BIZ-02)
+    "moodle_cli_maintenance_mode_enabled",
+    "moodle_upgrade_in_progress",
+    "moodle_adhoc_tasks_overdue_count",
+    "moodle_cron_container_stopped",
 )
+_BUSINESS_ALERT_RULES = {
+    "MoodleMaintenanceModeStuck": (
+        "moodle_cli_maintenance_mode_enabled",
+        1.0,
+        "moodle_maintenance_mode_stuck",
+        "Moodle CLI maintenance mode remains enabled after upgrade and blocks non-admin student access while HTTP health probes remain green",
+        True,
+        True,
+    ),
+    "MoodleAdhocTaskQueueStuck": (
+        "moodle_adhoc_tasks_overdue_count",
+        1.0,
+        "moodle_adhoc_task_queue_stuck",
+        "Moodle ad-hoc/scheduled task queue has overdue locked tasks and cron service requires infrastructure restart",
+        True,
+        True,
+    ),
+}
 _MAX_SAMPLE_AGE_SECONDS = 120
 # Authentication-layer rules: (signal that must fail, healthy page that must
 # still pass). Both are required so an infrastructure outage is never
@@ -166,7 +189,7 @@ def diagnose_moodle_alert(alert_name: str, evidence: list[Any]) -> dict[str, Any
     """Return a bounded hypothesis, or explicit insufficient/conflicting evidence."""
     direct_rule = _DIRECT_PROBE_RULES.get(alert_name)
     direct_node_rule = _DIRECT_NODE_RULES.get(alert_name)
-    threshold_rule = _DIRECT_THRESHOLD_RULES.get(alert_name)
+    threshold_rule = _DIRECT_THRESHOLD_RULES.get(alert_name) or _BUSINESS_ALERT_RULES.get(alert_name)
     auth_rule = _AUTH_RULES.get(alert_name)
     if (
         alert_name != "MoodleSyntheticTransactionFailed"
@@ -440,6 +463,43 @@ def diagnose_moodle_alert(alert_name: str, evidence: list[Any]) -> dict[str, Any
                 + refs_by_query["moodle_node_web_running"]
             ))
             result["reason"] += "; exact named RES-01 fixture and healthy peer probes match"
+        if alert_name in _BUSINESS_ALERT_RULES and exact_instances(
+            "moodle_node_web_running", {"moodle-app-a": 1.0, "moodle-app-b": 1.0}
+        ):
+            if alert_name == "MoodleMaintenanceModeStuck":
+                upgrade_samples = instance_values("moodle_upgrade_in_progress")
+                if upgrade_samples and any(v >= 1.0 for v in upgrade_samples.values()):
+                    return {
+                        "status": "escalated_human_only",
+                        "cause_code": "upgrade_in_progress_human_escalation",
+                        "reason": "Moodle upgrade is actively in progress or failed during execution; automated maintenance mode disable is dangerous and escalated to human operator.",
+                        "evidence_refs": sorted(set(
+                            refs_by_query[query_id]
+                            + refs_by_query.get("moodle_upgrade_in_progress", [])
+                        )),
+                        "hypothesis": "Moodle upgrade actively in progress; human-only escalation required",
+                        "confidence": 0.95,
+                        "action_candidate": None,
+                    }
+                if exact_instances("moodle_upgrade_in_progress", {"moodle-app-a": 0.0, "moodle-app-b": 0.0}):
+                    result["evidence_refs"] = sorted(set(
+                        result["evidence_refs"] + refs_by_query.get("moodle_upgrade_in_progress", [])
+                    ))
+                    result["reason"] += "; upgrade is confirmed complete (0.0 in-progress)"
+
+            if alert_name == "MoodleAdhocTaskQueueStuck":
+                cron_stopped_refs = refs_by_query.get("moodle_cron_container_stopped", [])
+                if cron_stopped_refs:
+                    result["evidence_refs"] = sorted(set(result["evidence_refs"] + cron_stopped_refs))
+                    result["reason"] += "; moodle-cron container stopped or frozen"
+
+            result["confidence"] = 0.85
+            result["evidence_refs"] = sorted(set(
+                result["evidence_refs"]
+                + refs_by_query["moodle_node_web_running"]
+                + refs_by_query.get("moodle_public_probe", [])
+            ))
+            result["reason"] += "; web infrastructure is healthy while Moodle business workflow is impaired"
         return result
 
     if direct_node_rule is not None:

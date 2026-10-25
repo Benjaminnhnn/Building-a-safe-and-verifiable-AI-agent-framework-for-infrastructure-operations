@@ -31,18 +31,22 @@ verifier_file="$evidence_dir/$run_id-verifier.json"
 verifier_attestation_file="$evidence_dir/$run_id-verifier-attestation.json"
 runtime_verification_file="$evidence_dir/$run_id-runtime-verification.json"
 audit_file="$evidence_dir/$run_id-audit.sqlite3"
+verifier_signing_key="${MOODLE_VERIFIER_SIGNING_KEY_FILE:-}"
 umask 077
 mkdir -p "$evidence_dir"
 chmod 0700 "$evidence_dir"
 for secret_file in \
   "$secrets_dir/agent-hmac.key" \
   "$secrets_dir/safe-action-api-token" \
-  "$secrets_dir/approval-ed25519-private.pem" \
-  "$secrets_dir/gate-approval-ed25519-private.pem" \
-  "$secrets_dir/verifier-ed25519-private.pem" \
+  "$secrets_dir/approval-ed25519.pub" \
+  "$secrets_dir/gate-approval-ed25519.pub" \
   "$secrets_dir/verifier-ed25519.pub"; do
   [[ -r "$secret_file" ]] || { echo "Missing drill credential: $secret_file" >&2; exit 66; }
 done
+[[ -n "$verifier_signing_key" && -r "$verifier_signing_key" ]] || {
+  echo "Set MOODLE_VERIFIER_SIGNING_KEY_FILE to the independent verifier's signing key." >&2
+  exit 66
+}
 [[ -r "$image_file" ]] || { echo "Missing immutable deployed Agent image reference: $image_file" >&2; exit 66; }
 
 agent_live_enabled=false
@@ -162,15 +166,37 @@ elif [[ "$approval_mode" != auto ]]; then
 fi
 
 stage=two-independent-approvals
-python3 "$script_dir/moodle-safe-gate-approval.py" \
-  --action-sha256 "$(jq -r '.gate_action_sha256' "$prepared_file")" \
-  --private-key "$secrets_dir/gate-approval-ed25519-private.pem" \
-  --actor safety-officer --ttl-minutes 5 > "$gate_approval_file"
-python3 "$script_dir/moodle-safe-approval.py" "$scenario" \
-  --action-id "$catalog_action_id" \
-  --private-key "$secrets_dir/approval-ed25519-private.pem" \
-  --idempotency-key "$idempotency_key" --actor operator --ttl-minutes 5 \
-  > "$executor_approval_file"
+cat <<EOF
+Two separate approvers must sign the prepared request with their own private keys.
+Prepared request: $prepared_file
+Safety Gate approval digest: $(jq -r '.gate_action_sha256' "$prepared_file")
+Executor approval digest: $(jq -r '.executor_action_sha256' "$prepared_file")
+Place the signed Gate approval JSON at: $gate_approval_file
+Place the signed Executor approval JSON at: $executor_approval_file
+EOF
+[[ -t 0 ]] || { echo "Interactive approval handoff requires a terminal." >&2; exit 64; }
+read -r -t 300 -p "Press Enter after both independent approvers have supplied their signed files: " || {
+  echo "Approval handoff timed out; no action was dispatched." >&2
+  exit 124
+}
+[[ -r "$gate_approval_file" && -r "$executor_approval_file" ]] || {
+  echo "Both signed approval files are required; no action was dispatched." >&2
+  exit 66
+}
+gate_actor_id="$(jq -er '.actor_id | select(type == "string" and length > 0)' "$gate_approval_file")"
+executor_actor_id="$(jq -er '.approval.actor_id | select(type == "string" and length > 0)' "$executor_approval_file")"
+[[ "$gate_actor_id" != "$executor_actor_id" ]] || {
+  echo "Safety Gate and Executor approvals must have different actor IDs." >&2
+  exit 77
+}
+jq -e --arg digest "$(jq -r '.gate_action_sha256' "$prepared_file")" \
+  '.action_sha256 == $digest and (.signature | type == "string" and length > 0)' \
+  "$gate_approval_file" >/dev/null
+jq -e --arg digest "$(jq -r '.executor_action_sha256' "$prepared_file")" \
+  --arg scenario "$scenario" --arg action "$catalog_action_id" \
+  --arg idempotency "$idempotency_key" \
+  '.scenario_id == $scenario and .catalog_action_id == $action and .idempotency_key == $idempotency and .action_sha256 == $digest and .approval.action_sha256 == $digest and (.approval.signature | type == "string" and length > 0)' \
+  "$executor_approval_file" >/dev/null
 jq -n \
   --slurpfile prepared "$prepared_file" \
   --slurpfile gate "$gate_approval_file" \
@@ -209,7 +235,7 @@ python3 "$script_dir/export-moodle-safe-action-audit.py" \
 verifier_progress=()
 [[ "$approval_mode" == telegram ]] && verifier_progress=(--telegram-progress)
 AWS_PROFILE="${AWS_PROFILE:-target-account}" python3 "$script_dir/moodle-independent-verifier.py" \
-  --audit-db "$audit_file" --signing-key "$secrets_dir/verifier-ed25519-private.pem" \
+  --audit-db "$audit_file" --signing-key "$verifier_signing_key" \
   --incident-id "$incident_id" --request-id "$request_id" \
   --scenario-id "$scenario" --window-seconds 120 --interval-seconds 30 \
   ${verifier_progress[@]+"${verifier_progress[@]}"} \
