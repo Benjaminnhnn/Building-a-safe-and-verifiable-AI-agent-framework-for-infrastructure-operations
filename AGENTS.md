@@ -11,7 +11,7 @@ Repo-specific guidance for AI agents working in this codebase. Verify against co
 
 ## Critical: Markdown and sensitive files
 
-`.gitignore` ignores `*.md` by default, but explicitly allows `README.md`, `AGENTS.md`, and files under `docs/` (including `docs/AIops_CICD.md`). Keep the allow-list in sync when adding Markdown outside those paths.
+`.gitignore` ignores `*.md` by default, but explicitly allows `README.md`, `AGENTS.md`, and files under `docs/` (the four `docs/BAO_CAO_*.md` reports). Keep the allow-list in sync when adding Markdown outside those paths.
 
 Never commit: `agent_src/vector_db/` (ChromaDB runtime data), any `.env*` file, `terraform.tfstate*`, `*.pem`/`*.pub`/`id_rsa*`.
 
@@ -60,7 +60,7 @@ PYTHONPATH=agent_src pytest -q agent_src/tests/test_alert_dedup.py::test_name
 
 Moodle on AWS EC2 is the primary thesis environment. The source tree contains Terraform for the Moodle ALB, two application nodes, RDS PostgreSQL, EFS, and the monitoring host; Ansible host configuration; Moodle image/Compose; and the agent's safety-gated incident pipeline. Verify AWS state and dated artifacts before making claims about what is currently deployed.
 
-1. **Terraform** (`terraform/`) owns cloud resources. Operators use the Git-ignored `terraform/deployment.tfvars` (copied from `deployment.tfvars.example`); `terraform.tfstate*` and `deployment.tfvars` are sensitive. Role credentials require MFA; pass them to Terraform with `aws configure export-credentials` (see `docs/AWS_IAM_ACCESS_GUIDE.md`).
+1. **Terraform** (`terraform/`) owns cloud resources. Operators use the Git-ignored `terraform/deployment.tfvars` (copied from `deployment.tfvars.example`); `terraform.tfstate*` and `deployment.tfvars` are sensitive. Role credentials require MFA; pass them to Terraform with `aws configure export-credentials` (see `docs/BAO_CAO_HUONG_DAN_TRIEN_KHAI.md`, section 5 and appendix A).
 2. **Ansible** (`ansible/`) owns host configuration and deployment prerequisites. The Moodle playbooks use the inventory and SSH config that Terraform writes to the Git-ignored `terraform/.artifacts/`; there is no static inventory in the repo.
 3. **Moodle runtime** (`moodle/`, `release/moodle/`) defines the Moodle image and Compose deployment. `automation/github-deploy-moodle.sh` is used by Moodle staging CD; verify its target hosts, environment, and rollback behavior before changing it.
 4. **Agent and evidence** (`agent_src/`, `evaluation/`) implement the incident contracts, policy, evidence, verifier, Moodle ground truth, and offline replay.
@@ -97,7 +97,7 @@ CI verifies the Moodle image's secret-file handling, PHP syntax, public web-root
 ## Conventions to preserve
 
 - **No production image builds on EC2.** EC2 only pulls GHCR artifacts that CI produced. Do not copy application source to EC2 for releases.
-- Moodle staging deploys through `.github/workflows/cd-staging.yml` and `automation/github-deploy-moodle.sh` (self-hosted runner `moodle-staging`), or manually per `docs/MOODLE_OPERATIONS_RUNBOOK.md` §8. Run operator scripts from the repository root.
+- Moodle staging deploys through `.github/workflows/cd-staging.yml` and `automation/github-deploy-moodle.sh` (self-hosted runner `moodle-staging`), or manually per `docs/BAO_CAO_HUONG_DAN_TRIEN_KHAI.md`, sections 10–16. Run operator scripts from the repository root.
 - **Terraform owns cloud resources; Ansible owns host config.** Don't mix concerns.
 - **Ruff lint uses only critical rules** (`E9,F63,F7,F82`) in CI — undefined names and syntax. Broader style rules are not enforced; do not fail a change for style unless it breaks CI.
 - **`httpx` must stay `<0.28`** for FastAPI `TestClient` compatibility.
@@ -106,11 +106,9 @@ CI verifies the Moodle image's secret-file handling, PHP syntax, public web-root
 ## Reference docs (already in repo)
 
 - `README.md` — Moodle thesis scope, repository map and evidence modes.
-- `docs/MOODLE_ENTRA_OKTA_OIDC_IMPLEMENTATION.md`, `docs/MOODLE_SSO_INCIDENT_SCENARIOS.md` — Okta/Entra SSO deployment and incident scenarios.
-- `docs/AWS_IAM_ACCESS_GUIDE.md` — InfraEngineer/AIEngineer role-based AWS access.
-- `docs/AI_ENGINEER_STATUS.md` — AI-owned implementation, evidence status, and remaining cross-role dependencies.
-- `docs/` — Moodle deployment, infrastructure, operational baseline, runbooks, and CI/CD documentation.
-- `docs/MOODLE_OPERATIONS_RUNBOOK.md` — Terraform + Ansible provisioning, deployment, monitoring and teardown steps.
-- `docs/DEVOPS_DEPLOY_WORKFLOW_GUIDE.md` — Vietnamese end-to-end deploy walkthrough for new DevOps engineers (tools, gates, troubleshooting); defers to the runbook.
+- `docs/BAO_CAO_KIEN_TRUC_HA_TANG.md` — current infrastructure architecture: network, security groups, EC2, RDS, EFS, monitoring and alerts, Entra → Okta → Moodle SSO, IAM model, CI/CD, limits.
+- `docs/BAO_CAO_HUONG_DAN_TRIEN_KHAI.md` — end-to-end deploy and operations guide (Terraform, host keys, Ansible, image selection, Moodle, Okta, monitoring, executor, Telegram, CD, troubleshooting); appendices for IAM setup, Okta/Entra setup and teardown.
+- `docs/BAO_CAO_KICH_BAN_LOI.md` — fault scenario catalog (7 thesis, 15 technical, 21 SSO), experiment procedures, three-fault demo guide and live results.
+- `docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md` — agent architecture, Safety Gate, Safe Executor, Independent Verifier, Telegram approval, Hermes, threat model and evidence status.
 - `agent_src/README.md` — current agent modules and evidence-mode boundaries.
 - `agent_src/RAG_SYSTEM_GUIDE.md` — RAG engine details.

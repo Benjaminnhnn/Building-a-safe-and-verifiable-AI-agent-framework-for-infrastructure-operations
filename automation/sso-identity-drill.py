@@ -9,7 +9,7 @@ can only target the drill user created by this run; existing users, groups,
 apps and policies are read only. Passwords, tokens and activation links are
 never printed or written to the report.
 
-Scenario definitions: docs/MOODLE_SSO_INCIDENT_SCENARIOS.md
+Scenario definitions: docs/BAO_CAO_KICH_BAN_LOI.md, section 4
 
 Requires the ``cryptography`` package and an Okta API Services app using
 private_key_jwt (DPoP is supported) with the scopes in DEFAULT_SCOPES.

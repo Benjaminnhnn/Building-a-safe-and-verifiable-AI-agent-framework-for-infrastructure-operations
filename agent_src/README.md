@@ -20,4 +20,4 @@ An operator prepares a fresh candidate through the remediation prepare endpoint,
 - core/coordination: GitHub tool discovery and review only.
 - evaluation/agent_replay: offline replay, fixtures, benchmark helpers, legacy comparisons.
 
-The Agent and executor live switches default off. The integrated staging drill is limited to CON-01. Replay, tests, or a green CI run do not establish live recovery. See AGENTS.md and docs/SPRINT3_S3_3_SAFE_EXECUTOR.md for repository and drill procedures.
+The Agent and executor live switches default off. The integrated staging drill covers DB-01, RES-01, NET-01, CON-01, BIZ-01 and BIZ-02; only CON-01 has passed end to end on staging. Replay, tests, or a green CI run do not establish live recovery. See AGENTS.md, docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md and docs/BAO_CAO_KICH_BAN_LOI.md for repository and drill procedures.

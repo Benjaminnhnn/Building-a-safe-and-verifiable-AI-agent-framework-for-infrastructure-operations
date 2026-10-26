@@ -1,22 +1,20 @@
-# Hướng dẫn luồng deploy Moodle staging cho DevOps mới
+# Báo cáo hướng dẫn triển khai và vận hành Moodle staging
 
-**Dành cho:** DevOps mới vào dự án, đã biết Linux, Git và Docker ở mức cơ bản,
-chưa từng deploy hệ thống này.
-**Mục tiêu:** sau khi đọc xong, bạn **tự dựng được** toàn bộ hạ tầng Moodle
-staging trên AWS từ con số 0, hiểu **vì sao** từng bước tồn tại, và biết cách
-tự chẩn đoán khi một bước thất bại.
+**Cập nhật:** 26/10/2026
+**Dành cho:** DevOps mới vào dự án, đã biết Linux, Git và Docker ở mức cơ bản, chưa từng deploy hệ thống này.
+**Mục tiêu:** sau khi đọc xong, bạn **tự dựng được** toàn bộ hạ tầng Moodle staging trên AWS từ con số 0, hiểu
+**vì sao** từng bước tồn tại, và biết cách tự chẩn đoán khi một bước thất bại.
 
-**Tài liệu gốc (khi có mâu thuẫn, tài liệu gốc thắng):**
-
-- [Moodle Operations Runbook](MOODLE_OPERATIONS_RUNBOOK.md): lệnh chuẩn, chi tiết từng bước.
-- [CI/CD Moodle và AI Agent](AIops_CICD.md): pipeline GitHub Actions.
-- [AWS IAM Access Guide](AWS_IAM_ACCESS_GUIDE.md): cấp quyền AWS.
-- [Moodle–Entra–Okta OIDC](MOODLE_ENTRA_OKTA_OIDC_IMPLEMENTATION.md): đăng nhập SSO.
+Tài liệu này gộp hướng dẫn deploy, quy trình vận hành, hướng dẫn phân quyền AWS IAM và các bước cấu hình Okta/Entra.
+Kiến trúc và lý do thiết kế nằm ở [BAO_CAO_KIEN_TRUC_HA_TANG](BAO_CAO_KIEN_TRUC_HA_TANG.md); diễn tập sự cố và demo
+nằm ở [BAO_CAO_KICH_BAN_LOI](BAO_CAO_KICH_BAN_LOI.md); Agent, Safety Gate, Executor và Verifier nằm ở
+[BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN](BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md). Khi tài liệu khác mã nguồn,
+mã nguồn thắng.
 
 > ⚠️ **Chi phí:** hạ tầng này **tính tiền theo giờ** ngay sau `terraform apply`
 > (2 NAT Gateway, ALB, RDS, EFS, 3 EC2). NAT Gateway là khoản lớn nhất và vẫn
 > tính tiền khi EC2 đã stop. Chỉ dựng khi có kế hoạch dùng, và destroy theo
-> runbook §14 khi xong.
+> phụ lục D khi xong.
 
 ---
 
@@ -41,6 +39,10 @@ tự chẩn đoán khi một bước thất bại.
 17. [Gỡ toàn bộ hạ tầng](#17-gỡ-toàn-bộ-hạ-tầng)
 18. [Tư duy xử lý sự cố](#18-tư-duy-xử-lý-sự-cố)
 19. [Checklist một trang](#19-checklist-một-trang)
+20. [Phụ lục A: Phân quyền AWS IAM (dành cho admin)](#phụ-lục-a-phân-quyền-aws-iam-dành-cho-admin)
+21. [Phụ lục B: Cấu hình Entra ID, Okta và OAuth 2 của Moodle](#phụ-lục-b-cấu-hình-entra-id-okta-và-oauth-2-của-moodle)
+22. [Phụ lục C: Kết thúc phiên và bàn giao](#phụ-lục-c-kết-thúc-phiên-và-bàn-giao)
+23. [Phụ lục D: Gỡ toàn bộ hạ tầng (chi tiết)](#phụ-lục-d-gỡ-toàn-bộ-hạ-tầng-chi-tiết)
 
 ---
 
@@ -216,7 +218,7 @@ gh auth status             # đã đăng nhập GitHub
 
 Bạn **không** dùng root hay `AdministratorAccess`. Admin cấp cho bạn một IAM
 user gần như không có quyền, chỉ được assume role `InfraEngineer` khi có MFA
-(xem [AWS IAM Access Guide](AWS_IAM_ACCESS_GUIDE.md) §4). Quyền thật nằm ở
+(xem phụ lục A.2). Quyền thật nằm ở
 role, credential tạm thời tối đa 4 giờ, và chỉ dùng được ở region
 `ap-southeast-1`.
 
@@ -766,7 +768,7 @@ dựng lại cần:
    `$MOODLE_URL/admin/oauth2callback.php` và sign-out URI thành `$MOODLE_URL/`.
 2. Trong Moodle: tạo lại OAuth 2 service `Okta`, endpoint, field mapping (có
    `sub` → `username`), bật plugin OAuth 2, khóa trường name/email theo
-   [tài liệu OIDC](MOODLE_ENTRA_OKTA_OIDC_IMPLEMENTATION.md) bước 10. Bản xuất
+   phụ lục B, Bước 10. Bản xuất
    cấu hình cũ (nếu có) nằm ở `terraform/.artifacts/preserve/moodle-oauth2-okta.json`.
    File này **chứa client secret**: giữ mode 600, không dán vào chat.
 3. ✅ Trang đăng nhập có nút Okta; bấm vào thì chuyển tới
@@ -831,6 +833,137 @@ Cuối cùng chụp baseline để mọi thí nghiệm sau có mốc so sánh:
 bash automation/moodle-environment-baseline.sh capture
 bash automation/moodle-environment-baseline.sh verify
 ```
+
+
+### 14.3. Vận hành giám sát
+
+Wrapper `configure-moodle-monitoring.sh` lấy URL ALB, endpoint RDS, inventory và mật khẩu synthetic từ state và
+artifact Terraform cục bộ. Nó tạo token bearer 256 bit giữa Alertmanager và Agent **ngay trên monitor** (nếu chưa
+có), cấu hình Alertmanager đọc token từ file, và mount cùng file đó chỉ đọc vào Agent. Agent từ chối mọi webhook
+thiếu token trước khi xếp hàng. Không chép token vào inventory, tham số dòng lệnh, repo hay log. Muốn đổi token,
+phải deploy lại **cả hai** service; đổi một phía sẽ làm mất cảnh báo.
+
+Playbook kiểm tra Compose trước khi khởi động, chạy `promtool check rules` cho rule Prometheus, và
+`amtool check-config` cho Alertmanager.
+
+Khôi phục giám sát sau khi bị dừng tay:
+
+```bash
+ssh -F terraform/.artifacts/moodle-ssh.config monitor-ai-01 \
+  'sudo docker compose -f /opt/moodle-observability/docker-compose.yml up -d && \
+   sudo systemctl enable --now moodle-synthetic-transaction.timer && \
+   sudo systemctl status --no-pager moodle-synthetic-transaction.timer'
+```
+
+| Dịch vụ | URL qua tunnel |
+|---|---|
+| Grafana | `http://127.0.0.1:3000` |
+| Prometheus | `http://127.0.0.1:9090` |
+| Alertmanager | `http://127.0.0.1:9093` |
+| AI Agent health | `http://127.0.0.1:8000/health` |
+
+Mật khẩu Grafana chỉ đọc từ terminal của người phụ trách:
+
+```bash
+ssh -F terraform/.artifacts/moodle-ssh.config monitor-ai-01 \
+  'sudo cat /opt/moodle-observability/secrets/grafana-admin-password'
+```
+
+Code mới (25/10/2026) thêm probe BIZ và audit security group RDS. Sau khi kéo code mới, cần **apply Terraform**
+(IAM role chỉ đọc `terraform/monitor-iam.tf` và tag RDS trên monitor) rồi chạy lại playbook giám sát và playbook
+executor. Kiểm tra `promtool check rules` đạt trong lúc chạy play.
+
+### 14.4. Safe Executor và các cặp khoá ký
+
+Executor là dịch vụ riêng trên monitor; nó SSH vào node bằng key forced-command và chỉ chạy các hành động trong
+allowlist. Cài lần đầu theo thứ tự, công tắc live vẫn **tắt**:
+
+```bash
+bash automation/configure-moodle-safe-executor.sh
+bash automation/configure-moodle-safe-executor-api.sh
+bash automation/configure-moodle-monitoring.sh --agent-image "$(cat terraform/.artifacts/moodle-agent-image)"
+```
+
+| Kiểm tra | Lệnh | Kỳ vọng |
+|---|---|---|
+| Image Agent đã ghi nhận | `cat terraform/.artifacts/moodle-agent-image` | Tag SHA 40 ký tự đã qua CI |
+| Khoá của executor | `ls terraform/.artifacts/safe-executor/` | `agent-hmac.key`, `safe-action-api-token`, 3 cặp khoá Ed25519 |
+| Chế độ Agent | `ssh -F terraform/.artifacts/moodle-ssh.config monitor-ai-01 'sudo docker exec moodle-ai-agent env' \| grep AIOPS_` | `AIOPS_UNIFIED_CORE_MODE=investigate`, `AIOPS_SAFE_ACTION_LIVE_ENABLED=false` |
+
+Có ba cặp khoá Ed25519 **khác nhau**: `gate-approval-ed25519.pub` cho Safety Gate, `approval-ed25519.pub` cho
+Executor, `verifier-ed25519.pub` cho Independent Verifier. Mỗi khoá riêng nên do chính người phụ trách vai đó tạo
+trên máy của họ; chỉ khoá công khai được chép vào `terraform/.artifacts/safe-executor/`:
+
+```bash
+openssl genpkey -algorithm ED25519 -out approver-private.pem
+openssl pkey -in approver-private.pem -pubout -out approver-public.pem
+```
+
+Khi người duyệt ký tách khỏi drill, mỗi người ký file prepared bằng khoá của mình:
+
+```bash
+prepared=/path/to/CON-01-prepared.json
+python automation/moodle-safe-gate-approval.py \
+  --action-sha256 "$(jq -r .gate_action_sha256 "$prepared")" \
+  --private-key ~/.keys/safety-officer.pem --actor safety-officer \
+  > gate-approval.json
+python automation/moodle-safe-approval.py CON-01 \
+  --action-id "$(jq -r .request.catalog_action_id "$prepared")" \
+  --idempotency-key "$(jq -r .request.idempotency_key "$prepared")" \
+  --private-key ~/.keys/operator.pem --actor operator \
+  > executor-approval.json
+```
+
+Công cụ từ chối hai actor trùng ID và digest không khớp; Gate và Executor tự kiểm tra từng chữ ký bằng khoá công
+khai đã cài. Không bao giờ đặt cả hai khoá riêng của người duyệt trên cùng máy chạy drill khi chạy thật (bản demo
+hiện tại là ngoại lệ đã ghi nhận). Khi nghi token API của safe-action bị lộ, thay file
+`/etc/aiops-safe-executor/safe-action-api-token` rồi khởi động lại Agent.
+
+### 14.5. Telegram cho Agent và cầu nối phê duyệt
+
+Agent chỉ gửi Telegram khi container có `TELEGRAM_TOKEN` và `TELEGRAM_CHAT_ID`. Điền vào `release/.env`
+(Git-ignored, mode 600), rồi deploy lại Agent bằng `configure-moodle-monitoring.sh --agent-image <image>`. Wrapper
+chỉ chép các biến `TELEGRAM_*` và `AI_AGENT_PUBLIC_URL` sang
+`/opt/moodle-observability/secrets/agent-telegram.env` (root, mode 600); giá trị chỉ dùng trên laptop như
+`REDIS_HOST=localhost` không lên staging.
+
+| Biến | Lấy ở đâu |
+|---|---|
+| `TELEGRAM_TOKEN` | @BotFather (`/newbot` hoặc `/token`) |
+| `TELEGRAM_CHAT_ID` | `getUpdates` sau khi bot vào group (group bắt đầu bằng `-100`) |
+| `TELEGRAM_ADMIN_USER_IDS` | `python3 automation/moodle-telegram-approval.py whoami`, rồi bấm nút trong group |
+| `TELEGRAM_WEBHOOK_SECRET` | `openssl rand -hex 32` (chỉ cần khi dùng `/feedback` qua webhook) |
+
+**Webhook và cầu nối loại trừ nhau.** Telegram chỉ cho một cách nhận cập nhật: webhook **hoặc** `getUpdates`. Cầu
+nối phê duyệt dùng `getUpdates`; nếu bot đang có webhook, cầu nối báo `409 Conflict` và dừng (không duyệt gì).
+Kiểm tra bằng `getWebhookInfo`; webhook ngrok cũ đã được xoá ngày 23/10/2026 sau khi xác nhận tunnel offline
+(`ERR_NGROK_3200`). Agent chỉ tự đăng ký webhook khi có cả `AI_AGENT_PUBLIC_URL` (HTTPS) lẫn
+`TELEGRAM_WEBHOOK_SECRET`.
+
+Thử gửi tin từ worker (không in token):
+
+```bash
+ssh -F terraform/.artifacts/moodle-ssh.config monitor-ai-01 \
+  "sudo docker exec moodle-agent-worker python -c 'from core.moodle.safe_action_notify import notify; print(notify(\"test\"))'"
+```
+
+Khoanh vùng khi không thấy tin: log worker có `TELEGRAM_TOKEN or TELEGRAM_CHAT_ID not found` → biến chưa vào
+container; `403`/`400` → bot hoặc chat sai; không có dòng nào → alert chưa tới Agent.
+
+### 14.6. Cấp quyền SSH vào monitor cho AI Engineer
+
+Thêm IP public của họ dạng `/32` vào `ai_engineer_monitor_ssh_cidr_blocks`, review plan, apply, rồi chỉ cài
+**public key** của họ bằng playbook riêng. Không bao giờ mở SSH cho mọi địa chỉ Internet.
+
+```hcl
+ai_engineer_monitor_ssh_cidr_blocks = ["ENGINEER_PUBLIC_IP/32"]
+```
+
+```bash
+bash automation/authorize-ai-engineer.sh ~/.ssh/ai-engineer.pub
+```
+
+Quyền AWS (phụ lục A) và quyền SSH vào monitor là hai lớp độc lập.
 
 ---
 
@@ -1119,7 +1252,7 @@ terraform -chdir=terraform plan -input=false -var-file=deployment.tfvars -detail
 
 ## 17. Gỡ toàn bộ hạ tầng
 
-Làm theo **runbook §14**, không làm tắt. Tóm tắt các điểm dễ sai:
+Làm theo **phụ lục D**, không làm tắt. Tóm tắt các điểm dễ sai:
 
 1. Thu thập bằng chứng cần cho báo cáo **trước**.
 2. RDS cấu hình `skip_final_snapshot=true`: destroy **không** tạo snapshot
@@ -1177,7 +1310,7 @@ Mỗi khi một bước thất bại, đi qua sáu câu hỏi theo thứ tự:
 | `No valid credential sources found` … `169.254.169.254 … host is down` | Quyền | Terminal không có biến `AWS_*` (mở terminal mới, hoặc quên `eval`) | Chạy lại khối lệnh ở mục 5 trong chính terminal đó; kiểm tra bằng `aws sts get-caller-identity` |
 | `AssumeRoleTokenProvider session option not set` | Quyền | Terraform không hỏi được MFA, mà `AWS_PROFILE` vẫn trỏ tới role có MFA | `export-credentials` rồi `unset AWS_PROFILE` (mục 5) |
 | `ExpiredToken` giữa chừng | Quyền | Credential role hết hạn (tối đa 4 giờ) | Lấy lại credential, chạy lại lệnh. Tránh để hết hạn giữa lúc `apply` |
-| `no identity-based policy allows the X action` | Quyền | Policy thiếu action X | Gửi admin đúng action đó; không xin wildcard. Xem IAM guide §10 |
+| `no identity-based policy allows the X action` | Quyền | Policy thiếu action X | Gửi admin đúng action đó; không xin wildcard. Xem phụ lục A.8 |
 | `explicit deny` khi gọi API ở region khác | Quyền | Policy chặn mọi region ngoài `ap-southeast-1` | Đúng thiết kế; đặt `AWS_REGION=ap-southeast-1` |
 | `plan` đòi `-/+ replace` cả 3 EC2 dù không sửa gì | Terraform | `ec2_ami_id` không ghim; AWS ra AMI mới | Ghim AMI (mục 6). Không apply plan đó |
 | `Saved plan is stale` | Terraform | Code, input hoặc state đổi sau khi plan | Tạo plan mới, review lại; không lách |
@@ -1234,3 +1367,868 @@ Mỗi khi một bước thất bại, đi qua sáu câu hỏi theo thứ tự:
 - Không chạy Terraform/Ansible từ GitHub Actions; không build image trên EC2.
 - Không dùng tag `latest`; mọi release là một commit SHA đã qua CI.
 - Không tắt kiểm tra an toàn để "cho chạy được". Tìm nguyên nhân gốc.
+
+---
+
+## Phụ lục A: Phân quyền AWS IAM (dành cho admin)
+
+**Người thực hiện:** quản trị viên AWS. Các role trong phụ lục này **không** có quyền quản lý IAM. Mô hình phân quyền
+và lý do thiết kế nằm ở [BAO_CAO_KIEN_TRUC_HA_TANG, mục 10](BAO_CAO_KIEN_TRUC_HA_TANG.md#10-phân-quyền-aws-iam).
+Thay `<ACCOUNT_ID>`, `<infra-user>`, `<ai-user>`, `<mfa-device>` bằng giá trị thật khi làm; **không** commit access
+key, mật khẩu hay link kích hoạt.
+
+**Route 53 health check:** Route 53 là dịch vụ toàn cầu, nên statement `DenyOutsideSingapore` chặn nó. Để bật health
+check cho probe `internet_to_postgresql_blocked`, admin đã thêm các action health check của Route 53 vào `NotAction`
+của statement chặn region, cùng một statement `Allow` riêng cho chúng. Bổ sung tương ứng vào policy dưới đây khi tạo
+mới.
+
+### A.1. Phần chung: policy `InfraEngineerMoodle`
+
+Tạo **một lần**, dùng chung cho cả hai role.
+
+**IAM → Policies → Create policy → tab JSON**, xóa nội dung mẫu, dán policy dưới đây (đã thay `<ACCOUNT_ID>`). Bấm **Next**, đặt tên `InfraEngineerMoodle`, rồi **Create policy**.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Sid": "DenyOutsideSingapore", "Effect": "Deny", "NotAction": ["iam:*", "sts:*"], "Resource": "*",
+      "Condition": { "StringNotEquals": { "aws:RequestedRegion": "ap-southeast-1" } } },
+    { "Sid": "NetworkAndCompute", "Effect": "Allow", "Resource": "*", "Action": [
+        "ec2:Describe*", "ec2:Get*", "ec2:Create*", "ec2:Delete*", "ec2:Modify*",
+        "ec2:Associate*", "ec2:Disassociate*", "ec2:Attach*", "ec2:Detach*", "ec2:Replace*",
+        "ec2:AllocateAddress", "ec2:ReleaseAddress",
+        "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress", "ec2:RevokeSecurityGroupEgress",
+        "ec2:UpdateSecurityGroupRuleDescriptions*",
+        "ec2:RunInstances", "ec2:TerminateInstances", "ec2:StartInstances",
+        "ec2:StopInstances", "ec2:RebootInstances", "ec2:ImportKeyPair" ] },
+    { "Sid": "LoadBalancer", "Effect": "Allow", "Resource": "*", "Action": [
+        "elasticloadbalancing:Describe*", "elasticloadbalancing:Create*",
+        "elasticloadbalancing:Delete*", "elasticloadbalancing:Modify*",
+        "elasticloadbalancing:RegisterTargets", "elasticloadbalancing:DeregisterTargets",
+        "elasticloadbalancing:AddTags", "elasticloadbalancing:RemoveTags",
+        "elasticloadbalancing:SetSecurityGroups", "elasticloadbalancing:SetSubnets",
+        "acm:DescribeCertificate", "acm:ListCertificates" ] },
+    { "Sid": "Database", "Effect": "Allow", "Resource": "*", "Action": [
+        "rds:Describe*", "rds:ListTagsForResource", "rds:Create*", "rds:Delete*",
+        "rds:Modify*", "rds:AddTagsToResource", "rds:RemoveTagsFromResource",
+        "rds:RebootDBInstance", "rds:RestoreDBInstanceFromDBSnapshot" ] },
+    { "Sid": "RdsManagedMasterSecret", "Effect": "Allow",
+      "Resource": "arn:aws:secretsmanager:ap-southeast-1:<ACCOUNT_ID>:secret:rds!*", "Action": [
+        "secretsmanager:CreateSecret", "secretsmanager:TagResource",
+        "secretsmanager:DescribeSecret", "secretsmanager:GetSecretValue",
+        "secretsmanager:RotateSecret", "secretsmanager:DeleteSecret" ] },
+    { "Sid": "EncryptionViaServicesOnly", "Effect": "Allow", "Resource": "*",
+      "Action": ["kms:DescribeKey", "kms:CreateGrant", "kms:ListAliases"],
+      "Condition": { "StringEquals": { "kms:ViaService": [
+        "rds.ap-southeast-1.amazonaws.com",
+        "secretsmanager.ap-southeast-1.amazonaws.com",
+        "elasticfilesystem.ap-southeast-1.amazonaws.com" ] } } },
+    { "Sid": "FileStorage", "Effect": "Allow", "Resource": "*", "Action": [
+        "elasticfilesystem:Describe*", "elasticfilesystem:Create*",
+        "elasticfilesystem:Delete*", "elasticfilesystem:Put*", "elasticfilesystem:Update*",
+        "elasticfilesystem:TagResource", "elasticfilesystem:UntagResource",
+        "elasticfilesystem:ListTagsForResource" ] },
+    { "Sid": "RdsLogGroups", "Effect": "Allow",
+      "Resource": "arn:aws:logs:ap-southeast-1:<ACCOUNT_ID>:log-group:/aws/rds/*", "Action": [
+        "logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:PutRetentionPolicy",
+        "logs:DeleteRetentionPolicy", "logs:TagResource", "logs:UntagResource",
+        "logs:TagLogGroup", "logs:ListTagsForResource", "logs:ListTagsLogGroup" ] },
+    { "Sid": "DescribeLogGroups", "Effect": "Allow", "Action": "logs:DescribeLogGroups", "Resource": "*" },
+    { "Sid": "PublicAmiLookup", "Effect": "Allow", "Action": ["ssm:GetParameter", "ssm:GetParameters"],
+      "Resource": "arn:aws:ssm:ap-southeast-1::parameter/aws/service/ami-amazon-linux-latest/*" },
+    { "Sid": "ServiceLinkedRolesOnly", "Effect": "Allow", "Action": "iam:CreateServiceLinkedRole", "Resource": "*",
+      "Condition": { "StringEquals": { "iam:AWSServiceName": [
+        "rds.amazonaws.com", "elasticloadbalancing.amazonaws.com",
+        "elasticfilesystem.amazonaws.com", "backup.amazonaws.com" ] } } },
+    { "Sid": "ReadOnlyInventory", "Effect": "Allow",
+      "Action": ["tag:GetResources", "ssm:DescribeInstanceInformation"], "Resource": "*" },
+    { "Sid": "ReadUserPolicyAttachments", "Effect": "Allow",
+      "Action": "iam:ListAttachedUserPolicies", "Resource": "arn:aws:iam::<ACCOUNT_ID>:user/*" }
+  ]
+}
+```
+
+**Ghi chú:**
+- ARN của SSM là `arn:aws:ssm:ap-southeast-1::parameter/...` (**không có Account ID**). Đúng như vậy, vì parameter AMI là tài nguyên công khai của AWS.
+- Ô JSON chỉ nhận **nội dung policy**. Không dán câu lệnh shell vào đây. Policy này **không có** trường `Principal`.
+- Policy được suy ra từ các resource Terraform đang dùng. Nếu Terraform báo `not authorized to perform: <action>`, chỉ bổ sung **đúng action đó** (xem mục A.8).
+
+---
+
+### A.2. Infrastructure Engineer: CLI và Terraform
+
+Infra Engineer làm việc chủ yếu bằng **AWS CLI và Terraform**, nên dùng **access key + MFA**.
+
+#### A.2.1. Tạo IAM user
+
+**IAM → Users → Create user**
+- **User name:** `<infra-user>`
+- **Không** tick quyền truy cập Console (trừ khi cần)
+- **Không** gán policy, **không** thêm vào group
+
+#### A.2.2. Gán MFA
+
+User → **Security credentials → Assign MFA device → Authenticator app**. Quét QR, nhập 2 mã liên tiếp, rồi **ghi lại MFA ARN**: `arn:aws:iam::<ACCOUNT_ID>:mfa/<mfa-device>`.
+
+#### A.2.3. Tạo role `InfraEngineer`
+
+**IAM → Roles → Create role → Custom trust policy**. Đây là **trust policy** (ai được vào role), **có** trường `Principal`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": { "AWS": "arn:aws:iam::<ACCOUNT_ID>:user/<infra-user>" },
+    "Action": "sts:AssumeRole",
+    "Condition": { "Bool": { "aws:MultiFactorAuthPresent": "true" } }
+  }]
+}
+```
+
+1. **Next** → trang **Add permissions**: tìm `InfraEngineerMoodle` (lọc *Customer managed* nếu không thấy), **tick ô vuông**, rồi **Next**.
+2. **Role name:** `InfraEngineer` → **Create role**.
+3. Mở role → **Edit** → **Maximum session duration = 4 hours**.
+
+Trang trust policy **không có chỗ tick policy**. Ô để tick nằm ở **trang kế tiếp**.
+
+#### A.2.4. Cho user quyền assume role
+
+User `<infra-user>` → **Permissions → Add permissions → Create inline policy → JSON**, đặt tên `AssumeInfraEngineer`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "sts:AssumeRole",
+    "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/InfraEngineer"
+  }]
+}
+```
+
+Tab Permissions của user chỉ nên có **duy nhất** policy này.
+
+#### A.2.5. Access key và AWS CLI
+
+User → **Security credentials → Create access key → Command Line Interface (CLI)**. Secret chỉ hiện **một lần**. **Gõ thẳng vào `aws configure`**. Không mở file CSV trong editor, không chụp màn hình, không dán vào chat.
+
+```bash
+brew install awscli
+aws configure --profile <base-profile>     # nhập access key, region ap-southeast-1, output json
+```
+
+Thêm vào `~/.aws/config`:
+
+```ini
+[profile target-account]
+role_arn = arn:aws:iam::<ACCOUNT_ID>:role/InfraEngineer
+source_profile = <base-profile>
+mfa_serial = arn:aws:iam::<ACCOUNT_ID>:mfa/<mfa-device>
+region = ap-southeast-1
+duration_seconds = 14400
+```
+
+Tên `target-account` là giá trị mặc định của biến `AWS_PROFILE` trong các script `automation/`.
+
+```bash
+aws sts get-caller-identity --profile target-account
+# Hỏi mã MFA → "Arn": "arn:aws:sts::<ACCOUNT_ID>:assumed-role/InfraEngineer/..."
+```
+
+---
+
+### A.3. AI Engineer: Console có username/mật khẩu
+
+AI Engineer dùng **AWS Console** (đăng nhập bằng username và mật khẩu). Quyền **giống Infra Engineer**, qua một role **riêng**.
+
+Thứ tự bắt buộc: **tạo user (5.1) trước, rồi mới tạo role (5.3)**. Trust policy tham chiếu tới user nào thì user đó phải tồn tại sẵn.
+
+#### A.3.1. Tạo IAM user có quyền đăng nhập Console
+
+**IAM → Users → Create user**
+1. **User name:** `<ai-user>` (ví dụ `ai-engineer-01`).
+2. Tick **Provide user access to the AWS Management Console** → **I want to create an IAM user**.
+3. **Console password:** *Autogenerated password*.
+4. Tick **Users must create a new password at next sign-in**. AWS tự gắn policy `IAMUserChangePassword`.
+5. **Permissions:** không gán policy nào khác, không thêm vào group.
+6. **Create user**. Lưu **Console sign-in URL**, **username** và **mật khẩu tạm**. Mật khẩu chỉ hiện một lần.
+
+#### A.3.2. Policy tự phục vụ và quyền assume role
+
+User `<ai-user>` → **Permissions → Add permissions → Create inline policy → JSON**, đặt tên `AIEngineerSelfServiceAndAssume`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Sid": "ViewOwnIdentity", "Effect": "Allow",
+      "Action": ["iam:GetUser", "iam:ListMFADevices", "iam:ListVirtualMFADevices", "iam:GetAccountPasswordPolicy"],
+      "Resource": "*" },
+    { "Sid": "ChangeOwnPassword", "Effect": "Allow",
+      "Action": "iam:ChangePassword",
+      "Resource": "arn:aws:iam::<ACCOUNT_ID>:user/${aws:username}" },
+    { "Sid": "ManageOwnMFAWithMFA", "Effect": "Allow",
+      "Action": ["iam:CreateVirtualMFADevice", "iam:EnableMFADevice", "iam:ResyncMFADevice",
+                 "iam:DeactivateMFADevice", "iam:DeleteVirtualMFADevice"],
+      "Resource": ["arn:aws:iam::<ACCOUNT_ID>:user/${aws:username}",
+                   "arn:aws:iam::<ACCOUNT_ID>:mfa/*"],
+      "Condition": { "Bool": { "aws:MultiFactorAuthPresent": "true" } } },
+    { "Sid": "ManageOwnAccessKeysWithMFA", "Effect": "Allow",
+      "Action": ["iam:CreateAccessKey", "iam:ListAccessKeys", "iam:UpdateAccessKey",
+                 "iam:DeleteAccessKey", "iam:GetAccessKeyLastUsed"],
+      "Resource": "arn:aws:iam::<ACCOUNT_ID>:user/${aws:username}",
+      "Condition": { "Bool": { "aws:MultiFactorAuthPresent": "true" } } },
+    { "Sid": "AssumeAIEngineerWithMFA", "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/AIEngineer",
+      "Condition": { "Bool": { "aws:MultiFactorAuthPresent": "true" } } }
+  ]
+}
+```
+
+| Statement | Tác dụng |
+|---|---|
+| `ViewOwnIdentity` | Xem thông tin của mình, danh sách thiết bị MFA, chính sách mật khẩu của account |
+| `ChangeOwnPassword` | Tự đổi mật khẩu của mình. Không cần điều kiện MFA vì API bắt buộc nhập mật khẩu cũ |
+| `ManageOwnMFAWithMFA` | Tự quản lý thiết bị MFA của mình (`${aws:username}`), **chỉ khi phiên đã có MFA**. Thiếu điều kiện này, kẻ có access key bị lộ có thể gắn thiết bị MFA của họ rồi assume role. Vì vậy **lần đăng ký MFA đầu tiên do admin làm cùng AI Engineer** (mục A.3.5) |
+| `ManageOwnAccessKeysWithMFA` | Tự tạo, xoay vòng, xóa **access key của chính mình** (cho CLI/Terraform), chỉ khi phiên có MFA |
+| `AssumeAIEngineerWithMFA` | Chỉ được vào role `AIEngineer`, và chỉ khi **phiên đăng nhập có MFA** |
+
+#### A.3.3. Tạo role `AIEngineer`
+
+**IAM → Roles → Create role → Custom trust policy**:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": { "AWS": "arn:aws:iam::<ACCOUNT_ID>:user/<ai-user>" },
+    "Action": "sts:AssumeRole",
+    "Condition": { "Bool": { "aws:MultiFactorAuthPresent": "true" } }
+  }]
+}
+```
+
+1. **Next** → tick **`InfraEngineerMoodle`** → **Next**.
+2. **Role name:** `AIEngineer` → **Create role**.
+3. Mở role → **Edit** → **Maximum session duration = 4 hours**.
+
+#### A.3.4. Bàn giao thông tin đăng nhập
+
+Gửi **hai mảnh qua hai kênh khác nhau**, không bao giờ gửi chung, và không gửi qua chat công cụ AI:
+
+| Kênh 1 (ví dụ email công việc) | Kênh 2 (ví dụ tin nhắn trực tiếp) |
+|---|---|
+| Link: `https://<ACCOUNT_ID>.signin.aws.amazon.com/console`, kèm username `<ai-user>` | Mật khẩu tạm |
+
+Lý do: lộ một kênh thì kẻ xấu vẫn thiếu mảnh còn lại. Mật khẩu tạm cũng bị buộc đổi ở lần đăng nhập đầu.
+
+#### A.3.5. AI Engineer đăng nhập lần đầu
+
+1. Mở link, đăng nhập bằng username và mật khẩu tạm, rồi **đặt mật khẩu mới**.
+2. MFA đầu tiên: **admin** mở *IAM → Users → `<ai-user>` → Security credentials → Assign MFA device* khi có mặt AI Engineer, và AI Engineer quét QR bằng điện thoại của mình. (Policy cố ý không cho user tự thêm MFA khi chưa có MFA.)
+3. **Đăng xuất, đăng nhập lại có MFA.** Bắt buộc: điều kiện `aws:MultiFactorAuthPresent` chỉ đúng khi phiên đăng nhập đã qua MFA.
+4. Góc phải → **Switch role**:
+   - **Account:** `<ACCOUNT_ID>`
+   - **IAM role name:** `AIEngineer`
+   - **Display name:** `AIEngineer-Moodle`
+5. Đổi region sang **Asia Pacific (Singapore) ap-southeast-1**.
+
+#### A.3.6. (Tùy chọn) AI Engineer dùng AWS CLI hoặc Terraform
+
+1. AI Engineer đăng nhập Console **bằng user, có MFA, chưa Switch role** (nếu đang ở role thì **Switch back**: role không có quyền IAM). Vào **Security credentials → Access keys → Create access key** (use case CLI) và nhập ngay vào `aws configure`; không lưu CSV, không chụp màn hình. Quyền này đến từ statement `ManageOwnAccessKeysWithMFA` ở mục A.3.2.
+2. Thêm profile:
+
+```ini
+[profile ai-target-account]
+role_arn = arn:aws:iam::<ACCOUNT_ID>:role/AIEngineer
+source_profile = <profile-chứa-access-key>
+mfa_serial = arn:aws:iam::<ACCOUNT_ID>:mfa/<mfa-device-của-ai-engineer>
+region = ap-southeast-1
+duration_seconds = 14400
+```
+
+Khi chạy script trong `automation/`: `AWS_PROFILE=ai-target-account bash automation/<script>.sh`.
+
+**Ranh giới:** quyền AWS (tài liệu này) và quyền **SSH vào `monitor-ai-01`** (`automation/authorize-ai-engineer.sh`) là **hai lớp độc lập**. Cấp lớp này không tự động cấp lớp kia.
+
+---
+
+### A.4. Kiểm chứng quyền
+
+**Đoán trước kết quả**, rồi mới thử. Lần thử nào có kết quả khác với dự đoán cho thấy policy, hoặc cách mình hiểu policy, đang sai.
+
+#### A.4.1. Infra Engineer (CLI)
+
+```bash
+export AWS_PROFILE=target-account AWS_PAGER=""
+aws sts get-caller-identity --query Arn --output text                   # assumed-role/InfraEngineer/...
+aws ec2 describe-vpcs --query 'Vpcs[].VpcId'                             # Được phép
+aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
+  --query Parameter.Value --output text                                  # Được phép (AMI ID)
+aws ec2 describe-vpcs --region us-east-1                                 # PHẢI bị chặn: explicit deny
+aws iam create-user --user-name should-fail-test                         # PHẢI AccessDenied
+aws s3api list-buckets                                                   # PHẢI AccessDenied
+```
+
+Kết quả đã đạt khi triển khai (10/10/2026): đúng cả 6 dòng.
+
+#### A.4.2. AI Engineer (Console, sau khi Switch role)
+
+| Thử | Kỳ vọng | Vì sao |
+|---|---|---|
+| EC2 → Instances (Singapore) | Thấy `monitor-ai-01`, `moodle-app-a`, `moodle-app-b` | `ec2:Describe*` được cho phép |
+| Đổi region sang N. Virginia | Báo không có quyền | `DenyOutsideSingapore` |
+| IAM → Users → Create user | Access denied | Policy không cho quản lý IAM |
+| S3 → Buckets | Access denied | S3 không có trong policy |
+| **Trước khi Switch role**, mở EC2 | **Access denied** | Bản thân user không có quyền gì. Quyền chỉ nằm ở role, và vào role thì cần MFA |
+
+Dòng cuối là bài kiểm tra quan trọng nhất của mô hình.
+
+---
+
+### A.5. Dùng với Terraform và các script automation
+
+**Terraform không tự hỏi được mã MFA.** Lấy credential tạm từ AWS CLI rồi đưa cho Terraform:
+
+```bash
+aws sts get-caller-identity --profile target-account        # nhập mã MFA nếu phiên đã hết hạn
+cd terraform
+eval "$(aws configure export-credentials --profile target-account --format env)"
+unset AWS_PROFILE
+export AWS_REGION=ap-southeast-1
+terraform plan -var-file=deployment.tfvars -out=moodle.tfplan
+```
+
+- Credential tạm hết hạn sau **4 giờ**. Khi gặp `ExpiredToken`, làm lại hai lệnh đầu.
+- Nếu còn để `AWS_PROFILE=target-account` trong terminal, Terraform sẽ báo `AssumeRoleTokenProvider session option not set`. Chạy `unset AWS_PROFILE`.
+- Các script automation gọi `aws --profile target-account` trực tiếp, nên AWS CLI **tự hỏi MFA** khi cần.
+
+---
+
+### A.6. Vận hành: xoay vòng key, thu hồi quyền
+
+#### A.6.1. Xoay vòng access key (ví dụ khi key bị lộ)
+
+Làm theo thứ tự này để không bị gián đoạn:
+
+1. **Create access key** mới. Một user được có tối đa 2 key cùng lúc.
+2. `aws configure --profile <base-profile>`, nhập key mới (gõ trực tiếp vào terminal).
+3. `rm -rf ~/.aws/cli/cache && aws sts get-caller-identity --profile target-account` để chắc chắn đang dùng key mới.
+4. Key cũ: **Deactivate**, rồi **Delete**.
+5. Xóa mọi file CSV chứa key: `rm ~/Downloads/*accessKeys*.csv`.
+
+#### A.6.2. Thu hồi quyền
+
+| Mục tiêu | Cách làm |
+|---|---|
+| Tạm khóa một người | User → **Security credentials**: Disable console access, Deactivate access key |
+| Thu hồi vĩnh viễn | Xóa user. Role có thể giữ lại cho người thay thế (sửa `Principal` trong trust policy) |
+| Thu hẹp quyền AI Engineer | Gỡ `InfraEngineerMoodle` khỏi role `AIEngineer`, gắn policy chỉ đọc. Infra Engineer không bị ảnh hưởng |
+| Thu hồi khẩn cấp các phiên đang mở của role | Role → **Revoke active sessions**. Phiên cũ mất hiệu lực, user phải assume lại |
+
+---
+
+### A.7. Lỗi đã gặp và cách xử lý
+
+| Triệu chứng | Nguyên nhân | Cách xử lý |
+|---|---|---|
+| Policy editor báo *"Fix all syntax errors"* | Dán **câu lệnh `sed`** vào ô JSON | Chạy lệnh trong terminal để lấy JSON, rồi dán JSON |
+| *"Has prohibited field Principal"* | Dán **trust policy** vào màn hình tạo **permission policy** | Trust policy thuộc *Roles → Create role → Custom trust policy* |
+| ARN `user/vietle>` | Còn sót dấu `>` của placeholder | Xóa ký tự thừa. Kiểm tra mọi ARN không còn `<` hay `>` |
+| Tạo role không thấy chỗ tick policy | Đang ở trang trust policy | Ô tick nằm ở trang **Add permissions** ngay sau đó |
+| Không tìm thấy policy khi tick | Đang lọc *AWS managed* | Lọc **Customer managed** |
+| `AssumeRoleTokenProvider session option not set` | Terraform không hỏi được MFA | Dùng `aws configure export-credentials` (mục A.5) |
+| Secret access key xuất hiện trong chat/editor | Mở file CSV trong VS Code | Xoay vòng key theo mục A.6.1 |
+
+---
+
+### A.8. Chẩn đoán khi bị "Access Denied"
+
+Áp dụng phương pháp chung (xem [BAO_CAO_KICH_BAN_LOI, mục 1.3](BAO_CAO_KICH_BAN_LOI.md#13-phương-pháp-chẩn-đoán-dùng-chung)):
+
+1. **Ai đang gọi?** `aws sts get-caller-identity`. Nếu kết quả là `user/...` thay vì `assumed-role/...`, bạn **chưa vào role**: thiếu MFA hoặc chưa Switch role.
+2. **Ở region nào?** Mọi region khác `ap-southeast-1` đều bị chặn **có chủ đích**.
+3. **Thông báo lỗi nói gì?**
+   - Có chữ *"explicit deny"* → bị chặn bởi statement `Deny`, thường là chặn region. **Đúng thiết kế.**
+   - *"no identity-based policy allows the X action"* → action X **chưa có** trong policy.
+4. **Action đó có nên được phép không?** Đối chiếu với thứ Terraform hoặc script thực sự cần. **Chỉ thêm đúng action đó**, không thêm wildcard rộng hơn, rồi cập nhật cả mục A.1 của phụ lục này.
+5. **Kiểm chứng lại** bằng đúng lệnh đã bị từ chối.
+
+Muốn thử policy mà không cần chạy thật: **IAM → Policy simulator**, chọn role và action.
+
+---
+
+### A.9. Checklist nhanh
+
+**Tạo mới (admin):**
+- [ ] Policy `InfraEngineerMoodle` đã tạo (một lần), không còn `<ACCOUNT_ID>` chưa thay
+- [ ] IAM user đã tạo, **không** gán policy rộng, có MFA (Infra) hoặc mật khẩu bắt buộc đổi (AI)
+- [ ] Role đã tạo: trust policy trỏ **đúng user**, điều kiện **MFA**, gắn `InfraEngineerMoodle`, phiên ≤ 4 giờ
+- [ ] User có inline policy chỉ cho assume **đúng role của mình**
+- [ ] Thông tin đăng nhập gửi qua **hai kênh khác nhau**
+
+**Kiểm chứng (người dùng):**
+- [ ] `get-caller-identity` (hoặc tên role trên Console) hiện `assumed-role/<Role>`
+- [ ] Đọc được EC2 ở Singapore
+- [ ] **Bị chặn** ở region khác, ở IAM create user, ở S3
+- [ ] **Bị chặn** trước khi vào role
+
+**Định kỳ:**
+- [ ] Xoay vòng access key (ví dụ 90 ngày), và xoay ngay khi nghi bị lộ
+- [ ] Rà lại danh sách user, gỡ người không còn cần quyền
+- [ ] Rà lại policy khi Terraform thêm loại resource mới
+
+
+---
+
+## Phụ lục B: Cấu hình Entra ID, Okta và OAuth 2 của Moodle
+
+Thực hiện ngày 09–11/10/2026; mục 13 của tài liệu này mô tả phần phải làm lại sau mỗi lần dựng lại hạ tầng. Giá trị
+cấu hình và lý do thiết kế nằm ở [BAO_CAO_KIEN_TRUC_HA_TANG, mục 9](BAO_CAO_KIEN_TRUC_HA_TANG.md#9-xác-thực-entra-id--okta--moodle).
+Domain Okta **luôn** là `trial-3489054.okta.com` (lấy từ thanh địa chỉ, bỏ `-admin`), **không** phải tên hiển thị
+`galaxyfinx-trial-3489054`.
+
+### B.1. Các bước cấu hình
+
+Các bước 6–9 của lần triển khai gốc (IAM, Terraform, Ansible, deploy Moodle) chính là các giai đoạn 1–7 của tài liệu
+này nên không lặp lại.
+
+#### Bước 1. Entra ID: tạo user và group demo
+
+1. Trong Entra admin center, tạo 3 group: `moodle-students`, `moodle-teachers`, `moodle-denied`.
+   - Membership type là **Assigned** (không dùng dynamic rule).
+   - **Không lồng group**, vì Okta không import nested group.
+2. Tạo user demo và thêm mỗi user vào đúng group của mình.
+3. **Bắt buộc điền** cho từng user (*Edit properties*):
+   - Tab **Identity**: **First name** và **Last name**.
+   - Tab **Contact information**: **Email**.
+
+   Okta bắt buộc `firstName` và `lastName`. Moodle bắt buộc họ, tên và email. Xem lỗi *Import user thất bại* ở B.2.
+
+#### Bước 2. Okta: import user và group từ Entra
+
+1. **Applications → Browse App Catalog → Microsoft Office 365 → Add Integration**, nhập tenant `m365x22866088.onmicrosoft.com`.
+2. **Sign-On**: không federate domain cho Moodle. Domain `.onmicrosoft.com` cũng **không thể federate**. Xem lý do ở báo cáo kiến trúc hạ tầng, mục 9.5.
+3. **Provisioning → API Integration**:
+   - Tick **Enable API integration** và **Import Groups**.
+   - **Bấm "Authenticate with Microsoft Account" trước**, đăng nhập Global Admin, **Accept** quyền cho *Okta Microsoft Graph Client*.
+   - **Sau đó** mới bấm **Save**. Xem lỗi *Lưu provisioning trước khi cấp consent* ở B.2.
+4. **Provisioning → To Okta**: username format là email; tick **Import unlicensed users** (user demo không có license M365); **bỏ** auto-confirm.
+5. **Import → Import Now → Full import**, rồi **chỉ confirm user demo**. Okta kéo về toàn bộ user của tenant; org trial chỉ cho 10 active user.
+6. Kiểm tra **Directory → Groups**: 3 group có biểu tượng Office 365, mỗi group 1 thành viên. Các group mẫu như *Tailspin Toys* hay *Contoso Team* là dữ liệu có sẵn của tenant demo, bỏ qua.
+
+#### Bước 3. Okta: kích hoạt user và đặt mật khẩu Okta
+
+User sau khi import ở trạng thái **Staged**: chưa có mật khẩu Okta, và **mật khẩu Entra không dùng được**.
+
+1. **Directory → People →** chọn user → **Activate**. **Bỏ tick** gửi email kích hoạt, vì user demo không có hộp thư.
+2. Trạng thái chuyển thành *Pending user action*. Bấm **Set Password & Activate** (hoặc lấy mật khẩu tạm), rồi giao mật khẩu cho user demo.
+3. Lần đầu đăng nhập, Okta yêu cầu đổi mật khẩu (nếu dùng mật khẩu tạm) và **đăng ký Okta Verify**.
+4. Chỉ cần kích hoạt `student.test` và `teacher.test`. User trong `moodle-denied` không cần.
+
+#### Bước 4. Okta: tạo app OIDC cho Moodle
+
+Phương án Terraform cho Okta đã bị bỏ (xem báo cáo kiến trúc hạ tầng, mục 9.5). App được tạo **bằng tay**:
+
+**Applications → Create App Integration → OIDC - OpenID Connect → Web Application**
+
+| Trường | Giá trị |
+|---|---|
+| Name | `Moodle` |
+| Grant type | **Chỉ Authorization Code** |
+| Sign-in redirect URI | `http://<ALB_DNS_NAME>/admin/oauth2callback.php` |
+| Sign-out redirect URI | `http://<ALB_DNS_NAME>/` |
+| Controlled access | **Limit access to selected groups**: `moodle-students`, `moodle-teachers` |
+| Client authentication | **Client secret** |
+| Require PKCE | **Tắt** |
+
+Kiểm tra: URL của trang app có dạng `/admin/app/oidc_client/instance/<OKTA_CLIENT_ID>/`, và app ở trạng thái **Active**.
+
+#### Bước 5. Okta: policy MFA cho app
+
+**Security → Authentication Policies → Add a policy** `Moodle Demo - MFA`:
+
+| Priority | Rule | IF | THEN |
+|---|---|---|---|
+| 1 | Students and teachers require MFA | Group membership: `moodle-students` hoặc `moodle-teachers`. Các điều kiện khác để mặc định (Any) | Allowed after successful authentication; **Password + Another factor** (Okta Verify); re-authentication mỗi 2 giờ |
+| 2 | Catch-all Rule | Mọi user còn lại | **Denied** |
+
+Tab **Applications → Add app** → chọn `Moodle`.
+
+
+#### Bước 10. Moodle: cấu hình OAuth 2 service `Okta`
+
+**a) Tạo service:** **Site administration → Server → OAuth 2 services → Custom**
+
+| Trường | Giá trị | Lý do |
+|---|---|---|
+| Name | `Okta` | |
+| Client ID / Client secret | Lấy từ app `Moodle` trong Okta | |
+| Authenticate token requests via HTTP headers | **Tắt** | Gửi secret trong POST body (`client_secret_post`), khớp mặc định của Okta |
+| Service base URL | **Để trống** | Endpoint nhập thủ công ở bước b) (xem báo cáo kiến trúc hạ tầng, mục 9.5) |
+| This service will be used | **Login page only** | Không cần system account hay internal services |
+| Display on login page as | `Sign in by Okta` | |
+| Scopes | `openid profile email` | |
+| Login domains | `m365x22866088.onmicrosoft.com` | Chỉ chấp nhận email thuộc tenant demo |
+| Require email verification | **Tắt** | Moodle chưa cấu hình SMTP |
+
+**b) Endpoint** (biểu tượng 🔍 *Configure endpoints*), **dùng domain thật của org**:
+
+| Name | URL |
+|---|---|
+| `authorization_endpoint` | `https://trial-3489054.okta.com/oauth2/v1/authorize` |
+| `token_endpoint` | `https://trial-3489054.okta.com/oauth2/v1/token` |
+| `userinfo_endpoint` | `https://trial-3489054.okta.com/oauth2/v1/userinfo` |
+
+**c) User field mappings** (biểu tượng 👤):
+
+| External (claim của Okta) | Internal (trường Moodle) |
+|---|---|
+| `given_name` | `firstname` |
+| `family_name` | `lastname` |
+| `email` | `email` |
+| `sub` | `username` |
+
+**d) Bật xác thực:** **Plugins → Authentication → Manage authentication**: bật **OAuth 2**. Đảm bảo *Prevent account creation when authenticating* **tắt**.
+
+**e) Khóa các trường do IdP quản lý:** trong Settings của OAuth 2, đặt `First name`, `Last name`, `Email address` là **Locked**.
+
+**Đã kiểm tra trực tiếp trong database:**
+- Issuer `enabled=1`, `baseurl=''`, `basicauth=0`, `requireconfirmation=0`, đúng scope và login domain.
+- Đủ 3 endpoint và 4 mapping.
+- `auth = email,oauth2`.
+- `registerauth=''`, nghĩa là **không** cho tự đăng ký tài khoản.
+- Cả 3 trường đều `locked`.
+- Cột **Login** của service trong giao diện hiện ✅.
+
+#### Bước 11. Kiểm thử đầu-cuối (đang chờ nghiệm thu)
+
+| # | Kịch bản | Kỳ vọng |
+|---|---|---|
+| 1 | `student.test`: cửa sổ ẩn danh → *Sign in by Okta* → mật khẩu Okta + Okta Verify | Vào Moodle với họ tên lấy từ Entra; account có `auth = oauth2` |
+| 2 | `teacher.test` | Tương tự |
+| 3 | User trong `moodle-denied` | Okta chặn, **không có** session Moodle |
+| 4 | Kiểm tra liên kết account | `auth_oauth2_linked_login.username` là `sub` của Okta (dạng `00u…`), **không phải** email |
+| 5 | Phân quyền | Ghi danh `teacher.test` làm Teacher, `student.test` làm Student. Kiểm tra quyền sửa course |
+| 6 | Vòng đời từ Entra | Disable user ở Entra → **Full import** ở Okta → user không đăng nhập mới được nữa |
+
+Logout khỏi Moodle **không** logout khỏi Okta, nên đăng nhập lại ngay sẽ không phải nhập mật khẩu. Đây là hành vi bình thường của SSO.
+
+
+Trạng thái nghiệm thu (22/10/2026): đăng nhập đầu-cuối `student.test` qua Okta đã xác nhận trong DB (một tài khoản
+`auth = oauth2`, username là `sub`, một liên kết tới issuer `Okta`, sự kiện `user_loggedin` đúng thời điểm);
+`moodle-denied` bị Okta từ chối và Moodle không tạo tài khoản. Lần đầu đăng nhập, Okta đòi đăng ký Okta Verify; nút
+*Set up Okta Verify* trên Mac chỉ chạy khi đã cài ứng dụng Okta Verify for macOS, nên nhanh hơn là *Return to
+authenticator list* rồi đăng ký bằng điện thoại.
+
+**Dựng lại issuer bằng CLI.** Bản xuất cấu hình trước khi destroy nằm ở
+`terraform/.artifacts/preserve/moodle-oauth2-okta.json` (chứa client secret, mode 600). Chép vào container qua stdin,
+chạy script khôi phục, rồi xoá ngay; PHP CLI phải chạy với `-u 1000:1999`:
+
+```bash
+C=terraform/.artifacts/moodle-ssh.config
+ssh -F $C moodle-app-a 'sudo docker exec -i -u 1000:1999 release-moodle-web-1 sh -c "umask 077; cat > /tmp/okta-issuer.json"' \
+  < terraform/.artifacts/preserve/moodle-oauth2-okta.json
+ssh -F $C moodle-app-a 'sudo docker exec -i -u 1000:1999 release-moodle-web-1 php' < restore-okta.php
+ssh -F $C moodle-app-a 'sudo docker exec -u 1000:1999 release-moodle-web-1 rm -f /tmp/okta-issuer.json'
+```
+
+`restore-okta.php` đọc rồi xoá `/tmp/okta-issuer.json`, gọi `core\oauth2\api::create_issuer`, `create_endpoint`,
+`create_user_field_mapping`, bật issuer, đặt `auth` (`email,oauth2`), khoá các trường họ tên và email, rồi
+`purge_all_caches()`. Nếu đã có issuer cùng tên, script dừng mà không đổi gì. Kết quả mong đợi:
+`restored issuer=Okta enabled=1 showonloginpage=2 endpoints=3 mappings=4 auth=email,oauth2`. Container không có
+`CAP_FOWNER`: file trong `/tmp` phải được xoá bởi đúng user đã tạo nó.
+
+### B.2. Lỗi đã gặp khi cấu hình SSO
+
+#### Lỗi gốc: dùng nhầm domain của org Okta
+
+| | |
+|---|---|
+| **Triệu chứng** | API token mới tạo bị báo `E0000011 Invalid token provided`; OAuth service app bị `invalid_client: Invalid value for 'client_id'`; `/.well-known/openid-configuration` và `/oauth2/v1/keys` trả 403 `E0000006`; `/oauth2/v1/authorize` trả **400 trống** với mọi tham số; user đăng nhập báo "Không thể đăng nhập" |
+| **Nguyên nhân gốc** | Lấy `galaxyfinx-trial-3489054`, **tên hiển thị** của org ở góc phải Admin Console, làm subdomain. Domain thật là `trial-3489054.okta.com`, xem trên **thanh địa chỉ** (`trial-3489054-admin.okta.com`). Mọi request đều gửi tới **một org khác** |
+| **Chẩn đoán sai trước đó** | Kết luận "org trial bị hỏng ở cấp tenant", đề xuất tạo org mới. Kết luận này **sai**. Việc người vận hành yêu cầu tìm root cause thay vì tạo lại org là quyết định đúng |
+| **Cách tìm ra** | Bài KB của Okta về lỗi 400 không kèm mô tả trỏ tới lỗi `client_id`. Kiểm tra trang app (đúng loại `oidc_client`, đang Active), thì **URL trên thanh địa chỉ** để lộ domain thật |
+| **Xác nhận** | Trên domain đúng: discovery 200, JWKS 200, `/authorize` trả trang đăng nhập, và redirect sai trả lỗi **có mô tả** |
+| **Cách sửa** | Đổi 3 endpoint của Moodle sang `trial-3489054.okta.com` |
+| **Phòng tránh** | Luôn lấy domain Okta từ **thanh địa chỉ** (bỏ `-admin`). Đối chứng nhanh: `curl https://<domain>/.well-known/openid-configuration` phải trả 200 |
+
+#### Lộ thông tin bí mật trong lúc làm
+
+| Sự cố | Xử lý |
+|---|---|
+| API token Okta xuất hiện trong ảnh chụp terminal (do gõ `export OKTA_API_TOKEN=...`) | Revoke token; dùng `read -s` để nhập token |
+| File `terraform/okta/env` chứa token nhưng **không được Git bỏ qua** | Đổi tên thành `.env` (đã có trong `.gitignore`), `chmod 600` |
+| Private key của OAuth service app nằm trong repo | Chuyển ra `~/.okta/`, `chmod 600` |
+| Secret access key AWS lộ khi mở file CSV trong editor | Tạo access key mới, vô hiệu hóa và xóa key cũ, xóa file CSV |
+
+**Nguyên tắc:** không gõ secret trên dòng lệnh, không mở file chứa secret trong editor đang được chia sẻ, chụp màn hình trước khi secret hiện ra, và luôn chạy `git check-ignore -v <file>` với mọi file chứa bí mật.
+
+#### Lưu provisioning trước khi cấp consent
+
+| | |
+|---|---|
+| **Triệu chứng** | *"Please grant consent by authenticating with Microsoft Graph"* |
+| **Nguyên nhân** | Bấm **Save** trước khi **Authenticate with Microsoft Account** |
+| **Cách sửa** | Authenticate bằng Global Admin, Accept quyền, rồi mới Save |
+
+#### Import user thất bại: firstName / lastName trống
+
+| | |
+|---|---|
+| **Triệu chứng** | *Confirm Imported User Assignments*: `firstName/lastName – The field cannot be left blank` |
+| **Nguyên nhân** | User trên Entra chưa có First name và Last name |
+| **Cách sửa** | Điền họ, tên và email trong Entra, rồi **Full import** lại. Sửa ở nguồn (Entra) chứ không vá ở Okta |
+
+#### Không đăng nhập Okta được bằng mật khẩu Entra; không thấy nút đặt mật khẩu
+
+| | |
+|---|---|
+| **Nguyên nhân** | Import qua Graph **không chép mật khẩu**. User đang **Staged** nên chưa có mật khẩu Okta, và nút đặt mật khẩu chỉ xuất hiện sau khi Activate |
+| **Cách sửa** | Activate (không gửi email), rồi **Set Password & Activate** hoặc dùng mật khẩu tạm |
+
+
+#### Script chỉ chạy trên Linux, lỗi trên macOS
+
+| Script | Lỗi | Cách sửa |
+|---|---|---|
+| `automation/update-infrastructure.sh` | `chmod --reference` là tùy chọn chỉ có ở GNU | Đọc quyền file bằng `stat -c '%a'` (Linux), nếu không được thì `stat -f '%Lp'` (macOS) |
+| `automation/stage-moodle-release.sh` | `stat -c`, `ss -ltn`, chạy `psql` trong Docker (máy không có Docker) | Thêm cách đọc quyền file cho macOS; hàm `port_is_listening` dùng `ss` hoặc `lsof`; thêm nhánh chạy **`psql` trực tiếp** (vẫn qua SSH tunnel, vẫn `sslmode=verify-full`). Hành vi trên Linux/WSL giữ nguyên |
+
+#### Chạy script từ sai thư mục
+
+| Triệu chứng | Nguyên nhân | Cách sửa |
+|---|---|---|
+| `No such file or directory` khi đứng trong `automation/` | Đường dẫn tương đối tính từ thư mục gốc repo | `cd` về thư mục gốc repo |
+| Không thấy file mật khẩu admin | Lệnh tạo secret chạy trong `automation/`, nên file nằm ở `automation/terraform/.artifacts/…`, **chỗ này không được Git bỏ qua** | Chuyển về `terraform/.artifacts/moodle-secrets/`, so mã băm với bản trên server để xác nhận trùng |
+| `Required command not found: ansible-playbook` | Chưa cài Ansible | `brew install ansible` |
+
+
+#### Gateway Timeout (504) trên trang Moodle
+
+| | |
+|---|---|
+| **Triệu chứng** | Người dùng gặp 504 một lần |
+| **Điều tra** | ALB và cả 2 target healthy; `/healthz.php` và `/login` trả 200; tải thấp; không có lỗi PHP. Request bị 504 **không có trong access log** |
+| **Kết luận** | Không tái hiện được. Khả năng cao là xảy ra trong lúc Moodle đang cài đặt hoặc khởi động. **Chưa đóng**: nếu lặp lại, ghi lại URL và thời điểm để đối chiếu với metric của ALB |
+
+#### Hai phát hiện không phải lỗi
+
+- Access log có request tới `wp-login.php` và `wp-links-opml.php`: đó là **bot quét lỗ hổng WordPress** trên Internet, vô hại với Moodle.
+- `m365x22866088` hiện thành `m365×22866088` trên giao diện Okta: do **font** hiển thị chữ "x" giữa các con số. Ký tự thật vẫn là "x".
+
+
+### B.3. Lệnh kiểm tra nhanh
+
+```bash
+# Domain Okta có đúng không (phải trả issuer = https://trial-3489054.okta.com)
+curl -s https://trial-3489054.okta.com/.well-known/openid-configuration | jq -r .issuer
+
+# Moodle qua ALB
+MOODLE_URL="$(terraform -chdir=terraform output -json moodle_application | jq -r .url)"
+curl -s -o /dev/null -w '%{http_code}\n' "$MOODLE_URL/healthz.php"
+
+# Hạ tầng có khớp với code không (phải "No changes")
+cd terraform && eval "$(aws configure export-credentials --profile target-account --format env)" \
+  && terraform plan -var-file=deployment.tfvars -detailed-exitcode
+
+# Log 20 request gần nhất trên mỗi node Moodle (chạy từ thư mục gốc repo)
+for h in moodle-app-a moodle-app-b; do
+  ssh -F terraform/.artifacts/moodle-ssh.config "$h" \
+    'sudo docker logs --since 10m release-moodle-web-1 2>&1 | grep -v healthz | tail -20'
+done
+```
+
+---
+
+## Phụ lục C: Kết thúc phiên và bàn giao
+
+Nếu một bộ gây lỗi hay chiến dịch thất bại, đừng lặp lại lỗi ngay. Reset các kịch bản trong allowlist và đưa hệ thống
+về baseline trước:
+
+```bash
+bash automation/moodle-environment-baseline.sh reset
+bash automation/moodle-environment-baseline.sh verify
+```
+
+Kết thúc mọi phiên hạ tầng hoặc thử nghiệm bằng kiểm tra drift; kỳ vọng `No changes`:
+
+```bash
+terraform -chdir=terraform plan \
+  -input=false \
+  -var-file=deployment.tfvars \
+  -detailed-exitcode
+```
+
+Ghi lại SHA image Moodle và Agent đang chạy, ID chiến dịch, chỉ số nghiệm thu, đường dẫn artifact kết quả, các quan
+sát về alert và kết quả Terraform cuối cùng. Che credential, IP không cần cho báo cáo, ARN của secret và private key.
+
+
+---
+
+## Phụ lục D: Gỡ toàn bộ hạ tầng (chi tiết)
+
+Đây là thao tác **phá huỷ**. Nó xoá mọi tài nguyên mà state Terraform của staging đang quản lý: hai EC2 Moodle,
+monitor và EIP, ALB và target group, RDS, EFS cùng access point và mount target, NAT Gateway và EIP của chúng, subnet,
+route, Internet Gateway, security group, IAM role của monitor và tài nguyên CloudWatch do Terraform quản lý. Nó
+**không** xoá image trên GitHub, mã nguồn, khoá trên máy bạn, hay tài nguyên không nằm trong state.
+
+### D.1. Trước khi tạo plan destroy
+
+1. Dừng mọi thử nghiệm hoặc soak đang chạy, thu thập bằng chứng cần cho báo cáo.
+2. Quyết định là **gỡ có giữ dữ liệu** hay **gỡ hẳn**. RDS đang đặt `skip_final_snapshot=true` và
+   `delete_automated_backups=true`, nên destroy bình thường **không** tạo snapshot cuối và **xoá** backup tự động.
+3. Cần giữ dữ liệu: tạo snapshot thủ công và đợi nó xong trước. Snapshot có phí lưu trữ và phải được giữ có chủ đích.
+4. Gỡ hẳn: liệt kê snapshot RDS thủ công và recovery point AWS Backup của EFS **trước** destroy, rồi chỉ xoá đúng các
+   ID đã review **sau khi** Terraform đã gỡ tài nguyên chính.
+5. Xác nhận đúng account, workspace và state của staging. Không bao giờ xoá VPC trên Console để "đi tắt" qua state.
+6. Gỡ runner CD khỏi GitHub (*Settings → Actions → Runners → monitor-ai-01 → Remove*) và vô hiệu PAT `GHCR_TOKEN`
+   nếu không còn dùng.
+
+Snapshot thủ công (tuỳ chọn, chỉ làm sau khi đã xem tên và chi phí):
+
+```bash
+export AWS_PROFILE=target-account
+export AWS_REGION=ap-southeast-1
+DB_IDENTIFIER="$(terraform -chdir=terraform output -json moodle_database | jq -r .instance_identifier)"
+SNAPSHOT_ID="${DB_IDENTIFIER}-final-$(date -u +%Y%m%dT%H%M%SZ)"
+
+aws rds create-db-snapshot \
+  --profile "$AWS_PROFILE" \
+  --region "$AWS_REGION" \
+  --db-instance-identifier "$DB_IDENTIFIER" \
+  --db-snapshot-identifier "$SNAPSHOT_ID"
+
+aws rds wait db-snapshot-available \
+  --profile "$AWS_PROFILE" \
+  --region "$AWS_REGION" \
+  --db-snapshot-identifier "$SNAPSHOT_ID"
+```
+
+### D.2. Plan destroy, review, rồi apply đúng file đó
+
+EFS có `lifecycle.prevent_destroy = true` để chống mất dữ liệu. Khi gỡ hẳn có chủ đích, tạm xoá khối `lifecycle`
+trong `terraform/efs.tf`, chạy plan destroy đã review, rồi **khôi phục** khối đó trong source khi destroy xong. Không
+dùng `-target` để lách.
+
+```bash
+umask 077
+mkdir -p terraform/.artifacts
+
+terraform -chdir=terraform plan \
+  -destroy \
+  -input=false \
+  -var-file=deployment.tfvars \
+  -out=.artifacts/moodle-destroy.tfplan
+
+terraform -chdir=terraform show -no-color .artifacts/moodle-destroy.tfplan
+```
+
+Plan chỉ được chứa đúng tài nguyên Moodle staging. Sau khi review:
+
+```bash
+terraform -chdir=terraform apply .artifacts/moodle-destroy.tfplan
+```
+
+### D.3. Kiểm tra không còn gì tính tiền
+
+Xác nhận Terraform không còn theo dõi tài nguyên, đã khôi phục khối `lifecycle` của EFS (`git diff` phải sạch), và
+kiểm tra **trong AWS**: một lần apply bị ngắt có thể để lại tài nguyên ngoài state (mục 7.2 và 18.2).
+
+```bash
+terraform -chdir=terraform state list
+git diff --exit-code terraform/efs.tf
+aws rds describe-db-instances --query 'DBInstances[].DBInstanceIdentifier'
+aws ec2 describe-nat-gateways --filter Name=state,Values=pending,available --query 'NatGateways[].NatGatewayId'
+aws elbv2 describe-load-balancers --query 'LoadBalancers[].LoadBalancerName'
+aws efs describe-file-systems --query 'FileSystems[].FileSystemId'
+aws ec2 describe-addresses --query 'Addresses[].PublicIp'
+aws ec2 describe-vpcs --filters Name=is-default,Values=false --query 'Vpcs[].VpcId'
+```
+
+Tài nguyên chưa từng nằm trong state (ví dụ một EC2 tạo tay trong VPC mặc định) nằm ngoài phạm vi phụ lục này: báo
+cho người sở hữu, đừng tự xoá. Xoá các dòng `~/.ssh/known_hosts` của host đã gỡ trước lần dựng lại kế tiếp (mục 8).
+
+### D.4. Xoá snapshot và recovery point khi gỡ hẳn
+
+Terraform không xoá snapshot RDS thủ công hay recovery point EFS do AWS Backup quản lý. Chỉ làm phần này khi chủ đích
+là xoá **toàn bộ** dữ liệu có thể khôi phục, sau khi destroy thành công. Không thể hoàn tác.
+
+Liệt kê đúng mục tiêu trước. Đừng xoá snapshot hay recovery point chỉ vì tên trông giống; đối chiếu database
+identifier hoặc ARN của EFS và thời điểm tạo.
+
+```bash
+export AWS_PROFILE=target-account
+export AWS_REGION=ap-southeast-1
+DB_IDENTIFIER='moodle-staging-postgres' # Ghi lại identifier thật trước khi destroy.
+
+aws rds describe-db-snapshots \
+  --profile "$AWS_PROFILE" \
+  --region "$AWS_REGION" \
+  --snapshot-type manual \
+  --query "DBSnapshots[?DBInstanceIdentifier=='$DB_IDENTIFIER'].{id:DBSnapshotIdentifier,status:Status,created:SnapshotCreateTime}" \
+  --output table
+```
+
+Chỉ xoá đúng ID snapshot đã review:
+
+```bash
+aws rds delete-db-snapshot \
+  --profile "$AWS_PROFILE" \
+  --region "$AWS_REGION" \
+  --db-snapshot-identifier 'REVIEWED_MANUAL_SNAPSHOT_ID'
+```
+
+Với EFS, ghi ARN trước khi destroy hoặc lấy từ baseline đã chụp. Vòng lặp dưới đây cố ý chỉ nhắm vault backup tự
+động của EFS và đúng một ARN EFS đã review. Chạy lệnh liệt kê và xem từng ARN trả về trước, rồi mới chạy vòng xoá.
+
+```bash
+EFS_ARN='arn:aws:elasticfilesystem:ap-southeast-1:ACCOUNT_ID:file-system/fs-REVIEWED_ID'
+BACKUP_VAULT='aws/efs/automatic-backup-vault'
+
+aws backup list-recovery-points-by-backup-vault \
+  --profile "$AWS_PROFILE" \
+  --region "$AWS_REGION" \
+  --backup-vault-name "$BACKUP_VAULT" \
+  --query "RecoveryPoints[?ResourceArn=='$EFS_ARN'].{arn:RecoveryPointArn,created:CreationDate,status:Status}" \
+  --output table
+```
+
+```bash
+mapfile -t RECOVERY_POINTS < <(
+  aws backup list-recovery-points-by-backup-vault \
+    --profile "$AWS_PROFILE" \
+    --region "$AWS_REGION" \
+    --backup-vault-name "$BACKUP_VAULT" \
+    --query "RecoveryPoints[?ResourceArn=='$EFS_ARN'].RecoveryPointArn" \
+    --output text | tr '\t' '\n'
+)
+
+for recovery_point in "${RECOVERY_POINTS[@]}"; do
+  test -n "$recovery_point" || continue
+  aws backup delete-recovery-point \
+    --profile "$AWS_PROFILE" \
+    --region "$AWS_REGION" \
+    --backup-vault-name "$BACKUP_VAULT" \
+    --recovery-point-arn "$recovery_point"
+done
+```
+
+Vault backup mặc định của EFS do AWS quản lý có thể có resource policy `Deny` tường minh cho
+`backup:DeleteRecoveryPoint`, và role `InfraEngineer` cũng không có `backup:*`. Nếu bị `AccessDenied ... explicit
+deny`, **đừng** tự nới policy của vault dùng chung: nhờ admin review và duyệt một thay đổi hẹp, hoặc để recovery
+point tự hết hạn. `mapfile` cần bash ≥ 4; trên macOS (bash 3.2) hãy chạy bằng bash của Homebrew.
+
+Cuối cùng xoá bản sao secret và artifact cục bộ theo chính sách xoá an toàn của máy. Không commit chúng làm "bản sao
+lưu".
+
+### D.5. Chi phí khi tạm dừng
+
+Dừng EC2 chỉ giảm tiền máy; RDS, EFS, NAT Gateway, ALB, EIP, backup, snapshot và lưu trữ vẫn tính tiền. Giữ bằng
+chứng trước. Khi không cần staging nữa, review một plan destroy tường minh; không dùng thao tác xoá tay rộng trên AWS
+thay cho quản lý state của Terraform.

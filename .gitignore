@@ -2,7 +2,6 @@
 *.md
 !README.md
 !AGENTS.md
-!AIops_CICD.md
 !report.md
 !docs/
 !docs/*.md
