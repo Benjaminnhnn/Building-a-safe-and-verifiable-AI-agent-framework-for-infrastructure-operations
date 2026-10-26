@@ -13,6 +13,7 @@ Use [AI Engineer status](AI_ENGINEER_STATUS.md) for the current ownership and ev
 
 ## Architecture and implementation
 
+- [System design diagram](diagrams/system-design-aws.drawio) — draw.io, two pages: AWS deployment and the six-layer AI agent framework (regenerate with `python docs/diagrams/generate_system_design.py docs/diagrams/system-design-aws.drawio`).
 - [AI agent architecture and threat model](AI_AGENT_ARCHITECTURE_AND_THREAT_MODEL.md)
 - [Runtime agent roles](RUNTIME_AGENT_ROLES.md) — Observer, Diagnosis, Planner, Execution and Verification agents and the stage ledger.
 - [Evidence-cited LLM diagnosis](LLM_DIAGNOSIS_DESIGN.md) — modes, citation validator, RAG knowledge links, and the AI evaluation.
