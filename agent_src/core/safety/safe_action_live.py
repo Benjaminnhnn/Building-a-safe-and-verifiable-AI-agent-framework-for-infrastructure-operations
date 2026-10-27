@@ -22,6 +22,8 @@ _EXECUTOR_NODES_BY_SCOPE = {
     "staging_moodle_nodes": {"a", "b"},
     "moodle-app-b": {"b"},
     "moodledata_synthetic_fixture_directory": {"a"},
+    # BIZ-01/02: the maintenance flag is on shared EFS and cron runs on node A only.
+    "staging_moodle_app": {"a"},
 }
 
 
@@ -121,7 +123,7 @@ class SafeActionLiveWorkflow:
     ) -> None:
         self._gate = gate
         self._audit = audit
-        self._catalog = catalog or ActionCatalog.load_moodle_s3_3_execution_catalog()
+        self._catalog = catalog or ActionCatalog.load_moodle_7_scenario_catalog()
         self._executor = executor
 
     def run(

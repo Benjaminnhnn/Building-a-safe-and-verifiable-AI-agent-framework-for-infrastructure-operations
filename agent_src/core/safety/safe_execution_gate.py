@@ -124,7 +124,9 @@ class SafeExecutionGate:
         else:
             self._catalog = ActionCatalog.load_full_catalog()
 
-        self._rollback_catalog = rollback_catalog or ActionCatalog.load_full_catalog()
+        # A reciprocal rollback must be reviewed in the same catalog that
+        # authorises the action; the Moodle+ERPNext catalog has no BIZ inverses.
+        self._rollback_catalog = rollback_catalog or self._catalog
 
         if scope_resources is not None:
             self._scope_resources = scope_resources

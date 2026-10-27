@@ -1,5 +1,17 @@
 # AI Engineer scope status
 
+## End-to-end action chain for all six executable scenarios (2026-10-27)
+
+`test_end_to_end_incident_lifecycle` covered alert -> candidate -> prepare -> two approvals -> execute -> signed verifier attestation -> `RESOLVED` for CON-01 and DB-01 only. The new `test_e2e_all_scenarios.py` runs the same chain for BIZ-01, BIZ-02, CON-01, DB-01, RES-01 and NET-01, checks that the executor is never called without both approvals, and checks that SEC-01 stops at a human-only escalation. It exposed three defects on the BIZ-01/02 execution path, which could be proposed and approved but never run:
+
+1. `SafeExecutionGate` defaulted its rollback catalog to the Moodle+ERPNext catalog, which has no BIZ inverses, so every BIZ request was denied for a missing reciprocal rollback. The default is now the catalog that authorises the action. The 7-scenario test hid this by passing `rollback_catalog` explicitly.
+2. `SafeActionLiveWorkflow` defaulted to the S3.3 catalog, which has no BIZ actions, so a gate `ALLOW` still ended as `denied`. It now defaults to the 7-scenario catalog.
+3. `_EXECUTOR_NODES_BY_SCOPE` had no `staging_moodle_app` scope (node A, as in `moodle-safe-executor-api.py`), so a successful BIZ result was rejected as an untrusted receipt and escalated.
+
+Local checks: critical Ruff passed; **1138 passed** (8 new). Unified replay, Sprint 2 replay and SEC-01 verify (exit 64) pass the CI assertions.
+
+Not verified: the executor in the new tests is a stub, so the host forced-command API and Ansible path for BIZ were not run, and the verifier attestation is built in the test. Admin approval is a REST call plus out-of-band Ed25519 signing, not a Telegram button. Live acceptance remains 0 runs.
+
 ## Out-of-scope file cleanup (2026-10-27)
 
 Removed, after checking that only tests or the CI compile/syntax lists referenced them:
