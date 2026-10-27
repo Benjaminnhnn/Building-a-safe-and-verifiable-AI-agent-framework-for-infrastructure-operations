@@ -1,5 +1,19 @@
 # AI Engineer scope status
 
+## Live-shape audit of the remediation planner (2026-10-27)
+
+The planner tests overrode the diagnosis evidence refs and listed only the queries each rule reads. Fed instead with one sample for every query the collector issues, with the values the probes really publish, three of the six allowed scenarios could never yield a candidate:
+
+1. **BIZ-02.** The overdue ad-hoc count is read from the shared database by the web container on both nodes, so both report the same value. The planner required node A ≤ 0 and node B > 0, a state that cannot occur. It now requires both nodes to report the same count ≥ 1. The diagnosis no longer says the cron container is stopped unless node A reports it stopped and node B does not.
+2. **Blackbox `instance` label.** The blackbox jobs do not set `instance`, so Prometheus uses the exporter address, and the public job has two series (healthz and login). The planner rejects duplicate instances and expected `monitor-ai-01`, so NET-01 was blocked. The NET-01, BIZ-01 and SEC-01 dependency queries now read only the healthz series and the RDS series, relabelled to `monitor-ai-01` with `label_replace`. `MoodlePublicProbeFailed` and `MoodleRdsTcpProbeFailed` keep their original queries.
+3. **BIZ-01.** The diagnosis cites the public probe, but the planner did not match it, so the citation check always failed. The planner now requires the healthz probe to be green. `healthz.php` does not load Moodle, so it stays green under CLI maintenance.
+
+Fixtures in the 7-scenario test, `run-moodle-7-scenarios.py` and `diagnosis_ablation.py` now use these live shapes. The new `test_live_shaped_planning.py` (10 tests) fails 5/10 on the previous source.
+
+Local checks (Python 3.11.9, short `--basetemp`): critical Ruff passed; **1146 passed**. Unified replay passed the CI assertions (15/15). The Sprint 2 replay passed the CI assertions (15 `VERIFIED_DRY_RUN`). SEC-01 verify exited 64. The scripted diagnosis ablation is unchanged: 96/96 blocked, and 84/96 pass without the validator.
+
+Not verified: the `label_replace` queries were not run against a real Prometheus, and no live drill was run. Known limitation, not changed: during BIZ-01 the login probe fails while healthz passes, so a `MoodlePublicProbeFailed` alert gets mixed samples and the agent escalates it as `conflicting_evidence` (fail-closed).
+
 ## Legacy cleanup (2026-10-25)
 
 Removed:

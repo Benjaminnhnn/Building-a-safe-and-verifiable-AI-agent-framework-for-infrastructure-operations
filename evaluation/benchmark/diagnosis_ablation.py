@@ -102,9 +102,10 @@ CASES: tuple[DiagnosisCase, ...] = (
         ("moodle_cli_maintenance_mode_enabled", 1.0, A), ("moodle_cli_maintenance_mode_enabled", 1.0, B),
         ("moodle_upgrade_in_progress", 0.0, A), ("moodle_upgrade_in_progress", 0.0, B),
         ("moodle_node_web_running", 1.0, A), ("moodle_node_web_running", 1.0, B),
+        ("moodle_public_probe", 1.0, "monitor-ai-01"),
     ), "moodle_maintenance_mode_stuck"),
     DiagnosisCase("BIZ-02", "BIZ-02", "clean", "MoodleAdhocTaskQueueStuck", _rows(
-        ("moodle_adhoc_tasks_overdue_count", 0.0, A), ("moodle_adhoc_tasks_overdue_count", 5.0, B),
+        ("moodle_adhoc_tasks_overdue_count", 5.0, A), ("moodle_adhoc_tasks_overdue_count", 5.0, B),
         ("moodle_cron_container_stopped", 1.0, A), ("moodle_cron_container_stopped", 0.0, B),
         ("moodle_node_web_running", 1.0, A), ("moodle_node_web_running", 1.0, B),
     ), "moodle_adhoc_task_queue_stuck"),

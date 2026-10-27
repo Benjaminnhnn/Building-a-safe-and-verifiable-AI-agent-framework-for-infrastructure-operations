@@ -59,6 +59,22 @@ def alert_context_evidence(
     return EvidenceDraft(source, resource_id, kind, observed_at, payload)
 
 
+# Blackbox probes run on monitor-ai-01, but Prometheus sets their `instance`
+# label to the exporter address, and the public job has two targets (healthz
+# and login). Dependency checks read one healthz series and one RDS series,
+# relabelled to the probing host, so node-attributed rules see one sample each.
+# healthz.php does not load Moodle, so it stays green under CLI maintenance or
+# a database fault; the login probe is left to MoodlePublicProbeFailed.
+_PUBLIC_ENTRY_PROBE_QUERY = (
+    'label_replace(probe_success{job="blackbox_moodle_public",probe="healthz"}, '
+    '"instance", "monitor-ai-01", "job", ".*")'
+)
+_RDS_TCP_PROBE_QUERY = (
+    'label_replace(probe_success{job="blackbox_moodle_rds"}, '
+    '"instance", "monitor-ai-01", "job", ".*")'
+)
+
+
 METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
     "MoodleNodeExporterDown": (("moodle_node_up", 'up{job="moodle_node"}'),),
     "MoodleCAdvisorDown": (("moodle_cadvisor_up", 'up{job="moodle_cadvisor"}'),),
@@ -110,8 +126,8 @@ METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
             "moodle_synthetic_success",
             'moodle_synthetic_success{job="moodle_synthetic",instance="monitor-ai-01"}',
         ),
-        ("moodle_rds_tcp_probe", 'probe_success{job="blackbox_moodle_rds"}'),
-        ("moodle_public_probe", 'probe_success{job="blackbox_moodle_public"}'),
+        ("moodle_rds_tcp_probe", _RDS_TCP_PROBE_QUERY),
+        ("moodle_public_probe", _PUBLIC_ENTRY_PROBE_QUERY),
         ("moodle_efs_mount", 'moodle_efs_mount_available{job="moodle_node"}'),
         ("moodle_fault_net01_hosts_override", 'moodle_fault_net01_hosts_override{job="moodle_node"}'),
         ("moodle_fault_sec02_fixture_mode_zero", 'moodle_fault_sec02_fixture_mode_zero{job="moodle_node"}'),
@@ -167,7 +183,7 @@ BUSINESS_METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
         ("moodle_cli_maintenance_mode_enabled", 'moodle_cli_maintenance_mode_enabled{job="moodle_node"}'),
         ("moodle_upgrade_in_progress", 'moodle_upgrade_in_progress{job="moodle_node"}'),
         ("moodle_node_web_running", 'moodle_node_web_running{job="moodle_node"}'),
-        ("moodle_public_probe", 'probe_success{job="blackbox_moodle_public"}'),
+        ("moodle_public_probe", _PUBLIC_ENTRY_PROBE_QUERY),
     ),
     "MoodleAdhocTaskQueueStuck": (
         ("moodle_adhoc_tasks_overdue_count", 'moodle_adhoc_tasks_overdue_count{job="moodle_node"}'),
@@ -187,7 +203,7 @@ SECURITY_METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
             "moodle_rds_sg_public_ingress_rules",
             'moodle_rds_sg_public_ingress_rules{job="moodle_synthetic",instance="monitor-ai-01"}',
         ),
-        ("moodle_rds_tcp_probe", 'probe_success{job="blackbox_moodle_rds"}'),
+        ("moodle_rds_tcp_probe", _RDS_TCP_PROBE_QUERY),
     ),
 }
 

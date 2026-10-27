@@ -106,12 +106,13 @@ def _scenario_evidence(scenario_id: str) -> tuple[str, list[SimpleNamespace]]:
                 ("moodle_upgrade_in_progress", 0.0, "moodle-app-b"),
                 ("moodle_node_web_running", 1.0, "moodle-app-a"),
                 ("moodle_node_web_running", 1.0, "moodle-app-b"),
+                ("moodle_public_probe", 1.0, "monitor-ai-01"),
             ],
         ),
         "BIZ-02": (
             "MoodleAdhocTaskQueueStuck",
             [
-                ("moodle_adhoc_tasks_overdue_count", 0.0, "moodle-app-a"),
+                ("moodle_adhoc_tasks_overdue_count", 5.0, "moodle-app-a"),
                 ("moodle_adhoc_tasks_overdue_count", 5.0, "moodle-app-b"),
                 ("moodle_cron_container_stopped", 1.0, "moodle-app-a"),
                 ("moodle_cron_container_stopped", 0.0, "moodle-app-b"),

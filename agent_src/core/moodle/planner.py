@@ -268,10 +268,25 @@ def plan_moodle_s3_3_remediation(
     ):
         return None
 
-    def matches(query_id: str, expected: dict[str, float] | None = None, *, minimum: float | None = None) -> bool:
+    def matches(
+        query_id: str,
+        expected: dict[str, float] | None = None,
+        *,
+        minimum: float | None = None,
+        shared_minimum: float | None = None,
+    ) -> bool:
         samples = rows.get(query_id, {})
         if expected is not None:
             if set(samples) != set(expected) or any(samples[node][0] != value for node, value in expected.items()):
+                return False
+        elif shared_minimum is not None:
+            # A shared-database count is read on every node; both nodes must
+            # report the same value, otherwise the samples conflict.
+            if (
+                set(samples) != {"moodle-app-a", "moodle-app-b"}
+                or len({sample[0] for sample in samples.values()}) != 1
+                or samples["moodle-app-a"][0] < shared_minimum
+            ):
                 return False
         elif minimum is not None:
             if (
@@ -318,10 +333,11 @@ def plan_moodle_s3_3_remediation(
         matches("moodle_cli_maintenance_mode_enabled", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
         and matches("moodle_upgrade_in_progress", {"moodle-app-a": 0.0, "moodle-app-b": 0.0})
         and matches("moodle_node_web_running", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
+        and matches("moodle_public_probe", {"monitor-ai-01": 1.0})
     ):
         candidates.append("BIZ-01")
     if alert_name == _S3_3_REMEDIATIONS["BIZ-02"][0] and (
-        matches("moodle_adhoc_tasks_overdue_count", minimum=0.0)
+        matches("moodle_adhoc_tasks_overdue_count", shared_minimum=1.0)
         and matches("moodle_cron_container_stopped", {"moodle-app-a": 1.0, "moodle-app-b": 0.0})
         and matches("moodle_node_web_running", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
     ):

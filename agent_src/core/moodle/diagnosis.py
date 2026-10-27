@@ -477,10 +477,11 @@ def diagnose_moodle_alert(alert_name: str, evidence: list[Any]) -> dict[str, Any
                     result["reason"] += "; upgrade is confirmed complete (0.0 in-progress)"
 
             if alert_name == "MoodleAdhocTaskQueueStuck":
-                cron_stopped_refs = refs_by_query.get("moodle_cron_container_stopped", [])
-                if cron_stopped_refs:
-                    result["evidence_refs"] = sorted(set(result["evidence_refs"] + cron_stopped_refs))
-                    result["reason"] += "; moodle-cron container stopped or frozen"
+                if exact_instances("moodle_cron_container_stopped", {"moodle-app-a": 1.0, "moodle-app-b": 0.0}):
+                    result["evidence_refs"] = sorted(set(
+                        result["evidence_refs"] + refs_by_query["moodle_cron_container_stopped"]
+                    ))
+                    result["reason"] += "; moodle-cron container on moodle-app-a is stopped"
 
             result["confidence"] = 0.85
             result["evidence_refs"] = sorted(set(
