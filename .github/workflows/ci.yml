@@ -68,10 +68,7 @@ jobs:
             automation/export-moodle-safe-action-audit.py \
             automation/moodle-safe-executor-request.py \
             automation/harvest-benchmark-results.py \
-            automation/inspect_live_db.py \
-            automation/trigger_live_agent.py \
             automation/run-benchmark.py \
-            automation/moodle-auth-verify.py \
             automation/sprint6-acceptance.py \
             automation/sso-identity-drill.py \
             automation/benchmark-cost-dashboard.py \
@@ -85,7 +82,6 @@ jobs:
             automation/moodle-fault-trial.sh \
             automation/moodle-synthetic-soak.sh \
             automation/moodle-sprint2-live-drill.sh \
-            automation/run-aiops-e2e.sh \
             automation/github-deploy-moodle.sh \
             automation/configure-moodle-safe-executor-api.sh \
             automation/moodle-safe-executor-drill.sh \

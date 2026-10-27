@@ -1,8 +1,8 @@
 """Reviewed live verification contracts accepted by the Agent runtime.
 
 Covers both the Technical/Infrastructure scenarios (CON-01, DB-01, RES-01,
-NET-01, SEC-02) and the Business/User-Admin workflow scenarios (BIZ-01..BIZ-04).
-Human-only scenarios (SEC-01, BIZ-05) are intentionally excluded so they can
+NET-01, SEC-02) and the Business/Infrastructure scenarios (BIZ-01, BIZ-02).
+The human-only scenario SEC-01 is intentionally excluded so it can
 never be auto-resolved by an agent execution receipt.
 """
 

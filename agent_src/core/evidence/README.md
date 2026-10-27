@@ -20,15 +20,11 @@ Mọi quyết định chẩn đoán và hành động của AI Agent bắt buộ
 - **Tác dụng**: Lớp adapter chuẩn hóa giao tiếp thu thập dữ liệu và thực thi hành động (`ActionResult`, `SafeActionRequest`, `sanitize_adapter_output`).
 - **Ảnh hưởng tới toàn bộ AI Agent**: Đóng gói các tương tác với hệ thống bên ngoài thành các giao thức chuẩn, tự động khử khuẩn dữ liệu nhạy cảm đầu ra trước khi nạp vào chu trình phân tích.
 
-### 4. `live_adapters.py`
-- **Tác dụng**: Adapter chuyên biệt giao tiếp trực tiếp với môi trường live/staging (`MoodleAuthVerifier`, `MoodleLoginProbe`), thực hiện các bài kiểm tra xác thực người dùng thật qua giao diện web hoặc API.
-- **Ảnh hưởng tới toàn bộ AI Agent**: Đảm bảo các kiểm tra nghiệm thu phản ánh chính xác trải nghiệm người dùng thực tế trên môi trường đang hoạt động.
-
-### 5. `dependency_graph.py`
+### 4. `dependency_graph.py`
 - **Tác dụng**: Xây dựng và duyệt đồ thị phụ thuộc topo (`DependencyGraph`) giữa các dịch vụ, tiến trình và tài nguyên hạ tầng (ví dụ: Moodle App phụ thuộc vào RDS PostgreSQL và EFS Storage).
 - **Ảnh hưởng tới toàn bộ AI Agent**: Giúp phân hệ chẩn đoán lần theo chuỗi lan truyền sự cố, khoanh vùng nguyên nhân gốc rễ và đánh giá phạm vi ảnh hưởng (blast radius) của sự cố.
 
-### 6. `__init__.py`
+### 5. `__init__.py`
 - **Tác dụng**: Khởi tạo subpackage `core.evidence`.
 - **Ảnh hưởng tới toàn bộ AI Agent**: Cung cấp namespace chuẩn cho toàn bộ phân hệ quản lý bằng chứng.
 

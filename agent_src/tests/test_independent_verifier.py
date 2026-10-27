@@ -37,24 +37,13 @@ from evaluation.agent_replay.verification.independent_verifier import (
     VerifierVerdict,
 )
 
-SAMPLE_YAML_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "config"
-    / "contracts"
-    / "demo_web_communication_contract.yaml"
-)
-
-
 # ---------------------------------------------------------------------------
 # Test Fixtures & Contract Builders
 # ---------------------------------------------------------------------------
 
 
 def _sample_demo_contract() -> CommunicationContract:
-    """Build or load the sample demo-web communication contract."""
-    if SAMPLE_YAML_PATH.is_file():
-        return load_communication_contract(SAMPLE_YAML_PATH)
-
+    """Build the sample demo-web communication contract used as a verifier fixture."""
     return CommunicationContract(
         version="1.0",
         contract_name="demo-web-test-contract",
@@ -378,37 +367,6 @@ def test_not_restored_stops_chain_writes_audit_and_notifies_operator() -> None:
         audit_entry = json.loads(lines[0])
         assert audit_entry["result"] == "ABORTED"
         assert audit_entry["reason_code"] == "VERIFIER_NOT_RESTORED"
-
-
-# ===========================================================================
-# 6. Sample Demo-Web YAML Contract Parsing Test
-# ===========================================================================
-
-
-def test_sample_demo_web_contract_yaml_structure() -> None:
-    """Verify demo-web YAML communication contract format and validation."""
-    assert SAMPLE_YAML_PATH.is_file(), f"Sample contract YAML missing at {SAMPLE_YAML_PATH}"
-
-    contract = load_communication_contract(SAMPLE_YAML_PATH)
-    assert contract.version == "1.0"
-    assert contract.contract_name == "demo-web-communication-contract"
-    assert contract.sample_only is True
-    assert contract.target_system == "demo-web"
-
-    # Services
-    assert set(contract.services.keys()) == {"frontend", "backend", "database"}
-    assert "frontend_to_backend" in contract.services["frontend"].required_flows
-    assert "backend_to_database" in contract.services["backend"].required_flows
-
-    # Connections
-    allowed_ids = {c.id for c in contract.allowed_connections}
-    assert "frontend_to_backend" in allowed_ids
-    assert "backend_to_database" in allowed_ids
-
-    forbidden_ids = {c.id for c in contract.forbidden_connections}
-    assert "frontend_to_database" in forbidden_ids
-    assert "client_to_database" in forbidden_ids
-    assert "database_to_internet" in forbidden_ids
 
 
 def test_rq2_divergence_tracker_auto_saves_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

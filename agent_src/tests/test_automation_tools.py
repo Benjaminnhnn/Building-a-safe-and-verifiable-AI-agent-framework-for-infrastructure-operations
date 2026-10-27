@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import sqlite3
 import shutil
 import subprocess
 import sys
@@ -24,8 +23,6 @@ def load_script(name: str, relative_path: str):
 
 
 harvester = load_script("benchmark_harvester", "automation/harvest-benchmark-results.py")
-inspector = load_script("evidence_inspector", "automation/inspect_live_db.py")
-trigger = load_script("local_agent_trigger", "automation/trigger_live_agent.py")
 benchmark_runner = load_script("benchmark_runner", "automation/run-benchmark.py")
 aiops_replay = load_script("aiops_replay", "automation/aiops-unified-replay.py")
 
@@ -193,27 +190,6 @@ def test_harvest_refuses_unmarked_runtime_result(tmp_path: Path) -> None:
 
     with pytest.raises(harvester.InputError, match="evidence_class"):
         harvester.collect_campaign(campaign, None)
-
-
-def test_inspector_opens_read_only_and_emits_counts(tmp_path: Path) -> None:
-    database = tmp_path / "evidence.sqlite3"
-    with sqlite3.connect(database) as connection:
-        connection.execute("CREATE TABLE evidence (id INTEGER)")
-        connection.execute("INSERT INTO evidence VALUES (1)")
-        connection.execute("CREATE TABLE checkpoints (id INTEGER)")
-
-    assert inspector.inspect(database) == {"evidence": 1, "checkpoints": 0}
-    with sqlite3.connect(database) as connection:
-        assert connection.execute("SELECT COUNT(*) FROM evidence").fetchone()[0] == 1
-
-
-def test_trigger_only_allows_plain_loopback_webhook() -> None:
-    assert trigger.loopback_webhook("http://127.0.0.1:8000/webhook")
-    assert trigger.loopback_webhook("http://[::1]:8000/webhook")
-    assert not trigger.loopback_webhook("https://127.0.0.1:8000/webhook")
-    assert not trigger.loopback_webhook("http://example.com/webhook")
-    assert not trigger.loopback_webhook("http://user:pass@localhost/webhook")
-    assert not trigger.loopback_webhook("http://localhost/webhook/other")
 
 
 def test_safe_executor_compensation_ids_match_operator_approval_and_forced_command(

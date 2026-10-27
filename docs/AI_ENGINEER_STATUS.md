@@ -1,5 +1,18 @@
 # AI Engineer scope status
 
+## Out-of-scope file cleanup (2026-10-27)
+
+Removed, after checking that only tests or the CI compile/syntax lists referenced them:
+- the leftover AUTH-01 login-verifier chain: `automation/moodle-auth-verify.py`, `core/evidence/live_adapters.py`, `core/verification/probes.py` and their tests;
+- `automation/run-aiops-e2e.sh`, an undocumented wrapper whose live list still included SEC-02;
+- the debug helpers `automation/trigger_live_agent.py` and `automation/inspect_live_db.py`, with their tests;
+- `agent_src/config/contracts/demo_web_communication_contract.yaml`. The verifier tests keep their in-code demo contract;
+- the 2026-09 diagrams in `diagram/`, which showed Nginx, PostgreSQL on EBS and 15 scenarios. Kept: `diagram/moodle-aiops-alb-rds-efs-redis.drawio` and `docs/diagrams/system-design-aws.drawio`.
+
+Also: the `live_contracts.py` docstring now lists BIZ-01/02 only, matching its keys. The local, Git-ignored `terraform/local-floci/` emulator state (account `000000000000`) was deleted at the owner's request.
+
+Local checks: critical Ruff passed; **1130 passed** (16 fewer, all from the removed tests). The unified and Sprint 2 replays passed the CI assertions, and SEC-01 verify exited 64. Every file in the CI `py_compile` list compiles, and every file in the `bash -n` list passes as committed (LF blobs).
+
 ## Live-shape audit of the remediation planner (2026-10-27)
 
 The planner tests overrode the diagnosis evidence refs and listed only the queries each rule reads. Fed instead with one sample for every query the collector issues, with the values the probes really publish, three of the six allowed scenarios could never yield a candidate:
