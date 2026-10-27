@@ -1,5 +1,13 @@
 # AI Engineer scope status
 
+## Hybrid RCA in the deployment and the Gemini measurement script (2026-10-27)
+
+1. **Playbook.** `ansible/playbooks/configure-moodle-monitoring.yml` now sets `AIOPS_DIAGNOSIS_MODE` to `{{ moodle_diagnosis_mode | default('hybrid') }}` on both `ai-agent` and `celery-worker` (the worker runs the pipeline). A pre-task rejects anything but `rules`, `hybrid` or `llm`; `-e moodle_diagnosis_mode=rules` turns it back off. No key was added to the playbook.
+2. **What hybrid does today.** Rules decide whenever they reach a decision. Gemini is consulted only on `insufficient_evidence`, and its answer is used only if the citation validator accepts it. The container has no `GEMINI_API_KEY`, so it falls back to the rule result and counts `llm_unavailable`. The deployed Agent therefore still diagnoses by rules until a key is provisioned. The code reads the key from the environment only, and the monitoring Compose file is mode 0644, so a key must not be written there; a mounted secret file would need a small `llm_client.py` change.
+3. **Measurement.** `automation/measure-gemini-diagnosis.py` wraps `diagnosis_ablation` with the real Gemini client. It prints the planned call count (about 255 at `--repeats 3`) and refuses to send anything until `AIOPS_GEMINI_MEASURE_CONFIRM=send-synthetic-fixtures` is set. It reads the key from `GEMINI_API_KEY` or `--api-key-file`, never argv, and writes `terraform/.artifacts/gemini-diagnosis/*.json` (Git-ignored) with the system-prompt hash, tokens, latency, optional cost and stability. A run with provider errors or a scripted client is flagged `valid_model_measurement: false`.
+
+Local checks: critical Ruff passed; 13 new tests (10 for the script, 3 for the playbook). The script was exercised only with stub clients, so **no real Gemini call was made and real-model accuracy, stability, cost and latency are still unmeasured.**
+
 ## End-to-end action chain for all six executable scenarios (2026-10-27)
 
 `test_end_to_end_incident_lifecycle` covered alert -> candidate -> prepare -> two approvals -> execute -> signed verifier attestation -> `RESOLVED` for CON-01 and DB-01 only. The new `test_e2e_all_scenarios.py` runs the same chain for BIZ-01, BIZ-02, CON-01, DB-01, RES-01 and NET-01, checks that the executor is never called without both approvals, and checks that SEC-01 stops at a human-only escalation. It exposed three defects on the BIZ-01/02 execution path, which could be proposed and approved but never run:

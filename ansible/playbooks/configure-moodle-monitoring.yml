@@ -306,6 +306,13 @@
         fail_msg: Set moodle_safe_action_live_confirm=staging only during a reviewed staging drill.
       when: moodle_safe_action_live_enabled | default(false) | bool
 
+    - name: Restrict the diagnosis mode to the runtime-supported values
+      ansible.builtin.assert:
+        that:
+          - moodle_diagnosis_mode | default('hybrid') in ['rules', 'hybrid', 'llm']
+        fail_msg: moodle_diagnosis_mode must be rules, hybrid or llm; llm_unvalidated is ablation-only.
+      when: moodle_agent_enabled | bool
+
   tasks:
     - name: Install Docker
       ansible.builtin.dnf:
@@ -839,6 +846,7 @@
                 PROMETHEUS_URL: http://prometheus:9090
                 VECTOR_DB_PATH: /app/vector_db
                 AIOPS_UNIFIED_CORE_MODE: investigate
+                AIOPS_DIAGNOSIS_MODE: "{{ moodle_diagnosis_mode | default('hybrid') }}"
                 ALERTMANAGER_WEBHOOK_AUTH_REQUIRED: "true"
                 ALERTMANAGER_WEBHOOK_TOKEN_FILE: /run/secrets/alertmanager_webhook_token
                 AIOPS_EVIDENCE_DB: /app/data/evidence.sqlite3
@@ -883,6 +891,7 @@
                 PROMETHEUS_URL: http://prometheus:9090
                 VECTOR_DB_PATH: /app/vector_db
                 AIOPS_UNIFIED_CORE_MODE: investigate
+                AIOPS_DIAGNOSIS_MODE: "{{ moodle_diagnosis_mode | default('hybrid') }}"
                 AIOPS_EVIDENCE_DB: /app/data/evidence.sqlite3
                 AIOPS_EVIDENCE_DB_PATH: /app/data/evidence.db
                 SAFE_EXECUTOR_URL: http://host.docker.internal:8765

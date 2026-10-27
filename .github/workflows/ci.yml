@@ -72,6 +72,7 @@ jobs:
             automation/sprint6-acceptance.py \
             automation/sso-identity-drill.py \
             automation/benchmark-cost-dashboard.py \
+            automation/measure-gemini-diagnosis.py \
             automation/erpnext-synthetic-transaction.py \
             evaluation/benchmark/statistical_analysis.py
           bash -n \
