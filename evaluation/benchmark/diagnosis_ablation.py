@@ -147,6 +147,18 @@ CASES: tuple[DiagnosisCase, ...] = (
 )
 
 
+# Cases for the LLM-only causes. Kept apart from CASES: the reviewed rule tables
+# label these shapes with a different (less specific) cause, so they would count as
+# false diagnoses in the rules and hybrid baselines the thesis reports on CASES.
+EXTENSION_CASES: tuple[DiagnosisCase, ...] = (
+    # Rules call any overdue backlog "cron stopped"; only the LLM tier can say cron is running.
+    DiagnosisCase("BIZ-02-SLOW", "BIZ-02", "variant", "MoodleAdhocTaskQueueStuck", _rows(
+        ("moodle_adhoc_tasks_overdue_count", 5.0, A), ("moodle_adhoc_tasks_overdue_count", 5.0, B),
+        ("moodle_cron_container_stopped", 0.0, A), ("moodle_cron_container_stopped", 0.0, B),
+        ("moodle_node_web_running", 1.0, A), ("moodle_node_web_running", 1.0, B),
+    ), "adhoc_backlog_with_cron_running"),
+)
+
 def build_evidence(case: DiagnosisCase, now: datetime) -> list[SimpleNamespace]:
     evidence = []
     for index, (query_id, value, instance, age) in enumerate(case.rows):

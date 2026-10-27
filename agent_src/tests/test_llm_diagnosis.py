@@ -13,7 +13,7 @@ from core.moodle.diagnosis import diagnose_moodle_alert
 from core.moodle.planner import _INVESTIGATION_CATALOG, _S3_3_DIAGNOSES, plan_moodle_s3_3_remediation
 from core.reasoning import citation_validator as cv
 from core.reasoning import llm_diagnosis
-from core.reasoning.cause_vocabulary import CAUSE_VOCABULARY
+from core.reasoning.cause_vocabulary import CAUSE_VOCABULARY, LLM_ONLY_CAUSE_CODES
 from core.reasoning.llm_client import LLMCompletion, ScriptedDiagnosisLLM
 from core.reasoning.llm_diagnosis import (
     LLM_CONFIDENCE_CAP,
@@ -27,6 +27,7 @@ from core.schema.evidence import Evidence
 from evaluation.benchmark.diagnosis_ablation import (
     ADVERSARIAL_KINDS,
     CASES,
+    EXTENSION_CASES,
     oracle_responder,
     run_accuracy,
     run_adversarial,
@@ -88,9 +89,12 @@ def test_vocabulary_covers_every_rule_cause_and_planner_key():
         rule_causes |= {row[2] for row in table.values()}
     rule_causes |= {"application_path_not_isolated", "upgrade_in_progress_human_escalation"}
 
-    assert set(CAUSE_VOCABULARY) == rule_causes
+    assert set(CAUSE_VOCABULARY) == rule_causes | LLM_ONLY_CAUSE_CODES
+    assert not rule_causes & LLM_ONLY_CAUSE_CODES
     assert set(_INVESTIGATION_CATALOG) <= set(CAUSE_VOCABULARY)
     assert set(_S3_3_DIAGNOSES.values()) <= set(CAUSE_VOCABULARY)
+    # LLM-only causes must never be reachable by the planner.
+    assert not LLM_ONLY_CAUSE_CODES & (set(_INVESTIGATION_CATALOG) | set(_S3_3_DIAGNOSES.values()))
     assert CAUSE_VOCABULARY["upgrade_in_progress_human_escalation"].status == "escalated_human_only"
 
 
@@ -414,3 +418,112 @@ def test_adversarial_validator_blocks_every_unsupported_output():
     assert summary["llm"]["trials"] == trials
     assert summary["llm"]["unsupported_diagnoses_passed"] == 0
     assert summary["llm_unvalidated"]["unsupported_diagnoses_passed"] > 0
+
+
+# --- LLM-only causes, prompt guidance and runbook retrieval ---------------
+
+
+def _adhoc(cron_a, cron_b, overdue=5.0):
+    return [
+        _sample("ev-od-a", "moodle_adhoc_tasks_overdue_count", overdue, A),
+        _sample("ev-cron-a", "moodle_cron_container_stopped", cron_a, A),
+        _sample("ev-cron-b", "moodle_cron_container_stopped", cron_b, B),
+    ]
+
+
+def _adhoc_output():
+    return _output(
+        cause="adhoc_backlog_with_cron_running",
+        citations=[
+            _citation("ev-od-a", "moodle_adhoc_tasks_overdue_count", 5.0, A),
+            _citation("ev-cron-a", "moodle_cron_container_stopped", 0.0, A),
+            _citation("ev-cron-b", "moodle_cron_container_stopped", 0.0, B),
+        ],
+    )
+
+
+def test_llm_only_adhoc_backlog_cause_accepted_when_cron_is_running():
+    result = cv.validate_llm_output(_adhoc_output(), _adhoc(0.0, 0.0), now=NOW)
+    assert result.accepted and result.selected.cause_code == "adhoc_backlog_with_cron_running"
+
+
+def test_llm_only_adhoc_backlog_cause_rejected_when_cron_is_stopped_on_a_node():
+    # The BIZ-02 fault shape: a stopped cron on one node must not be called "cron running".
+    output = _output(
+        cause="adhoc_backlog_with_cron_running",
+        citations=[
+            _citation("ev-od-a", "moodle_adhoc_tasks_overdue_count", 5.0, A),
+            _citation("ev-cron-b", "moodle_cron_container_stopped", 0.0, B),
+        ],
+    )
+    codes = cv.validate_llm_output(output, _adhoc(1.0, 0.0), now=NOW).violation_codes()
+    assert cv.SIGNAL_PREDICATE_NOT_SATISFIED in codes
+
+
+def test_llm_only_causes_never_produce_an_action_candidate():
+    diagnosis = llm_diagnosis._diagnosis_from_hypothesis(
+        cv.parse_llm_output(_adhoc_output())[0].hypotheses[0], validated=True
+    )
+    assert diagnosis["action_candidate"] is None
+    assert diagnosis["cause_code"] in LLM_ONLY_CAUSE_CODES
+
+
+def test_host_loss_cause_requires_telemetry_and_container_signals():
+    evidence = [
+        _sample("ev-web", "moodle_node_web_running", 0.0, B),
+        _sample("ev-up", "moodle_node_up", 0.0, B),
+        _sample("ev-cad", "moodle_cadvisor_up", 0.0, B),
+    ]
+    full = _output(
+        cause="node_telemetry_and_web_container_down",
+        citations=[
+            _citation("ev-web", "moodle_node_web_running", 0.0, B),
+            _citation("ev-up", "moodle_node_up", 0.0, B),
+            _citation("ev-cad", "moodle_cadvisor_up", 0.0, B),
+        ],
+    )
+    assert cv.validate_llm_output(full, evidence, now=NOW).accepted
+    partial = _output(
+        cause="node_telemetry_and_web_container_down",
+        citations=[
+            _citation("ev-web", "moodle_node_web_running", 0.0, B),
+            _citation("ev-up", "moodle_node_up", 0.0, B),
+        ],
+    )
+    assert cv.REQUIRED_SIGNAL_NOT_CITED in cv.validate_llm_output(partial, evidence, now=NOW).violation_codes()
+
+
+def test_prompt_explains_signals_and_carries_cause_guidance():
+    prompt = json.loads(build_prompt("MoodleAdhocTaskQueueStuck", _adhoc(0.0, 0.0), now=NOW))
+    by_code = {row["cause_code"]: row for row in prompt["cause_vocabulary"]}
+    assert "guidance" in by_code["adhoc_backlog_with_cron_running"]
+    assert "guidance" not in by_code["rds_path_probe_failed"]
+    assert "(every sample)" in llm_diagnosis.SYSTEM_INSTRUCTION
+    assert "1 when" in llm_diagnosis.SYSTEM_INSTRUCTION and "never evidence" in llm_diagnosis.SYSTEM_INSTRUCTION
+
+
+def test_static_retriever_draws_from_every_runbook_for_a_multi_runbook_alert():
+    from core.rag.runbook_chunks import StaticRunbookRetriever
+
+    chunks = StaticRunbookRetriever().retrieve("MoodleSyntheticTransactionFailed", "synthetic transaction failed")
+    assert len({chunk["source_file"] for chunk in chunks}) == 3
+
+
+def test_runbooks_explain_the_llm_only_causes():
+    from core.rag.runbook_chunks import StaticRunbookRetriever
+
+    retriever = StaticRunbookRetriever()
+    adhoc = " ".join(c["text"] for c in retriever.retrieve("MoodleAdhocTaskQueueStuck", "cron", limit=10))
+    host = " ".join(c["text"] for c in retriever.retrieve("MoodleWebContainerMissing", "host", limit=10))
+    assert "moodle_cron_container_stopped" in adhoc and "slow" in adhoc
+    assert "moodle_cadvisor_up" in host and "host or network loss" in host
+
+
+def test_extension_cases_show_the_llm_only_cause_the_rule_tables_cannot_name():
+    report = run_accuracy(
+        client_factory=lambda case: ScriptedDiagnosisLLM(oracle_responder(case)), cases=EXTENSION_CASES
+    )["summary"]
+    assert report["llm"]["accuracy"] == 1.0
+    # The rule tables label an overdue backlog as a stopped cron regardless of cron state.
+    assert report["rules"]["false_diagnosis_rate"] == 1.0
+    assert not {case.case_id for case in EXTENSION_CASES} & {case.case_id for case in CASES}

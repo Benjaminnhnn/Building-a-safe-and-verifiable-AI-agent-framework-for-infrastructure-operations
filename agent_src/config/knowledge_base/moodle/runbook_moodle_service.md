@@ -27,3 +27,16 @@ This runbook applies to Moodle staging web availability and routing alerts:
   tag.
 - Recovery requires both target-health checks, the Moodle synthetic
   transaction, and independent communication-contract verification.
+
+## Telling a stopped container from a lost node
+
+- `moodle_node_web_running` equal to 0 while `moodle_node_up` and
+  `moodle_cadvisor_up` are 1 points to the web container only. The node and its
+  telemetry are alive, so the scoped container procedure applies.
+- If `moodle_node_up` and `moodle_cadvisor_up` also report 0, the scrape
+  targets are unreachable as well. That points to a host or network loss, not a
+  container fault; the signals may come from different nodes, so name the nodes
+  before drawing a conclusion. Container recovery does not apply, and an
+  infrastructure operator checks the instance and network path first.
+- Missing telemetry is not the same as a healthy node. Do not report a node as
+  healthy because its series are absent.

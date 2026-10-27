@@ -31,3 +31,12 @@ infrastructure layer; the agent never edits Moodle configuration or
   failing tasks and needs a human review of the task logs.
 - Recovery requires the Independent Verifier: student course access with
   HTTP 200 for BIZ-01; cron active and zero overdue ad-hoc tasks for BIZ-02.
+
+## Telling a stopped cron from a slow task queue
+
+- Overdue ad-hoc tasks with `moodle_cron_container_stopped` equal to 1 on the
+  cron node is the BIZ-02 fault: cron is down, so tasks are not being picked up.
+- Overdue ad-hoc tasks while `moodle_cron_container_stopped` is 0 on every node
+  means cron is running and tasks are slow, blocked or failing. This is not a
+  restart case; a person reviews the task logs and the locked task rows.
+- Never treat a backlog count alone as proof that cron stopped.

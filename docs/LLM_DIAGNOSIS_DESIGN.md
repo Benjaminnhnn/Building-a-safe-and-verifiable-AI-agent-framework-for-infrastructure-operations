@@ -71,6 +71,22 @@ A hypothesis is accepted only if all of the checks below pass. The first fully c
 - Each persisted diagnosis decision records `reasoning` (mode, deciding source, rule baseline, model usage, violation codes, selected hypothesis).
 - Metrics: `aiops_llm_diagnosis_events_total{mode,source}`, `aiops_llm_citation_violations_total{code}`, and `aiops_gemini_call_duration_seconds{operation="evidence_diagnosis"}`.
 
+## LLM-only causes and prompt guidance
+
+The vocabulary has two tiers. Rule-derived causes come from the reviewed rule tables. `LLM_ONLY_CAUSE_CODES` lists causes that only the LLM tier can name:
+
+| Cause | Required signals | Why the rules cannot name it |
+|---|---|---|
+| `adhoc_backlog_with_cron_running` | `moodle_adhoc_tasks_overdue_count >= 1` and `moodle_cron_container_stopped == 0` on every node | the rules call any overdue backlog `moodle_adhoc_task_queue_stuck`, even when cron is running |
+| `node_telemetry_and_web_container_down` | `moodle_node_up`, `moodle_cadvisor_up` and `moodle_node_web_running` each `== 0` | the rules report only `web_container_not_running` for `MoodleWebContainerMissing` |
+
+- **Still diagnosis-only.** An LLM-only cause is a `hypothesis` with no action candidate. It is absent from `_INVESTIGATION_CATALOG` and `_S3_3_DIAGNOSES`, so the planner returns no plan and no remediation candidate for it, and `test_vocabulary_covers_every_rule_cause_and_planner_key` fails if one is ever added there. The operator report falls back to "isolate the cause manually".
+- **Same validator.** The citation checks, freshness window, `all_eq` rule and confidence cap apply unchanged. The `all_eq` predicate on `moodle_cron_container_stopped` is what stops the model calling a BIZ-02 fault (cron stopped on a node) "cron running".
+- **Reachable only where the LLM decides.** In `hybrid` mode rules decide whenever they can, so these causes appear in `llm` mode only. Causes for several failing dependencies are deliberately absent: `SYN-MULTI` is a negative case, and naming a combination would turn a correct abstain into a diagnosis.
+- **Prompt.** The system instruction explains how to read a sample (1 is healthy for probe signals, absent is unknown), asks for the most specific cause that fits, tells the model how to cite `(every sample)` requirements, and asks it to abstain on stale, spread or contradictory samples. Vocabulary entries may carry a reviewed `guidance` string to separate similar causes.
+- **Runbooks.** `StaticRunbookRetriever` now takes the best chunk of each source runbook first, so one runbook cannot fill all three slots for an alert that maps to several. The platform-operations and service runbooks gained sections that separate a stopped cron from a slow queue, and a stopped container from a lost node.
+- **Evaluation.** `EXTENSION_CASES` in `diagnosis_ablation.py` holds `BIZ-02-SLOW`. It is kept out of `CASES` because the rule tables label it with a different cause, which would count as a false diagnosis in the baselines reported on the 12 `CASES`.
+
 ## Offline evaluation
 
 `evaluation/benchmark/diagnosis_ablation.py` uses 12 synthetic evidence cases: the 7 thesis scenarios, 2 variants (BIZ-01 with an upgrade in progress, and a synthetic failure caused by a failed RDS probe), and 3 cases where the correct outcome is to abstain (multiple failing dependencies, stale samples, and a firing CPU alert contradicted by its samples).

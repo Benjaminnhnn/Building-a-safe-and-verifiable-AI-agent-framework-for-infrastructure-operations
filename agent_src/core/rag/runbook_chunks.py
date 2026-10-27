@@ -137,7 +137,17 @@ class StaticRunbookRetriever:
                 item["chunk_index"],
             ),
         )
-        return [dict(item) for item in ranked[:limit]]
+        # An alert such as MoodleSyntheticTransactionFailed maps to several runbooks.
+        # Take the best chunk of each source first so one runbook cannot fill every
+        # slot, then fill the remaining slots by overall rank.
+        selected: list[dict[str, Any]] = []
+        seen_sources: set[str] = set()
+        for item in ranked:
+            if item["source_file"] not in seen_sources:
+                seen_sources.add(item["source_file"])
+                selected.append(item)
+        selected.extend(item for item in ranked if item not in selected)
+        return [dict(item) for item in selected[:limit]]
 
 
 _STATIC_RETRIEVER: StaticRunbookRetriever | None = None

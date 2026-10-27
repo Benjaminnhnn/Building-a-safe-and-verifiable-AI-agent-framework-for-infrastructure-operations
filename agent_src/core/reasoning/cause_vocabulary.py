@@ -8,7 +8,7 @@ citation must cover and the predicate the stored sample must satisfy.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from core.moodle import diagnosis as rules
 
@@ -50,6 +50,11 @@ class CauseDefinition:
     description: str
     requirements: tuple[SignalRequirement, ...]
     status: str = "hypothesis"
+    # Disambiguation hint shown to the model; never shown to operators as the diagnosis.
+    guidance: str = ""
+    # True for causes that exist only in the LLM tier: no rule table produces them and
+    # the planner has no mapping for them, so they can never yield an action candidate.
+    llm_only: bool = False
 
 
 def _build_vocabulary() -> dict[str, CauseDefinition]:
@@ -99,4 +104,65 @@ def _build_vocabulary() -> dict[str, CauseDefinition]:
     return causes
 
 
-CAUSE_VOCABULARY: dict[str, CauseDefinition] = _build_vocabulary()
+# Reviewed guidance for rule-derived causes that are easy to confuse.
+_RULE_CAUSE_GUIDANCE = {
+    "application_path_not_isolated": (
+        "Use only when the synthetic transaction fails and the RDS, public and EFS probes all pass. "
+        "If any dependency probe also fails, prefer abstaining or that dependency's cause."
+    ),
+    "moodle_adhoc_task_queue_stuck": (
+        "Requires overdue tasks; the cron container being stopped is what makes the infrastructure restart relevant."
+    ),
+    "efs_mount_probe_failed": "EFS mount is a per-node signal; one failing node is enough.",
+    "web_container_not_running": "Per-node signal; a healthy peer node does not contradict a failing node.",
+    "node_cpu_pressure": "Per-node signal; one node above the threshold is enough while the peer stays healthy.",
+}
+
+# Causes that only the LLM tier can name. Each one is a reviewed, evidence-only description
+# that the rule tables do not emit. They must never be added to the planner catalog.
+_LLM_ONLY_CAUSES: tuple[CauseDefinition, ...] = (
+    CauseDefinition(
+        "adhoc_backlog_with_cron_running",
+        "Moodle ad-hoc tasks are overdue while no node reports the cron container stopped; "
+        "slow or failing tasks are suspected and need human review of the task logs",
+        (
+            SignalRequirement("moodle_adhoc_tasks_overdue_count", "any_ge", 1.0),
+            SignalRequirement("moodle_cron_container_stopped", "all_eq", 0.0),
+        ),
+        guidance=(
+            "Pick this instead of moodle_adhoc_task_queue_stuck when cron is not stopped on any node. "
+            "A restart does not apply; this is a human-review diagnosis."
+        ),
+        llm_only=True,
+    ),
+    CauseDefinition(
+        "node_telemetry_and_web_container_down",
+        "Node exporter, cAdvisor and the web-container probe each report a failure; a host-level outage "
+        "is suspected but not proven, and the signals may come from different nodes",
+        (
+            SignalRequirement("moodle_node_up", "any_eq", 0.0),
+            SignalRequirement("moodle_cadvisor_up", "any_eq", 0.0),
+            SignalRequirement("moodle_node_web_running", "any_eq", 0.0),
+        ),
+        guidance=(
+            "Pick this instead of web_container_not_running only when scrape telemetry is also down; "
+            "a stopped container with healthy telemetry is web_container_not_running."
+        ),
+        llm_only=True,
+    ),
+)
+
+
+def _finalize(causes: dict[str, CauseDefinition]) -> dict[str, CauseDefinition]:
+    for code, guidance in _RULE_CAUSE_GUIDANCE.items():
+        if code in causes:
+            causes[code] = replace(causes[code], guidance=guidance)
+    for definition in _LLM_ONLY_CAUSES:
+        if definition.cause_code in causes:
+            raise ValueError(f"LLM-only cause {definition.cause_code} collides with a rule cause")
+        causes[definition.cause_code] = definition
+    return causes
+
+
+CAUSE_VOCABULARY: dict[str, CauseDefinition] = _finalize(_build_vocabulary())
+LLM_ONLY_CAUSE_CODES: frozenset[str] = frozenset(item.cause_code for item in _LLM_ONLY_CAUSES)
