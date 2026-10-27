@@ -9,7 +9,7 @@ can only target the drill user created by this run; existing users, groups,
 apps and policies are read only. Passwords, tokens and activation links are
 never printed or written to the report.
 
-Scenario definitions: docs/BAO_CAO_KICH_BAN_LOI.md, section 4
+Scenario definitions: SSO-01..SSO-05 are defined in this script; the documented SSO set is in docs/BAO_CAO_KICH_BAN_LOI.md, section 5
 
 Requires the ``cryptography`` package and an Okta API Services app using
 private_key_jwt (DPoP is supported) with the scopes in DEFAULT_SCOPES.

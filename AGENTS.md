@@ -108,7 +108,7 @@ CI verifies the Moodle image's secret-file handling, PHP syntax, public web-root
 - `README.md` — Moodle thesis scope, repository map and evidence modes.
 - `docs/BAO_CAO_KIEN_TRUC_HA_TANG.md` — current infrastructure architecture: network, security groups, EC2, RDS, EFS, monitoring and alerts, Entra → Okta → Moodle SSO, IAM model, CI/CD, limits.
 - `docs/BAO_CAO_HUONG_DAN_TRIEN_KHAI.md` — end-to-end deploy and operations guide (Terraform, host keys, Ansible, image selection, Moodle, Okta, monitoring, executor, Telegram, CD, troubleshooting); appendices for IAM setup, Okta/Entra setup and teardown.
-- `docs/BAO_CAO_KICH_BAN_LOI.md` — fault scenario catalog (7 thesis, 15 technical, 21 SSO), experiment procedures, three-fault demo guide and live results.
+- `docs/BAO_CAO_KICH_BAN_LOI.md` — the 12 scenarios (7 thesis: BIZ-01, BIZ-02, CON-01, DB-01, RES-01, NET-01, SEC-01; 5 SSO: SSO-04, SSO-10, SSO-11, SSO-12, SSO-13) with step-by-step run commands and live results.
 - `docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md` — agent architecture, Safety Gate, Safe Executor, Independent Verifier, Telegram approval, Hermes, threat model and evidence status.
 - `agent_src/README.md` — current agent modules and evidence-mode boundaries.
 - `agent_src/RAG_SYSTEM_GUIDE.md` — RAG engine details.
