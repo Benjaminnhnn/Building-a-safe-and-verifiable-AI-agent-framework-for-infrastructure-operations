@@ -451,6 +451,26 @@
         - moodle_agent_enabled | bool
         - moodle_agent_telegram_env_file | default('') | length == 0
 
+    - name: Install root-only Okta log reader environment
+      ansible.builtin.copy:
+        src: "{{ moodle_okta_log_env_file }}"
+        dest: "{{ moodle_observability_root }}/secrets/okta-log-reader.env"
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+      when: moodle_okta_log_enabled | default(false) | bool
+
+    - name: Install root-only Okta service app private key
+      ansible.builtin.copy:
+        src: "{{ moodle_okta_log_private_key_file }}"
+        dest: "{{ moodle_observability_root }}/secrets/okta-log-reader-private.pem"
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+      when: moodle_okta_log_enabled | default(false) | bool
+
     - name: Install Moodle synthetic transaction service
       ansible.builtin.copy:
         dest: /etc/systemd/system/moodle-synthetic-transaction.service
@@ -951,6 +971,23 @@
               depends_on:
                 agent-redis:
                   condition: service_healthy
+          {% if moodle_okta_log_enabled | default(false) | bool %}
+            okta-sso-monitor:
+              image: {{ moodle_agent_image }}
+              container_name: moodle-okta-sso-monitor
+              restart: unless-stopped
+              command: [python, -m, core.okta_sso_monitor]
+              env_file:
+                - ./secrets/agent-telegram.env
+                - ./secrets/okta-log-reader.env
+              environment:
+                OKTA_API_PRIVATE_KEY_FILE: /run/secrets/okta_log_reader_private_key
+                OKTA_SSO_MONITOR_DB: /app/data/okta-sso-monitor.sqlite3
+                PYTHONUNBUFFERED: "1"
+              volumes:
+                - agent-evidence:/app/data
+                - ./secrets/okta-log-reader-private.pem:/run/secrets/okta_log_reader_private_key:ro
+          {% endif %}
           {% endif %}
             monitor-node-exporter:
               image: quay.io/prometheus/node-exporter:v1.8.2

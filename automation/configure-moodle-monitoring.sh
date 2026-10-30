@@ -105,6 +105,28 @@ if [[ "$agent_enabled" == true && -r "$telegram_source" ]]; then
   fi
 fi
 
+# The Okta log reader is opt-in and uses a read-only service app. Never place
+# its RSA private key in an environment variable or the repository.
+okta_args=(--extra-vars moodle_okta_log_enabled=false)
+okta_env_file="${MOODLE_OKTA_LOG_ENV_FILE:-$artifacts_dir/okta-sso-reader.env}"
+okta_key_file="${MOODLE_OKTA_LOG_PRIVATE_KEY_FILE:-$HOME/.okta/moodle-logs-private.pem}"
+if [[ "$agent_enabled" == true && ${#telegram_args[@]} -gt 0 && -r "$okta_env_file" && -r "$okta_key_file" ]]; then
+  for name in OKTA_ORG_URL OKTA_API_CLIENT_ID OKTA_API_PRIVATE_KEY_ID OKTA_MOODLE_APP_ID; do
+    grep -q "^${name}=[^[:space:]]\+" "$okta_env_file" || {
+      echo "Missing $name in $okta_env_file" >&2
+      exit 66
+    }
+  done
+  okta_args=(
+    --extra-vars moodle_okta_log_enabled=true
+    --extra-vars "moodle_okta_log_env_file=$okta_env_file"
+    --extra-vars "moodle_okta_log_private_key_file=$okta_key_file"
+  )
+  echo "Okta SSO log reader: enabled"
+else
+  echo "Okta SSO log reader: skipped (configuration or key unavailable)"
+fi
+
 terraform -chdir="$terraform_dir" output -raw moodle_ssh_config > "$ssh_config_path"
 terraform -chdir="$terraform_dir" output -raw moodle_ansible_inventory > "$inventory_path"
 chmod 0600 "$ssh_config_path"
@@ -132,4 +154,5 @@ ansible-playbook \
   --extra-vars "moodle_agent_enabled=$agent_enabled" \
   --extra-vars "moodle_agent_image=$agent_image" \
   "${live_args[@]}" \
+  "${okta_args[@]}" \
   ${telegram_args[@]+"${telegram_args[@]}"}
