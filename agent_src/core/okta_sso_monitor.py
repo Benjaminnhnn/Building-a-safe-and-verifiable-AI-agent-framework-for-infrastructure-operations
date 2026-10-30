@@ -16,7 +16,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlencode, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import requests
 from cryptography.hazmat.primitives import hashes, serialization
@@ -27,6 +27,7 @@ from core.moodle.safe_action_notify import notify
 logger = logging.getLogger(__name__)
 
 EVENT_TYPES = (
+    "app.oauth2.authorize",
     "user.authentication.sso",
     "app.generic.unauth_app_access_attempt",
     "application.policy.sign_on.deny_access",
@@ -42,10 +43,18 @@ def _clean(value: object, limit: int = 180) -> str:
 
 
 def failure_for_moodle(event: dict, app_id: str) -> bool:
-    """Accept only a failed sign-in whose AppInstance target is this Moodle app."""
+    """Accept failed Moodle app events, including authorize errors before login."""
     kind = event.get("eventType")
     if kind not in EVENT_TYPES:
         return False
+    if kind == "app.oauth2.authorize":
+        if str((event.get("outcome") or {}).get("result") or "").upper() != "FAILURE":
+            return False
+        debug = (event.get("debugContext") or {}).get("debugData") or {}
+        # Failed authorize requests may have no AppInstance target. The URL's
+        # client_id is the only reliable app discriminator in this event.
+        client_ids = parse_qs(urlparse(str(debug.get("url") or "")).query).get("client_id", [])
+        return client_ids == [app_id]
     targets = event.get("target") or []
     if not any(
         isinstance(target, dict)
@@ -63,22 +72,39 @@ def format_failure(event: dict) -> str:
     actor = event.get("actor") or {}
     outcome = event.get("outcome") or {}
     kind = str(event.get("eventType") or "")
-    if kind == "app.generic.unauth_app_access_attempt":
+    if kind == "app.oauth2.authorize":
+        user = "Chưa xác định (Okta từ chối trước khi nhập tài khoản)"
+        login = user
+        if outcome.get("reason") == "illegal_redirect_uri_enhanced":
+            redirect = _clean(((event.get("debugContext") or {}).get("debugData") or {}).get("redirectUri"), 300)
+            guidance = (
+                "Trong Okta app Moodle, thêm đúng Sign-in redirect URI: " + redirect
+                + ". Sau khi lưu, bắt đầu đăng nhập lại từ trang Moodle."
+            )
+        else:
+            guidance = "Kiểm tra yêu cầu authorize của app Moodle trong Okta System Log và cấu hình OIDC."
+    elif kind == "app.generic.unauth_app_access_attempt":
+        user = _clean(actor.get("displayName"))
+        login = _clean(actor.get("alternateId"))
         guidance = (
             "Kiểm tra user có thuộc group được gán app Moodle trên Okta không. "
             "Nếu group đến từ Entra, sửa membership tại Entra rồi chạy Full import ở Okta."
         )
     elif kind == "application.policy.sign_on.deny_access":
+        user = _clean(actor.get("displayName"))
+        login = _clean(actor.get("alternateId"))
         guidance = "Kiểm tra authentication policy, group và MFA của app Moodle trong Okta."
     else:
+        user = _clean(actor.get("displayName"))
+        login = _clean(actor.get("alternateId"))
         guidance = (
             "Mở Okta System Log theo Event ID để xác định bước bị từ chối; "
             "kiểm tra assignment, policy và MFA trước khi sửa."
         )
     return (
         "🚨 ĐĂNG NHẬP SSO MOODLE THẤT BẠI\n"
-        f"Người dùng: {_clean(actor.get('displayName'))}\n"
-        f"Login: {_clean(actor.get('alternateId'))}\n"
+        f"Người dùng: {user}\n"
+        f"Login: {login}\n"
         f"Lỗi Okta: {_clean(outcome.get('reason') or event.get('displayMessage'))}\n"
         f"Loại sự kiện: {_clean(kind)}\n"
         f"Event ID: {_clean(event.get('uuid'), 80)}\n"
