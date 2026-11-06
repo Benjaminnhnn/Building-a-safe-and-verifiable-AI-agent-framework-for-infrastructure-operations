@@ -9,7 +9,7 @@ Writes, under ``--dataset-dir``:
 
 Methods:
 - ai_agent on a live-allowlisted scenario delegates the whole lifecycle to
-  ``moodle-safe-executor-drill.sh`` (prepare, two approvals, execute, signed
+  ``moodle-safe-executor-drill.sh`` (prepare, Operator approval, execute, signed
   Independent Verifier) and builds the row from its evidence;
 - ai_agent and ansible on SEC-01 record a denied handoff, then a human
   remediates;

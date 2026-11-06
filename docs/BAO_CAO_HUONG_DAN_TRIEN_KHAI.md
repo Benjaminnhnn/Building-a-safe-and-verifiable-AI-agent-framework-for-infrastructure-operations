@@ -890,33 +890,27 @@ bash automation/configure-moodle-monitoring.sh --agent-image "$(cat terraform/.a
 | Khoá của executor | `ls terraform/.artifacts/safe-executor/` | `agent-hmac.key`, `safe-action-api-token`, 3 cặp khoá Ed25519 |
 | Chế độ Agent | `ssh -F terraform/.artifacts/moodle-ssh.config monitor-ai-01 'sudo docker exec moodle-ai-agent env' \| grep AIOPS_` | `AIOPS_UNIFIED_CORE_MODE=investigate`, `AIOPS_SAFE_ACTION_LIVE_ENABLED=false` |
 
-Có ba cặp khoá Ed25519 **khác nhau**: `gate-approval-ed25519.pub` cho Safety Gate, `approval-ed25519.pub` cho
-Executor, `verifier-ed25519.pub` cho Independent Verifier. Mỗi khoá riêng nên do chính người phụ trách vai đó tạo
-trên máy của họ; chỉ khoá công khai được chép vào `terraform/.artifacts/safe-executor/`:
+Chế độ Operator một chữ ký dùng `approval-ed25519.pub` để cả Safety Gate và Executor kiểm tra. Independent Verifier
+dùng khóa riêng biệt `verifier-ed25519.pub`. File Gate cũ vẫn được yêu cầu bởi script cấu hình Executor nhưng không
+được dùng để duyệt trong chế độ này. Chỉ khóa công khai được chép vào `terraform/.artifacts/safe-executor/`:
 
 ```bash
 openssl genpkey -algorithm ED25519 -out approver-private.pem
 openssl pkey -in approver-private.pem -pubout -out approver-public.pem
 ```
 
-Khi người duyệt ký tách khỏi drill, mỗi người ký file prepared bằng khoá của mình:
+Máy Operator giữ khóa riêng của Operator và Verifier tại vị trí riêng, ngoài repo. Chạy demo:
 
 ```bash
-prepared=/path/to/CON-01-prepared.json
-python automation/moodle-safe-gate-approval.py \
-  --action-sha256 "$(jq -r .gate_action_sha256 "$prepared")" \
-  --private-key ~/.keys/safety-officer.pem --actor safety-officer \
-  > gate-approval.json
-python automation/moodle-safe-approval.py CON-01 \
-  --action-id "$(jq -r .request.catalog_action_id "$prepared")" \
-  --idempotency-key "$(jq -r .request.idempotency_key "$prepared")" \
-  --private-key ~/.keys/operator.pem --actor operator \
-  > executor-approval.json
+export MOODLE_SAFE_EXECUTOR_CONFIRM=staging
+export MOODLE_OPERATOR_SIGNING_KEY_FILE="$HOME/.keys/operator.pem"
+export MOODLE_VERIFIER_SIGNING_KEY_FILE="$HOME/.keys/verifier.pem"
+bash automation/moodle-safe-executor-drill.sh CON-01
 ```
 
-Công cụ từ chối hai actor trùng ID và digest không khớp; Gate và Executor tự kiểm tra từng chữ ký bằng khoá công
-khai đã cài. Không bao giờ đặt cả hai khoá riêng của người duyệt trên cùng máy chạy drill khi chạy thật (bản demo
-hiện tại là ngoại lệ đã ghi nhận). Khi nghi token API của safe-action bị lộ, thay file
+Script kiểm tra khóa Operator khớp khóa công khai đã cài, chờ Operator reply `approve` trên Telegram, rồi ký đúng
+request đang chờ. Gate và Executor cùng kiểm tra chữ ký; Verifier ký attestation riêng. Khi nghi token API của
+safe-action bị lộ, thay file
 `/etc/aiops-safe-executor/safe-action-api-token` rồi khởi động lại Agent.
 
 ### 14.5. Telegram cho Agent và cầu nối phê duyệt

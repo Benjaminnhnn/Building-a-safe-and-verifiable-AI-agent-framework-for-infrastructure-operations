@@ -93,10 +93,20 @@ class TelegramClient:
         except TelegramError:
             pass  # the toast is cosmetic; the decision is already recorded
 
-    def latest_update_offset(self) -> int:
-        """Skip every update queued before now, so old button presses cannot count."""
-        updates = self.call("getUpdates", {"offset": -1, "timeout": 0, "allowed_updates": ["callback_query"]})
+    def latest_update_offset(self, allowed_updates: list[str] | None = None) -> int:
+        """Skip updates queued before the prompt, including old approval replies."""
+        updates = self.call("getUpdates", {"offset": -1, "timeout": 0, "allowed_updates": allowed_updates or ["callback_query"]})
         return (updates[-1]["update_id"] + 1) if updates else 0
+
+    def messages(self, offset: int, timeout: int = 20) -> tuple[list[dict[str, Any]], int]:
+        updates = self.call(
+            "getUpdates",
+            {"offset": offset, "timeout": timeout, "allowed_updates": ["message"]},
+            timeout=timeout + 10,
+        )
+        messages = [update["message"] for update in updates if "message" in update]
+        next_offset = (updates[-1]["update_id"] + 1) if updates else offset
+        return messages, next_offset
 
     def callback_queries(self, offset: int, timeout: int = 20) -> tuple[list[dict[str, Any]], int]:
         updates = self.call(

@@ -2,7 +2,8 @@
 
 The gate evaluates requests but never executes them. Live execution is a
 separate caller path requiring both this ALLOW decision and the executor's
-independent action-bound approval.
+action-bound approval. In Operator mode both components check one Ed25519
+signature; the private key remains outside the Agent.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from core.safety.action_catalog import ActionCatalog, CatalogEntry
 from core.evidence.adapters import SafeActionRequest, SafeLiveActionRequest
 from core.platform_adapter import PlatformAdapter, PlatformAdapterRegistry
+from core.safety.safe_executor_client import action_digest
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr, ValidationError
@@ -95,6 +97,7 @@ class SafeExecutionGate:
         approval_signing_key: str | None = None,
         approval_verification_key: bytes | None = None,
         approved_actors: set[str],
+        approval_digest_mode: Literal["full", "executor"] = "full",
         kill_switch_enabled: bool = False,
         catalog: ActionCatalog | None = None,
         rollback_catalog: ActionCatalog | None = None,
@@ -114,6 +117,9 @@ class SafeExecutionGate:
             raise ValueError("approval verification key must use Ed25519")
         self._approval_verification_key = verification_key
         self._approved_actors = approved_actors
+        if approval_digest_mode not in {"full", "executor"}:
+            raise ValueError("unknown approval digest mode")
+        self.approval_digest_mode = approval_digest_mode
         self._kill_switch_enabled = kill_switch_enabled
 
         adapter = adapter or PlatformAdapterRegistry.get("moodle")
@@ -254,7 +260,12 @@ class SafeExecutionGate:
             or entry.blast_radius != "LOW"
         )
         if approval_required:
-            if not self._valid_approval(approval, action_hash):
+            approval_hash = (
+                action_digest(request.scenario_id, request.catalog_action_id, request.target_scope, request.idempotency_key)
+                if self.approval_digest_mode == "executor" and isinstance(request, SafeLiveActionRequest)
+                else action_hash
+            )
+            if not self._valid_approval(approval, approval_hash):
                 return GateVerdict(
                     decision="REQUIRE_APPROVAL",
                     reason="valid, action-bound approval is required",

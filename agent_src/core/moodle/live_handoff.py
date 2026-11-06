@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from pathlib import Path
 from typing import Any, Callable
@@ -74,14 +75,18 @@ def _request(candidate: dict[str, Any], *, request_id: str, idempotency_key: str
 def prepare_moodle_live_handoff(
     *, evidence_db: str | Path, candidate_id: str, gate_public_key: bytes, gate_actors: set[str]
 ) -> dict[str, Any]:
-    """Return immutable request data and both approval digests; never dispatch."""
+    """Return immutable request data and approval digests; never dispatch."""
     with SQLiteEvidenceStore(evidence_db) as store:
         candidate, confidence = _fresh_candidate(store, candidate_id)
     request_id, idempotency_key = str(uuid.uuid4()), str(uuid.uuid4())
     request = _request(candidate, request_id=request_id, idempotency_key=idempotency_key)
+    approval_mode = os.getenv("AIOPS_APPROVAL_MODE", "two_person")
+    if approval_mode not in {"two_person", "operator"}:
+        raise ValueError("unknown live approval mode")
     gate = SafeExecutionGate(
         approval_verification_key=gate_public_key,
         approved_actors=gate_actors,
+        approval_digest_mode="executor" if approval_mode == "operator" else "full",
     )
     action_sha256 = gate.action_hash(request)
     # Read-only explanation for the approver: no approval is passed, so this can
@@ -108,11 +113,11 @@ def prepare_moodle_live_handoff(
 
 def execute_moodle_live_handoff(
     *, evidence_db: str | Path, candidate_id: str, request_data: dict[str, Any],
-    gate_approval: ApprovalRecord, executor_approval: dict[str, str], gate_public_key: bytes,
+    gate_approval: ApprovalRecord | None, executor_approval: dict[str, str], gate_public_key: bytes,
     gate_actors: set[str], audit_db: str | Path, kill_switch_enabled: bool,
     executor: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Revalidate a prepared candidate and dispatch only with both signatures."""
+    """Revalidate a prepared candidate and dispatch only with valid approval."""
     with SQLiteEvidenceStore(evidence_db) as store:
         candidate, confidence = _fresh_candidate(store, candidate_id)
     request = _request(
@@ -123,10 +128,25 @@ def execute_moodle_live_handoff(
     supplied = SafeLiveActionRequest.model_validate(request_data)
     if supplied != request:
         raise EvidenceIntegrityError("approval request differs from the current candidate")
+    approval_mode = os.getenv("AIOPS_APPROVAL_MODE", "two_person")
+    if approval_mode not in {"two_person", "operator"}:
+        raise ValueError("unknown live approval mode")
+    if approval_mode == "operator":
+        if gate_approval is not None or not isinstance(executor_approval, dict):
+            raise ValueError("operator mode accepts one operator signature")
+        if executor_approval.get("actor_id") != "operator":
+            raise ValueError("operator signature is required")
+        gate_approval = ApprovalRecord.model_validate({
+            "action_sha256": executor_approval.get("action_sha256"),
+            "actor_id": executor_approval.get("actor_id"),
+            "expires_at": executor_approval.get("expires_at"),
+            "signature": "ed25519:" + str(executor_approval.get("signature") or ""),
+        })
     gate = SafeExecutionGate(
         approval_verification_key=gate_public_key,
         approved_actors=gate_actors,
         kill_switch_enabled=kill_switch_enabled,
+        approval_digest_mode="executor" if approval_mode == "operator" else "full",
     )
     with SafeActionAuditStore(audit_db) as audit:
         workflow = SafeActionLiveWorkflow(

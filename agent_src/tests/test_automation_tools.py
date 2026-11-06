@@ -287,7 +287,7 @@ def test_safe_executor_compensation_ids_match_operator_approval_and_forced_comma
     assert 'docker rm -f moodle-fault-res-01 >/dev/null 2>&1 || true' not in forced_command
 
 
-def test_staging_remediation_requires_external_dual_approvals() -> None:
+def test_staging_remediation_requires_external_operator_approval() -> None:
     setup = (ROOT / "automation/configure-moodle-safe-executor-api.sh").read_text(
         encoding="utf-8"
     )
@@ -302,11 +302,11 @@ def test_staging_remediation_requires_external_dual_approvals() -> None:
     assert "approval-ed25519.pub" in setup
     assert "gate-approval-ed25519.pub" in setup
     assert "Approver and verifier public keys must be distinct." in setup
-    assert '"$gate_approval_file"' in drill
     assert '"$executor_approval_file"' in drill
-    assert '"$gate_actor_id" != "$executor_actor_id"' in drill
-    assert 'moodle-safe-gate-approval.py' not in drill
-    assert 'moodle-safe-approval.py' not in drill
+    assert 'moodle-telegram-approval.py' in drill
+    assert 'moodle-safe-approval.py' in drill
+    assert '--private-key "$operator_signing_key" --actor operator' in drill
+    assert 'gate_approval_file=' not in drill
     assert 'Set MOODLE_VERIFIER_SIGNING_KEY_FILE' in drill
 
 

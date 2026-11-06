@@ -54,23 +54,22 @@ PAYLOAD = {
 }
 
 
-def test_prepare_message_lists_each_gate_check_and_hides_full_hash() -> None:
+def test_prepare_message_summarizes_gate_and_waits_for_operator() -> None:
     text = notify_mod.format_prepare("ev-cand", PREPARED)
-    assert "④ SAFETY GATE" in text
-    assert text.count("✅") == 8 and "confidence 0.65 < 0.80" in text
-    assert "CHƯA ĐƯỢC THỰC THI" in text and "2 chữ ký" in text
+    assert "④ SAFETY GATE" in text and "ĐẠT 8/8" in text
+    assert "chờ Operator" in text and "chưa thực thi" in text
     assert "a" * 64 not in text  # only a hash prefix is shown
 
 
 def test_prepare_message_reports_a_gate_denial() -> None:
     denied = {**PREPARED, "gate_preview": {"decision": "DENY", "reason": "kill switch is enabled"}}
     text = notify_mod.format_prepare("ev-cand", denied)
-    assert "BỊ CHẶN: kill switch is enabled" in text and "✅" not in text
+    assert "CHẶN · kill switch is enabled" in text and "ĐẠT" not in text
 
 
 def test_execute_message_reads_the_executor_result_not_the_workflow_status() -> None:
     # The workflow reports awaiting_verification; the executor result says executed.
-    assert "⑤ EXECUTOR ĐÃ THỰC THI" in notify_mod.format_execute("ev-cand", EXECUTED)
+    assert "⑤ EXECUTOR · CON-01 · đã thực thi" in notify_mod.format_execute("ev-cand", EXECUTED)
     blocked = {
         "status": "blocked", "mutated": False,
         "gate": {"decision": "DENY", "reason": "approval expired"},
@@ -83,10 +82,10 @@ def test_execute_message_reads_the_executor_result_not_the_workflow_status() -> 
 def test_verification_message_counts_passing_samples() -> None:
     text = notify_mod.format_verification("req-1", PAYLOAD, {"status": "resolved", "event_hash": "c" * 64})
     assert "⑥ INDEPENDENT VERIFIER: RESOLVED" in text
-    assert "4/5" in text
+    assert "4/5" in text and "80%" in text and "RPO: không áp dụng" in text
 
 
-def test_alert_report_for_candidate_says_ai_will_not_execute() -> None:
+def test_alert_report_for_candidate_is_concise_and_actionable() -> None:
     report = {
         "incident_id": "inc-1",
         "status": "remediation_candidate",
@@ -101,8 +100,8 @@ def test_alert_report_for_candidate_says_ai_will_not_execute() -> None:
     }
     alert = {"labels": {"alertname": "MoodleWebContainerMissing", "instance": "moodle-app-b"}}
     text = notify_mod.format_alert_report(alert, report)
-    assert "[CON-01]" in text and "8 bằng chứng" in text
-    assert "reconcile_con01_safe_baseline" in text and "AI KHÔNG tự thực thi" in text
+    assert "MOODLE CON-01" in text and "Khởi động lại Moodle web" in text
+    assert "Safety Gate kiểm tra" in text and len(text.splitlines()) <= 6
 
 
 def test_alert_report_for_human_only_has_no_proposal_to_execute() -> None:
@@ -116,8 +115,8 @@ def test_alert_report_for_human_only_has_no_proposal_to_execute() -> None:
         "remediation_candidate": None,
     }
     text = notify_mod.format_alert_report({"labels": {"alertname": "MoodleSsoLoginOptionMissing"}}, report)
-    assert "CHỈ NGƯỜI ĐƯỢC SỬA" in text and "restore_moodle_oauth2_issuer" in text
-    assert "ĐỀ XUẤT KHẮC PHỤC" not in text
+    assert "Chỉ người xử lý" in text and "OAuth 2 issuer" in text
+    assert "Không mở luồng approve" in text
 
 
 def test_notify_swallows_sender_failures() -> None:
@@ -202,4 +201,4 @@ def test_execute_endpoint_sends_step_five(tmp_path, monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert len(sent) == 1 and "ĐÃ THỰC THI" in sent[0] and SIGNATURE not in sent[0]
+    assert len(sent) == 1 and "đã thực thi" in sent[0] and SIGNATURE not in sent[0]

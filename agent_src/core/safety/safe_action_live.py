@@ -179,7 +179,11 @@ class SafeActionLiveWorkflow:
             )
             return self._not_executed("awaiting_approval", verdict, "valid API approval is required")
 
-        if gate_approval is not None and gate_approval.actor_id == executor_approval["actor_id"]:
+        if (
+            getattr(self._gate, "approval_digest_mode", "full") != "executor"
+            and gate_approval is not None
+            and gate_approval.actor_id == executor_approval["actor_id"]
+        ):
             self._gate.release_before_execution(request, verdict)
             self._audit.append(
                 incident_id=incident_id,

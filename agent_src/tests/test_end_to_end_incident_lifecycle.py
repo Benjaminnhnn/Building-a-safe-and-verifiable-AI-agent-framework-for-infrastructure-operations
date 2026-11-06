@@ -175,6 +175,73 @@ def _sign_executor_approval(
     }
 
 
+def test_one_operator_signature_passes_gate_and_executor(tmp_path: Path, monkeypatch: Any) -> None:
+    """One signed action is checked by the Gate and passed to the Executor."""
+    evidence_db = tmp_path / "evidence.sqlite3"
+    monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "investigate")
+    monkeypatch.setenv("AIOPS_EVIDENCE_DB", str(evidence_db))
+    monkeypatch.setenv("PROMETHEUS_URL", "http://prometheus:9090")
+    monkeypatch.setenv("AIOPS_APPROVAL_MODE", "operator")
+    _mock_con01_prometheus(monkeypatch)
+    report = process_moodle_alert(_con01_alert())
+    with SQLiteEvidenceStore(evidence_db) as store:
+        candidate_id = next(item.evidence_id for item in store.query(
+            incident_id=report["incident_id"], source="ai_decision"
+        ) if item.metadata["decision_kind"] == "remediation_candidate")
+    operator_private, _, operator_public = _generate_ed25519_pair()
+    prepared = prepare_moodle_live_handoff(
+        evidence_db=evidence_db, candidate_id=candidate_id,
+        gate_public_key=operator_public, gate_actors={"operator"},
+    )
+    approval = _sign_executor_approval(prepared["executor_action_sha256"], operator_private)
+    called = []
+
+    def executor(**kwargs):
+        called.append(kwargs)
+        return {"status": "executed", "scenario_id": kwargs["scenario_id"],
+                "completed_nodes": ["b"], "mutated": True}
+
+    result = execute_moodle_live_handoff(
+        evidence_db=evidence_db, candidate_id=candidate_id,
+        request_data=prepared["request"], gate_approval=None,
+        executor_approval=approval, gate_public_key=operator_public,
+        gate_actors={"operator"}, audit_db=tmp_path / "audit.sqlite3",
+        kill_switch_enabled=False, executor=executor,
+    )
+    assert result["status"] == "awaiting_verification" and len(called) == 1
+    assert called[0]["approval"] == approval
+
+
+def test_one_operator_signature_rejects_tampering(tmp_path: Path, monkeypatch: Any) -> None:
+    evidence_db = tmp_path / "evidence.sqlite3"
+    monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "investigate")
+    monkeypatch.setenv("AIOPS_EVIDENCE_DB", str(evidence_db))
+    monkeypatch.setenv("PROMETHEUS_URL", "http://prometheus:9090")
+    monkeypatch.setenv("AIOPS_APPROVAL_MODE", "operator")
+    _mock_con01_prometheus(monkeypatch)
+    report = process_moodle_alert(_con01_alert())
+    with SQLiteEvidenceStore(evidence_db) as store:
+        candidate_id = next(item.evidence_id for item in store.query(
+            incident_id=report["incident_id"], source="ai_decision"
+        ) if item.metadata["decision_kind"] == "remediation_candidate")
+    operator_private, _, operator_public = _generate_ed25519_pair()
+    prepared = prepare_moodle_live_handoff(
+        evidence_db=evidence_db, candidate_id=candidate_id,
+        gate_public_key=operator_public, gate_actors={"operator"},
+    )
+    approval = _sign_executor_approval(prepared["executor_action_sha256"], operator_private)
+    approval["signature"] = "invalid"
+    called = []
+    result = execute_moodle_live_handoff(
+        evidence_db=evidence_db, candidate_id=candidate_id,
+        request_data=prepared["request"], gate_approval=None,
+        executor_approval=approval, gate_public_key=operator_public,
+        gate_actors={"operator"}, audit_db=tmp_path / "audit.sqlite3",
+        kill_switch_enabled=False, executor=lambda **kwargs: called.append(kwargs),
+    )
+    assert result["status"] != "awaiting_verification" and not called
+
+
 def _build_signed_attestation(
     *,
     incident_id: str,

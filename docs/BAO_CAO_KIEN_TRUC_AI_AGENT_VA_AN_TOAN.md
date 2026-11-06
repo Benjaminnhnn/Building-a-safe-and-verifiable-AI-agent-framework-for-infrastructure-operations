@@ -39,7 +39,7 @@ khởi động lại container `moodle-cron`, **không** chạy SQL xoá khoá t
 | 1. Thu thập bằng chứng | Chỉ đọc: Prometheus, Blackbox, trạng thái Docker | Truy vấn cố định, hữu hạn theo từng alert |
 | 2. Chẩn đoán | Kết luận phải trỏ tới `evidence_refs` có hash | Luật đã duyệt; mâu thuẫn hoặc thiếu bằng chứng thì escalate |
 | 3. Đề xuất | Chỉ hành động có trong catalog, có rollback đối ứng | Catalog hữu hạn; ngoài catalog thì không có đề xuất |
-| 4. Thực thi và xác minh | Không tự làm | Safety Gate + 2 chữ ký người; Executor riêng; chỉ Verifier được kết luận `RESOLVED` |
+| 4. Thực thi và xác minh | Không tự làm | Safety Gate + một chữ ký Operator; Executor riêng; chỉ Verifier được kết luận `RESOLVED` |
 
 **Bất biến an toàn** (AGENTS.md):
 - Hành động lạ hoặc không được phép **fail closed**; phê duyệt khác với thực thi.
@@ -100,7 +100,7 @@ Alertmanager
 (mặc định 900). Redis lỗi thì dùng cooldown trong bộ nhớ; alert `resolved` xoá cooldown.
 
 **Đường alert không bao giờ thực thi.** Từ candidate tới thực thi phải đi qua handoff của operator
-(`/prepare` → 2 chữ ký → `/execute`), hoàn toàn tách khỏi đường nhận alert.
+(`/prepare` → Operator reply `approve` và ký → `/execute`), hoàn toàn tách khỏi đường nhận alert.
 
 ---
 
@@ -177,31 +177,17 @@ Khi chuẩn bị yêu cầu (`/prepare`), Gate chạy `explain()`: gọi `evalua
 qua một hành động cần duyệt. Kết quả `gate_preview` liệt kê 8 nhóm kiểm tra đã đạt và lý do vẫn cần người duyệt (ví
 dụ *confidence 0.65 < 0.80*, *catalog bắt buộc duyệt*). Đây là nội dung tin Telegram ④.
 
-### 5.3. Vì sao cần hai chữ ký
+### 5.3. Một chữ ký Operator
 
-| | Chữ ký 1: **safety-officer** | Chữ ký 2: **operator** |
-|---|---|---|
-| Trả lời | "Hành động này có **nên** làm không?" (rủi ro, đúng nguyên nhân, có rollback) | "Có **được** chạy **bây giờ**, trên **máy này** không?" |
-| Ký lên | `gate_action_sha256` (hash toàn bộ yêu cầu) | Digest (kịch bản, hành động, phạm vi, idempotency key) |
-| **Ai kiểm tra** | **Safety Gate trong Agent** | **Executor API** trên monitor, một tiến trình khác, kiểm tra lại độc lập |
-| Hết hạn | 5 phút | 5 phút |
+Operator reply `approve` vào đúng tin yêu cầu của bot. Cầu nối chỉ chấp nhận Telegram user ID trong allowlist và đúng
+chat/message ID; sau đó máy Operator ký Ed25519 lên digest gồm môi trường staging, kịch bản, hành động catalog, phạm
+vi và idempotency key. Chữ ký hết hạn sau 5 phút. Safety Gate trong Agent và Executor API trên monitor cùng kiểm tra
+chữ ký bằng khóa công khai Operator. Gate vẫn kiểm tra toàn bộ yêu cầu, bằng chứng, catalog, rollback và kill switch;
+Executor vẫn chỉ chạy hành động cố định trong allowlist. Agent không giữ khóa riêng.
 
-Hai chữ ký được xác minh ở **hai tiến trình khác nhau bằng hai khoá công khai khác nhau**. Muốn hệ thống làm sai phải
-sai đồng thời ở hai nơi độc lập:
-
-| Nếu… | Chỉ 1 chữ ký | 2 chữ ký |
-|---|---|---|
-| Agent bị chiếm quyền hoặc bị prompt injection | Agent bị chiếm có thể bỏ qua chính Gate của nó | Executor vẫn đòi chữ ký operator và tự kiểm tra |
-| Lộ một khoá ký | Chạy được mọi hành động | Vẫn thiếu khoá còn lại |
-| Một người sai sót | Đi thẳng vào hệ thống | Người thứ hai có cơ hội chặn |
-| Gửi lại yêu cầu cũ (replay) | Có thể chạy lại | Hash + hạn 5 phút + idempotency một lần |
-| Sửa yêu cầu sau khi duyệt | Tuỳ cách ký | Hash đổi, cả hai chữ ký mất hiệu lực |
-
-Đây là nguyên tắc tách biệt nhiệm vụ (four-eyes). Agent **không cầm khoá nào**. Không thêm chữ ký thứ ba vì mỗi lớp
-duyệt làm chậm khôi phục; hành động rủi ro cao hơn thì bị **cấm hẳn** cho Agent (chỉ người).
-
-**Giới hạn của bản demo:** một tài khoản Telegram bấm cả hai vai. Vẫn giữ được độc lập **kỹ thuật** (hai khoá, hai
-điểm kiểm tra), nhưng mất độc lập **con người**. Vận hành thật phải do hai người giữ hai vai.
+**Giới hạn:** chỉ có một người phê duyệt nên không có kiểm tra chéo của người thứ hai. Cần bảo vệ khóa riêng Operator
+trên máy vận hành và giữ `TELEGRAM_ADMIN_USER_IDS` tối thiểu. Independent Verifier dùng khóa riêng khác để ký kết quả
+khôi phục; chỉ attestation hợp lệ mới chuyển incident sang `RESOLVED`.
 
 ### 5.4. Handoff của operator
 
@@ -269,29 +255,28 @@ sửa.
 
 ## 8. Phê duyệt và báo cáo qua Telegram
 
-**Cầu nối phê duyệt** (`automation/moodle-telegram-approval.py`, chạy trên laptop operator):
-- Gửi tin **✍️ YÊU CẦU PHÊ DUYỆT** có nút ✅ Duyệt / ❌ Từ chối, lần lượt cho vai safety-officer rồi operator.
-- Chỉ chấp nhận lượt bấm từ `TELEGRAM_ADMIN_USER_IDS` trong đúng `TELEGRAM_CHAT_ID`; nút mang mã ngẫu nhiên theo từng
-  yêu cầu nên bấm nút cũ không có tác dụng.
-- **Không ký và không gọi Agent.** Drill (`MOODLE_APPROVAL_MODE=telegram`) chỉ ký bằng khoá trên laptop **sau khi**
-  cầu nối báo đã duyệt. Từ chối, hết giờ hay lỗi Telegram đều dừng: mặc định là không duyệt.
+**Cầu nối phê duyệt** (`automation/moodle-telegram-approval.py`, chạy trên máy operator):
+- Safety Gate gửi kết quả ngắn và cầu nối gửi một tin yêu cầu. Operator reply trực tiếp tin đó bằng `approve` hoặc `reject`.
+- Chỉ nhận reply của user thuộc `TELEGRAM_ADMIN_USER_IDS` trong đúng `TELEGRAM_CHAT_ID`, đúng message ID của yêu cầu hiện tại.
+- Cầu nối không ký và không gọi Agent. Sau `approve`, drill dùng **một** khóa riêng Ed25519 trên máy operator ký hành động; Safety Gate và Executor cùng kiểm tra chữ ký theo digest hành động, với khóa công khai đã cài. Từ chối, hết giờ hay lỗi Telegram đều dừng.
 - Mã thoát: 0 duyệt, 10 từ chối, 11 hết giờ, 2 lỗi cấu hình hoặc Telegram.
 
 **Tin báo theo bước:**
 
 | Bước | Tin | Gửi từ |
 |---|---|---|
-| ② ③ | 🚨 ALERT + 🧠 AI CHẨN ĐOÁN (nguyên nhân, độ tin cậy, số bằng chứng, đề xuất kèm rollback, "AI KHÔNG tự thực thi") hoặc 🙅 CHỈ NGƯỜI ĐƯỢC SỬA; kèm báo cáo việc admin cần làm (`operator_report.py`) | Celery worker |
-| ④ | 🛡 SAFETY GATE: 8 kiểm tra ✅, lý do vẫn cần người | Agent API `/prepare` |
-| ④ | ✍️ YÊU CẦU PHÊ DUYỆT (nút bấm) | Cầu nối trên laptop |
+| ② ③ | 🚨 ALERT ngắn: lỗi, nơi lỗi, nguyên nhân, giải pháp tập trung và mã sự cố; báo cáo chi tiết vẫn ở evidence | Celery worker |
+| ④ | 🛡 SAFETY GATE: kết quả đạt/chặn, số kiểm tra, hành động và đích | Agent API `/prepare` |
+| ④ | ✍️ YÊU CẦU PHÊ DUYỆT: reply `approve` vào đúng tin | Cầu nối trên máy operator |
 | ⑤ | ⚙️ EXECUTOR ĐÃ THỰC THI / ⛔ KHÔNG THỰC THI / ⛔ BỊ TỪ CHỐI | Agent API `/execute` |
 | ⑥ | 🔎 Verifier bắt đầu (hợp đồng) và từng mẫu | Verifier trên laptop (`--telegram-progress`) |
-| ⑥ | 🏁 RESOLVED hoặc ⛔ attestation bị từ chối | Agent API `/verifications` |
+| ⑥ | 🏁 RESOLVED hoặc ⛔ attestation bị từ chối; tổng kết probe, RTO đo được và RPO | Agent API và drill trên máy operator |
 | Hết alert | ✅ hết firing, "chưa phải RESOLVED" | Celery worker |
 
 Tin chỉ chứa ID, quyết định và tiền tố hash; không có chữ ký, token hay body yêu cầu. Tin ④–⑥ gửi **sau** khi API đã
 trả lời (`BackgroundTasks`), nên Telegram chậm hay lỗi không đổi quyết định an toàn. Callback tiến độ của Verifier lỗi
-cũng không đổi kết luận (có test).
+cũng không đổi kết luận (có test). RTO được đo từ lúc alert được phát hiện đến lúc runtime nhận `RESOLVED`; RPO ghi
+"không áp dụng" cho các kịch bản khôi phục tính sẵn sàng mà không restore dữ liệu.
 
 ---
 
@@ -308,7 +293,7 @@ nhắn tin đa nền tảng, là MCP client, có hook `pre_tool_call`, có bộ 
 | Vị trí | Trong tiến trình Agent | Dịch vụ ngoài tiến trình AI |
 | Bất biến | Tắt được bằng `--yolo` hoặc `mode: off` | Không thể bỏ qua dù AI sinh prompt gì |
 | Prompt injection | `smart approval` dùng LLM nên có thể bị lừa | Kiểm tra catalog hữu hạn và chữ ký mật mã |
-| Định danh người duyệt | stdin hoặc tin nhắn thường | 2 chữ ký Ed25519 gắn action hash |
+| Định danh người duyệt | stdin hoặc tin nhắn thường | Telegram user ID allowlist và một chữ ký Ed25519 gắn action digest |
 
 **Hermes có tự kết luận `RESOLVED` được không? Không.** LLM có xu hướng tự xác nhận hành động của mình thành công;
 Verifier của đề tài đòi đo định lượng nhiều mẫu, ba nhóm probe và chữ ký riêng.

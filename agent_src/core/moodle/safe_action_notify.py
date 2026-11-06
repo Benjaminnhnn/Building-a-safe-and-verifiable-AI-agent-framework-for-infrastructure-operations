@@ -2,7 +2,7 @@
 
 Step 2/3 (alert and diagnosis) is sent by the Celery worker; steps 4 (Safety
 Gate prepare), 5 (executor dispatch) and 6 (Independent Verifier acceptance)
-by the Agent API. Approval buttons are sent by the operator-side bridge
+by the Agent API. The approval prompt is sent by the operator-side bridge
 (automation/moodle-telegram-approval.py), which holds the signing keys; the
 Agent never signs.
 
@@ -30,6 +30,21 @@ _GATE_CHECK_LABELS = (
     "Độ tin cậy chẩn đoán đạt ngưỡng",
 )
 
+_REMEDIATION_TEXT = {
+    "BIZ-01": "Tắt chế độ bảo trì CLI sau khi xác nhận Moodle không đang nâng cấp.",
+    "BIZ-02": "Khởi động lại Moodle cron trên node A; giữ nguyên dữ liệu hàng đợi.",
+    "CON-01": "Khởi động lại Moodle web trên node B bằng Compose đã duyệt.",
+    "DB-01": "Gỡ đúng rule chặn TCP 5432 tới RDS trên hai node Moodle.",
+    "RES-01": "Dừng container tải CPU được gắn nhãn lỗi trên node B.",
+    "NET-01": "Tạo lại web container từ Compose để bỏ bản ghi /etc/hosts sai.",
+}
+
+_HUMAN_TEXT = {
+    "SEC-01": "Kỹ sư an ninh kiểm tra và thu hồi đúng rule ingress lạ của RDS.",
+    "SSO-04": "Kiểm tra assignment hoặc group của người dùng trên Okta.",
+    "SSO-13": "Kiểm tra OAuth 2 issuer Okta và nút đăng nhập trong Moodle.",
+}
+
 
 def _short(value: Any, length: int = 12) -> str:
     text = str(value or "")
@@ -50,60 +65,29 @@ def _as_dict(value: Any) -> dict[str, Any]:
 
 
 def format_alert_report(alert: dict[str, Any], report: dict[str, Any]) -> str:
-    """Steps 2-3: what fired, what the Agent concluded, and what happens next."""
+    """Short operator-facing alert; the detailed audit remains in evidence."""
     labels = alert.get("labels") or {}
     annotations = alert.get("annotations") or {}
     diagnosis = _as_dict(report.get("diagnosis"))
     disposition = _as_dict(report.get("remediation_disposition"))
     candidate = _as_dict(report.get("remediation_candidate"))
-    action = candidate.get("action") or {}
     scenario = (
         disposition.get("scenario_id") or candidate.get("scenario_id") or report.get("scenario_id") or "chưa xác định"
     )
     nodes = ", ".join(diagnosis.get("affected_nodes") or []) or labels.get("instance", "?")
-    evidence_count = len(action.get("evidence_refs") or diagnosis.get("evidence_refs") or [])
-
-    lines = [
-        f"🚨 ② ALERT {labels.get('alertname', 'Unknown')} [{scenario}]",
-        f"Ở đâu: {nodes}",
-    ]
-    if annotations.get("summary"):
-        lines.append(f"Hiện tượng: {str(annotations['summary'])[:200]}")
-    lines.append("")
-    lines.append("🧠 ③ AI CHẨN ĐOÁN")
-    if diagnosis.get("hypothesis"):
-        lines.append(f"Nguyên nhân: {str(diagnosis['hypothesis'])[:220]}")
-        lines.append(
-            f"Mã: {diagnosis.get('cause_code')} | độ tin cậy {diagnosis.get('confidence')} | {evidence_count} bằng chứng"
-        )
-    else:
-        lines.append(f"Không kết luận được: {str(diagnosis.get('reason') or report.get('status'))[:200]}")
-
+    symptom = str(annotations.get("summary") or labels.get("alertname") or "Moodle có lỗi")[:110]
+    cause = str(diagnosis.get("hypothesis") or diagnosis.get("reason") or "Chưa đủ bằng chứng xác định nguyên nhân")[:150]
+    lines = [f"🚨 MOODLE {scenario} · {symptom}", f"Nơi lỗi: {nodes}", f"Nguyên nhân: {cause}"]
     kind = disposition.get("disposition")
-    lines.append("")
     if candidate:
-        rollback = (action.get("rollback_plan") or {}).get("rollback_action_id")
-        lines += [
-            "🛠 ĐỀ XUẤT KHẮC PHỤC",
-            f"{candidate.get('catalog_action_id')} -> {action.get('target_resource_id')} (phạm vi {candidate.get('target_scope')})",
-            f"Rollback: {rollback or 'không có'}",
-            "",
-            "➡️ Tiếp theo: Safety Gate kiểm tra và cần 2 chữ ký người duyệt.",
-            "AI KHÔNG tự thực thi (execution_permitted=False).",
-        ]
+        advice = _REMEDIATION_TEXT.get(str(scenario)) or str((candidate.get("action") or {}).get("reason") or "Kiểm tra hành động đã duyệt")[:150]
+        lines += [f"Đề xuất: {advice}", "Tiếp theo: Safety Gate kiểm tra; Operator duyệt trước khi thực thi."]
     elif kind == "human_only_escalation":
-        lines += [
-            "🙅 CHỈ NGƯỜI ĐƯỢC SỬA",
-            f"Hành động cần làm: {disposition.get('catalog_action_id')} (phạm vi {disposition.get('target_scope')})",
-            "Agent không có quyền thực thi; executor cũng từ chối lệnh này.",
-            "➡️ Operator sửa tay theo runbook, sau đó probe xác nhận ổn định ≥120 s.",
-        ]
+        advice = _HUMAN_TEXT.get(str(scenario)) or str(disposition.get("reason") or "Xử lý theo runbook")[:150]
+        lines += [f"Chỉ người xử lý: {advice}", "Không mở luồng approve/Executor cho sự cố này."]
     else:
-        lines += [
-            "➡️ Không có đề xuất tự động: chuyển người xử lý.",
-            f"Lý do: {str(disposition.get('reason') or report.get('status'))[:200]}",
-        ]
-    lines.append(f"incident={report.get('incident_id', 'unassigned')}")
+        lines.append("Chưa có đề xuất an toàn; người vận hành kiểm tra telemetry và runbook.")
+    lines.append(f"Mã sự cố: {_short(report.get('incident_id', 'unassigned'), 18)}")
     return "\n".join(lines)
 
 
@@ -115,49 +99,38 @@ def format_alert_resolved(alert_name: str, instance: str) -> str:
 
 
 def format_prepare(candidate_id: str, prepared: dict[str, Any]) -> str:
-    """Step 4: each Safety Gate check, and why a human must still approve."""
+    """Step 4: concise result of the reviewed Safety Gate checks."""
     request = prepared.get("request") or {}
     action = request.get("action") or {}
     preview = prepared.get("gate_preview") or {}
-    lines = [
-        "🛡 ④ SAFETY GATE",
-        f"{request.get('scenario_id')}: {request.get('catalog_action_id')} -> {action.get('target_resource_id')}",
-        f"incident={prepared.get('incident_id')} | request={_short(request.get('request_id'), 8)}",
-        "",
-    ]
+    scenario = str(request.get("scenario_id") or "?")
+    lines = [f"🛡 ④ SAFETY GATE · {scenario}"]
     if preview.get("decision") == "DENY":
-        lines += [f"⛔ BỊ CHẶN: {preview.get('reason')}", "Không có yêu cầu phê duyệt nào được tạo."]
+        lines += [f"Kết quả: CHẶN · {str(preview.get('reason') or 'không đạt chính sách')[:180]}", "Không mở phê duyệt."]
         return "\n".join(lines)
-    for label, detail in zip(_GATE_CHECK_LABELS, preview.get("checks") or []):
-        lines.append(f"✅ {label}: {detail}")
-    reasons = preview.get("approval_reasons") or []
+    checks = preview.get("checks") or []
     lines += [
-        "",
-        "⏸ CHƯA ĐƯỢC THỰC THI: cần 2 chữ ký độc lập (safety-officer + operator)",
-    ]
-    if reasons:
-        lines.append("Vì: " + "; ".join(reasons))
-    lines += [
-        f"Chữ ký phải gắn đúng hash {_short(prepared.get('gate_action_sha256'))}, hết hạn sau 5 phút.",
-        f"execution_permitted={prepared.get('execution_permitted', False)}",
+        f"Kết quả: ĐẠT {len(checks)}/{len(_GATE_CHECK_LABELS)} kiểm tra; chờ Operator.",
+        f"Hành động: {_REMEDIATION_TEXT.get(scenario, str(request.get('catalog_action_id') or 'đã duyệt'))}",
+        f"Đích: {action.get('target_resource_id') or request.get('target_scope')}",
+        f"Request: {_short(request.get('request_id'), 8)} · chưa thực thi.",
+        "Reply `approve` vào tin yêu cầu của bot để xác nhận hành động này.",
     ]
     return "\n".join(lines)
 
 
 def format_execute(candidate_id: str, outcome: dict[str, Any]) -> str:
-    """Step 5: what the gate decided with both signatures, and what changed."""
+    """Step 5: what the gate decided and what the executor changed."""
     result = outcome.get("result") or {}
     gate = outcome.get("gate") or {}
     # The workflow status is awaiting_verification; the executor's own result says what happened.
     executed = result.get("status") == "executed" and (result.get("mutated") is True or outcome.get("mutated") is True)
     if executed:
         lines = [
-            "⚙️ ⑤ EXECUTOR ĐÃ THỰC THI",
-            f"Gate: {gate.get('decision')} (đủ 2 chữ ký hợp lệ, đúng hash, còn hạn)",
-            f"{result.get('scenario_id')}: {result.get('catalog_action_id')} trên node {result.get('completed_nodes')}",
-            f"mutated=True | request={_short(result.get('request_id'), 8)}",
-            "",
-            "➡️ Incident chuyển VERIFYING. Chưa RESOLVED: chờ Independent Verifier (cửa sổ ổn định ≥120 s).",
+            f"⚙️ ⑤ EXECUTOR · {result.get('scenario_id')} · đã thực thi",
+            f"Đã sửa: {_REMEDIATION_TEXT.get(str(result.get('scenario_id')), str(result.get('catalog_action_id')))}",
+            f"Node: {', '.join(result.get('completed_nodes') or []) or '?'} · Gate: {gate.get('decision')}",
+            "Tiếp theo: Independent Verifier đo ổn định ≥120 giây.",
         ]
     else:
         lines = [
@@ -183,17 +156,16 @@ def format_execute_rejected(candidate_id: str, status_code: int, detail: str) ->
 def format_verification(request_id: str, payload: dict[str, Any], accepted: dict[str, Any]) -> str:
     """Step 6: the signed verdict the Agent accepted."""
     samples = payload.get("probe_samples") or []
-    passed = sum(1 for sample in samples if all((sample.get("checks") or {}).values()))
+    passed = sum(1 for sample in samples if (sample.get("checks") or {}) and all(sample["checks"].values()))
     verification = payload.get("verification") or {}
     resolved = accepted.get("status") == "resolved"
     head = "🏁 ⑥ INDEPENDENT VERIFIER: RESOLVED" if resolved else f"⚠️ ⑥ INDEPENDENT VERIFIER: {accepted.get('status')}"
+    rate = round(passed * 100 / len(samples)) if samples else 0
     return (
-        f"{head}\n"
-        f"{payload.get('scenario_id')} | incident={payload.get('incident_id')} | request={_short(request_id, 8)}\n"
-        f"{passed}/{len(samples)} mẫu đạt mọi probe | ổn định {verification.get('stability_seconds')} s\n"
-        f"Attestation Ed25519 hợp lệ, gắn với biên nhận thực thi; event={_short(accepted.get('event_hash'))}"
-        + (" (đã ghi nhận trước đó)" if accepted.get("idempotent") else "")
-        + "\nChỉ Verifier được chuyển incident sang RESOLVED; Agent và Executor không tự làm được."
+        f"{head} · {payload.get('scenario_id')}\n"
+        f"Probe đạt: {passed}/{len(samples)} ({rate}%) · ổn định {verification.get('stability_seconds')} giây\n"
+        f"Mã sự cố: {_short(payload.get('incident_id'), 18)} · request: {_short(request_id, 8)}\n"
+        "RTO: xem tổng kết phiên chạy; RPO: không áp dụng khi không khôi phục dữ liệu."
     )
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Execute one reviewed staging action through the Agent two-approval API.
+# Execute one reviewed staging action after Operator approval on Telegram.
 # Used directly or by automation/thesis-campaign-trial.py for ai_agent trials.
 set -euo pipefail
 
@@ -33,7 +33,6 @@ run_id="$scenario-$(date -u +%Y%m%dT%H%M%SZ)"
 drill_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 evidence_file="$evidence_dir/$run_id.json"
 prepared_file="$evidence_dir/$run_id-prepared.json"
-gate_approval_file="$evidence_dir/$run_id-gate-approval.json"
 executor_approval_file="$evidence_dir/$run_id-executor-approval.json"
 execute_body_file="$evidence_dir/$run_id-execute-body.json"
 execute_result_file="$evidence_dir/$run_id-execute-result.json"
@@ -42,6 +41,7 @@ verifier_attestation_file="$evidence_dir/$run_id-verifier-attestation.json"
 runtime_verification_file="$evidence_dir/$run_id-runtime-verification.json"
 audit_file="$evidence_dir/$run_id-audit.sqlite3"
 verifier_signing_key="${MOODLE_VERIFIER_SIGNING_KEY_FILE:-}"
+operator_signing_key="${MOODLE_OPERATOR_SIGNING_KEY_FILE:-}"
 stage_times='{}'
 # Record trial timestamps for the thesis campaign row (UTC, ISO-8601).
 mark_time() {
@@ -62,6 +62,22 @@ done
   echo "Set MOODLE_VERIFIER_SIGNING_KEY_FILE to the independent verifier's signing key." >&2
   exit 66
 }
+[[ -n "$operator_signing_key" && -r "$operator_signing_key" ]] || {
+  echo "Set MOODLE_OPERATOR_SIGNING_KEY_FILE to the Operator's local Ed25519 private key." >&2
+  exit 66
+}
+[[ "${MOODLE_APPROVAL_MODE:-telegram}" == telegram ]] || {
+  echo "Live drill requires MOODLE_APPROVAL_MODE=telegram." >&2
+  exit 64
+}
+operator_public_key="$(mktemp)"
+openssl pkey -in "$operator_signing_key" -pubout -out "$operator_public_key" 2>/dev/null
+cmp -s "$operator_public_key" "$secrets_dir/approval-ed25519.pub" || {
+  rm -f "$operator_public_key"
+  echo "Operator private key does not match the installed Executor public key." >&2
+  exit 66
+}
+rm -f "$operator_public_key"
 [[ -r "$image_file" ]] || { echo "Missing immutable deployed Agent image reference: $image_file" >&2; exit 66; }
 
 agent_live_enabled=false
@@ -112,7 +128,7 @@ for _ in {1..30}; do
   sleep 1
 done
 curl --fail --silent http://127.0.0.1:18000/health \
-  | jq -e '.safe_action_live_enabled == false' >/dev/null
+  | jq -e '.safe_action_live_enabled == false and .approval_mode == "operator"' >/dev/null
 remote monitor-ai-01 \
   "curl --fail --silent http://172.17.0.1:8765/healthz | jq -e '.execution_enabled == false' >/dev/null"
 
@@ -169,50 +185,20 @@ request_id="$(jq -r '.request.request_id' "$prepared_file")"
 idempotency_key="$(jq -r '.request.idempotency_key' "$prepared_file")"
 catalog_action_id="$(jq -r '.request.catalog_action_id' "$prepared_file")"
 
-approval_mode="${MOODLE_APPROVAL_MODE:-auto}"
-if [[ "$approval_mode" == telegram ]]; then
-  # A human decides on Telegram; the keys stay on this machine and are used
-  # only after the bridge reports approval. Reject, timeout or error stops here.
-  stage=human-approval-telegram
-  human_approval_file="$evidence_dir/$run_id-human-approval.json"
-  if ! python3 "$script_dir/moodle-telegram-approval.py" approve \
-      --prepared "$prepared_file" \
-      --timeout-seconds "${MOODLE_APPROVAL_TIMEOUT_SECONDS:-600}" > "$human_approval_file"; then
-    echo "Human approval was not granted ($(jq -r '.decision' "$human_approval_file")); nothing was executed." >&2
-    exit 1
-  fi
-elif [[ "$approval_mode" != auto ]]; then
-  echo "MOODLE_APPROVAL_MODE must be auto or telegram." >&2
-  exit 64
+stage=human-approval-telegram
+human_approval_file="$evidence_dir/$run_id-human-approval.json"
+if ! python3 "$script_dir/moodle-telegram-approval.py" approve \
+    --prepared "$prepared_file" \
+    --timeout-seconds "${MOODLE_APPROVAL_TIMEOUT_SECONDS:-600}" > "$human_approval_file"; then
+  echo "Operator approval was not granted ($(jq -r '.decision' "$human_approval_file")); nothing was executed." >&2
+  exit 1
 fi
+jq -e --arg request "$request_id" '.decision == "approved" and .request_id == $request' "$human_approval_file" >/dev/null
 
-stage=two-independent-approvals
-cat <<EOF
-Two separate approvers must sign the prepared request with their own private keys.
-Prepared request: $prepared_file
-Safety Gate approval digest: $(jq -r '.gate_action_sha256' "$prepared_file")
-Executor approval digest: $(jq -r '.executor_action_sha256' "$prepared_file")
-Place the signed Gate approval JSON at: $gate_approval_file
-Place the signed Executor approval JSON at: $executor_approval_file
-EOF
-[[ -t 0 ]] || { echo "Interactive approval handoff requires a terminal." >&2; exit 64; }
-read -r -t 300 -p "Press Enter after both independent approvers have supplied their signed files: " || {
-  echo "Approval handoff timed out; no action was dispatched." >&2
-  exit 124
-}
-[[ -r "$gate_approval_file" && -r "$executor_approval_file" ]] || {
-  echo "Both signed approval files are required; no action was dispatched." >&2
-  exit 66
-}
-gate_actor_id="$(jq -er '.actor_id | select(type == "string" and length > 0)' "$gate_approval_file")"
-executor_actor_id="$(jq -er '.approval.actor_id | select(type == "string" and length > 0)' "$executor_approval_file")"
-[[ "$gate_actor_id" != "$executor_actor_id" ]] || {
-  echo "Safety Gate and Executor approvals must have different actor IDs." >&2
-  exit 77
-}
-jq -e --arg digest "$(jq -r '.gate_action_sha256' "$prepared_file")" \
-  '.action_sha256 == $digest and (.signature | type == "string" and length > 0)' \
-  "$gate_approval_file" >/dev/null
+stage=operator-signature
+python3 "$script_dir/moodle-safe-approval.py" "$scenario" \
+  --action-id "$catalog_action_id" --idempotency-key "$idempotency_key" \
+  --private-key "$operator_signing_key" --actor operator > "$executor_approval_file"
 jq -e --arg digest "$(jq -r '.executor_action_sha256' "$prepared_file")" \
   --arg scenario "$scenario" --arg action "$catalog_action_id" \
   --arg idempotency "$idempotency_key" \
@@ -220,11 +206,10 @@ jq -e --arg digest "$(jq -r '.executor_action_sha256' "$prepared_file")" \
   "$executor_approval_file" >/dev/null
 jq -n \
   --slurpfile prepared "$prepared_file" \
-  --slurpfile gate "$gate_approval_file" \
   --slurpfile executor "$executor_approval_file" \
-  '{request:$prepared[0].request,gate_approval:$gate[0],executor_approval:$executor[0].approval}' \
+  '{request:$prepared[0].request,executor_approval:$executor[0].approval}' \
   > "$execute_body_file"
-chmod 0600 "$prepared_file" "$gate_approval_file" "$executor_approval_file" "$execute_body_file"
+chmod 0600 "$prepared_file" "$executor_approval_file" "$execute_body_file"
 mark_time t_gate
 
 stage=agent-execute
@@ -262,13 +247,11 @@ done
 stage=export-audit-and-independent-verification
 python3 "$script_dir/export-moodle-safe-action-audit.py" \
   --ssh-config "$ssh_config" --output "$audit_file" >/dev/null
-verifier_progress=()
-[[ "$approval_mode" == telegram ]] && verifier_progress=(--telegram-progress)
 AWS_PROFILE="${AWS_PROFILE:-target-account}" python3 "$script_dir/moodle-independent-verifier.py" \
   --audit-db "$audit_file" --signing-key "$verifier_signing_key" \
   --incident-id "$incident_id" --request-id "$request_id" \
   --scenario-id "$scenario" --window-seconds 120 --interval-seconds 30 \
-  ${verifier_progress[@]+"${verifier_progress[@]}"} \
+  --telegram-progress \
   > "$verifier_file"
 jq -e '.verdict == "ready_for_runtime_acceptance" and .resolution_eligible == true and (.probe_samples | length >= 5) and (.attestation.signature | type == "string" and length > 0)' "$verifier_file" >/dev/null
 jq '.attestation' "$verifier_file" > "$verifier_attestation_file"
@@ -306,14 +289,18 @@ jq -n \
   --arg run_id "$run_id" --arg scenario "$scenario" --arg alert "$alert_name" \
   --arg candidate_id "$candidate_id" --arg incident_id "$incident_id" \
   --arg completed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --slurpfile prepared "$prepared_file" --slurpfile gate "$gate_approval_file" \
+  --slurpfile prepared "$prepared_file" --slurpfile human_approval "$human_approval_file" \
   --slurpfile executor_approval "$executor_approval_file" \
   --slurpfile execution "$execute_result_file" --slurpfile verifier "$verifier_file" \
   --slurpfile runtime "$runtime_verification_file" --slurpfile runtime_status "$runtime_verification_file.status.json" \
   --argjson stage_times "$stage_times" --arg health_only_http_status "$health_only_http_status" \
   --argjson contract_at_execute_end "$contract_at_execute_end" \
-  '{run_id:$run_id,stage_times:$stage_times,health_only_http_status:$health_only_http_status,contract_at_execute_end:$contract_at_execute_end,scenario_id:$scenario,status:"passed",evidence_class:"operator_approved_staging_drill",method:"agent_prepare_two_approvals_execute_signed_independent_verify",observed_alert:$alert,candidate_id:$candidate_id,incident_id:$incident_id,prepared_request:$prepared[0],gate_approval:$gate[0],executor_approval:$executor_approval[0].approval,execution_receipt:$execution[0].result,verifier:$verifier[0],verifier_attestation:$verifier[0].attestation,runtime_persistence:$runtime[0],runtime_status:$runtime_status[0],probe_samples:$verifier[0].probe_samples,alert_resolved:"passed",reset:"safe_executor_receipt",baseline_after_reset:"passed",live_switch:"disabled_after_drill",completed_at:$completed_at}' \
+  '{run_id:$run_id,stage_times:$stage_times,health_only_http_status:$health_only_http_status,contract_at_execute_end:$contract_at_execute_end,scenario_id:$scenario,status:"passed",evidence_class:"operator_approved_staging_drill",method:"agent_prepare_one_operator_approval_execute_signed_independent_verify",observed_alert:$alert,candidate_id:$candidate_id,incident_id:$incident_id,prepared_request:$prepared[0],human_approval:$human_approval[0],executor_approval:$executor_approval[0].approval,execution_receipt:$execution[0].result,verifier:$verifier[0],verifier_attestation:$verifier[0].attestation,runtime_persistence:$runtime[0],runtime_status:$runtime_status[0],probe_samples:$verifier[0].probe_samples,alert_resolved:"passed",reset:"safe_executor_receipt",baseline_after_reset:"passed",live_switch:"disabled_after_drill",completed_at:$completed_at}' \
   > "$evidence_file"
 chmod 0600 "$evidence_file"
+python3 "$script_dir/moodle-drill-summary.py" "$evidence_file" || {
+  echo "Recovery verified, but the Telegram summary was not delivered; evidence: $evidence_file" >&2
+  exit 1
+}
 stage=complete
 echo "$scenario Agent handoff drill passed; evidence: $evidence_file"

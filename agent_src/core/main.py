@@ -126,7 +126,7 @@ class MoodleLiveExecutionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     request: dict
-    gate_approval: ApprovalRecord
+    gate_approval: ApprovalRecord | None = None
     executor_approval: dict[str, str]
 
 
@@ -756,6 +756,7 @@ async def health():
             "queue_capacity": CELERY_QUEUE_MAX_LENGTH,
             "redis": redis_status,
             "safe_action_live_enabled": os.getenv("AIOPS_SAFE_ACTION_LIVE_ENABLED", "false").strip().lower() == "true",
+            "approval_mode": os.getenv("AIOPS_APPROVAL_MODE", "two_person"),
         },
     )
 
