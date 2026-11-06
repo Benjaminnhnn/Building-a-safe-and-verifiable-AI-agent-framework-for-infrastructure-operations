@@ -87,8 +87,8 @@ def format_failure(event: dict) -> str:
         user = _clean(actor.get("displayName"))
         login = _clean(actor.get("alternateId"))
         guidance = (
-            "Kiểm tra user có thuộc group được gán app Moodle trên Okta không. "
-            "Nếu group đến từ Entra, sửa membership tại Entra rồi chạy Full import ở Okta."
+            "Gán user hoặc group cho app Moodle trong Okta; nếu group đồng bộ từ Entra, "
+            "sửa membership ở Entra rồi chạy Full import."
         )
     elif kind == "application.policy.sign_on.deny_access":
         user = _clean(actor.get("displayName"))
@@ -101,15 +101,13 @@ def format_failure(event: dict) -> str:
             "Mở Okta System Log theo Event ID để xác định bước bị từ chối; "
             "kiểm tra assignment, policy và MFA trước khi sửa."
         )
+    person = user if login == user else f"{user} ({login})"
     return (
-        "🚨 ĐĂNG NHẬP SSO MOODLE THẤT BẠI\n"
-        f"Người dùng: {user}\n"
-        f"Login: {login}\n"
-        f"Lỗi Okta: {_clean(outcome.get('reason') or event.get('displayMessage'))}\n"
-        f"Loại sự kiện: {_clean(kind)}\n"
-        f"Event ID: {_clean(event.get('uuid'), 80)}\n"
-        f"Hướng xử lý: {guidance}\n"
-        "Quyết định: chỉ người vận hành xử lý; Agent không tự cấp quyền hoặc thay đổi SSO."
+        "🚨 SSO Moodle: đăng nhập thất bại\n"
+        f"User: {person}\n"
+        f"Lỗi: {_clean(outcome.get('reason') or event.get('displayMessage'))}\n"
+        f"Xử lý: {guidance}\n"
+        f"Event ID: {_clean(event.get('uuid'), 80)} · chỉ người xử lý"
     )
 
 
