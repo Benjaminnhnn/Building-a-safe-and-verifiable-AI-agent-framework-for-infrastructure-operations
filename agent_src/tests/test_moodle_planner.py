@@ -208,6 +208,33 @@ def test_s3_3_plans_require_exact_fresh_runtime_fault_evidence():
         assert verdict.decision == "REQUIRE_APPROVAL"
 
 
+def test_net01_accepts_single_blackbox_exporter_sample_but_rejects_duplicates():
+    evidence = _s3_3_evidence('NET-01')
+    for item in evidence:
+        payload = json.loads(item.metadata['payload_json'])
+        if payload['query_id'] in {'moodle_public_probe', 'moodle_rds_tcp_probe'}:
+            payload['labels']['instance'] = 'blackbox-exporter:9115'
+            item.metadata['payload_json'] = json.dumps(payload)
+    diagnosis = {'status': 'hypothesis', 'cause_code': 'application_path_not_isolated',
+                 'evidence_refs': [item.evidence_id for item in evidence]}
+    def plan(items):
+        return plan_moodle_s3_3_remediation(
+            incident_id='inc-net', alert_name='MoodleSyntheticTransactionFailed',
+            diagnosis=diagnosis, evidence=items,
+        )
+    assert plan(evidence)['scenario_id'] == 'NET-01'
+    duplicate = _metric('moodle_public_probe', 1, 'another-exporter', 'extra-public')
+    assert plan(evidence + [duplicate]) is None
+    conflicting = _metric('moodle_public_probe', 0, 'blackbox-exporter:9115', 'same-exporter')
+    assert plan(evidence + [conflicting]) is None
+
+
+def test_net01_synthetic_collection_scopes_public_probe_to_healthz():
+    from core.evidence.evidence_collectors import METRIC_QUERIES_BY_ALERT
+    queries = dict(METRIC_QUERIES_BY_ALERT['MoodleSyntheticTransactionFailed'])
+    assert queries['moodle_public_probe'] == 'probe_success{job="blackbox_moodle_public",probe="healthz"}'
+
+
 def test_s3_3_planner_fails_closed_for_missing_or_stale_marker():
     from datetime import timedelta
 

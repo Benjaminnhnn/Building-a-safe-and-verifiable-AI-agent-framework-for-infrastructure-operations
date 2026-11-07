@@ -119,7 +119,7 @@ METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
             'moodle_synthetic_success{job="moodle_synthetic",instance="monitor-ai-01"}',
         ),
         ("moodle_rds_tcp_probe", 'probe_success{job="blackbox_moodle_rds"}'),
-        ("moodle_public_probe", 'probe_success{job="blackbox_moodle_public"}'),
+        ("moodle_public_probe", 'probe_success{job="blackbox_moodle_public",probe="healthz"}'),
         ("moodle_efs_mount", 'moodle_efs_mount_available{job="moodle_node"}'),
         ("moodle_fault_net01_hosts_override", 'moodle_fault_net01_hosts_override{job="moodle_node"}'),
         ("moodle_fault_sec02_fixture_mode_zero", 'moodle_fault_sec02_fixture_mode_zero{job="moodle_node"}'),
