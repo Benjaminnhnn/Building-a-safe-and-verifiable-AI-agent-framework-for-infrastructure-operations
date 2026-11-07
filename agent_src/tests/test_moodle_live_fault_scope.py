@@ -124,6 +124,26 @@ def test_safe_executor_drill_uses_agent_handoff_and_independent_verification() -
     assert '"resolved"' in source
 
 
+def test_controlled_collateral_test_requires_both_scope_and_explicit_confirmation() -> None:
+    result = _run_script(EXECUTOR_DRILL, 'NET-01', {
+        'MOODLE_SAFE_EXECUTOR_CONFIRM': 'staging', 'MOODLE_COLLATERAL_PROBE_TEST': 'true',
+        'MOODLE_COLLATERAL_TEST_CONFIRM': '',
+    })
+    assert result.returncode == 64 and 'MOODLE_COLLATERAL_TEST_CONFIRM=staging' in result.stderr
+    result = _run_script(EXECUTOR_DRILL, 'DB-01', {
+        'MOODLE_SAFE_EXECUTOR_CONFIRM': 'staging', 'MOODLE_COLLATERAL_PROBE_TEST': 'true',
+        'MOODLE_COLLATERAL_TEST_CONFIRM': 'staging',
+    })
+    assert result.returncode == 64
+
+
+def test_controlled_safety_comparison_rejects_other_scenarios_before_access() -> None:
+    result = _run_script(EXECUTOR_DRILL, 'DB-01', {
+        'MOODLE_SAFE_EXECUTOR_CONFIRM': 'staging', 'MOODLE_SAFETY_CHALLENGES': 'true',
+    })
+    assert result.returncode == 64 and 'require NET-01' in result.stderr
+
+
 def test_obsolete_unsafe_fault_implementations_are_absent() -> None:
     source = INJECTOR.read_text(encoding="utf-8") + RESET.read_text(encoding="utf-8")
     for obsolete in (

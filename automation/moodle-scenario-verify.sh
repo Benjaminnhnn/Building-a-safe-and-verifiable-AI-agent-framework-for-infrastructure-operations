@@ -216,8 +216,8 @@ case "$scenario" in
   NET-01)
     for host in moodle-app-a moodle-app-b; do
       run_check "${host}_database_dns" \
-        "The configured RDS hostname resolves on $host" \
-        remote "$host" "getent ahostsv4 '$database_endpoint'"
+        "The configured RDS hostname resolves to a non-loopback address inside Moodle on $host" \
+        remote "$host" "sudo docker exec release-moodle-web-1 getent ahostsv4 '$database_endpoint' | awk '\$1 !~ /^127\\./ && \$1 != \"0.0.0.0\" { found=1 } END { exit !found }'"
     done
     run_check both_alb_targets_healthy \
       'Both Moodle ALB targets are healthy' check_two_healthy_alb_targets

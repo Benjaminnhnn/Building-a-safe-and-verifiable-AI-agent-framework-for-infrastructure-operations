@@ -281,6 +281,29 @@ def test_progress_callback_sees_every_sample_and_cannot_change_the_verdict(
     assert result["verdict"] == "ready_for_runtime_acceptance"
 
 
+def test_related_failure_with_healthy_transaction_cannot_resolve(tmp_path, monkeypatch):
+    audit_db = tmp_path / 'audit.sqlite'
+    _audit_db(audit_db)
+    contract = {'allowed': ['moodle_healthy'], 'forbidden': ['internet_to_postgresql'], 'related': ['node_dns']}
+    monkeypatch.setattr(verifier, '_run_probe', lambda *_: {
+        'moodle_healthy': True, 'internet_to_postgresql': True, 'node_dns': False,
+    })
+    elapsed = [0.0]
+    base = datetime.now(timezone.utc) - timedelta(seconds=120)
+    result = verifier.verify_window(
+        audit_db=audit_db, signing_key=_private_key(tmp_path / 'verifier.pem'),
+        incident_id='inc-1', request_id='req-1', scenario_id='DB-01', contract=contract,
+        sleep=lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds),
+        monotonic=lambda: elapsed[0], now=lambda: base + timedelta(seconds=elapsed[0]),
+    )
+    assert result['verdict'] == 'not_resolved'
+    assert result['verification']['verdict'] == 'collateral_damage'
+    assert result['resolution_eligible'] is False
+    assert all(not sample['checks']['node_dns'] for sample in result['probe_samples'])
+    with verifier.SafeActionAuditStore(audit_db) as audit:
+        assert audit.get_live_incident_status('inc-1', 'req-1') == 'executed'
+
+
 def test_three_sample_window_accounts_for_first_clock_call_overhead(tmp_path, monkeypatch):
     audit_db = tmp_path / "audit.sqlite"
     _audit_db(audit_db)

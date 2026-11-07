@@ -38,6 +38,7 @@ from core.coordination.tool_auto_discovery import (
     verify_github_signature,
 )
 from core.moodle.live_handoff import execute_moodle_live_handoff, prepare_moodle_live_handoff
+from core.moodle.safety_shadow import evaluate_challenges
 from core.safety.safe_execution_gate import ApprovalRecord
 from core.safety.verifier_attestation import (
     InvalidVerifierSignature,
@@ -199,6 +200,26 @@ def prepare_moodle_remediation(
     if notify or not ready_for_operator:
         background_tasks.add_task(safe_action_notify.notify, safe_action_notify.format_prepare(candidate_id, prepared))
     return prepared
+
+
+@app.post("/api/moodle/remediation/{candidate_id}/safety-challenges")
+def evaluate_moodle_safety_challenges(
+    candidate_id: str,
+    background_tasks: BackgroundTasks,
+    authorization: str | None = Header(default=None),
+):
+    """Compare a real candidate against fixed, isolated, non-dispatching policies."""
+    evidence_db, public_key, actors, _, token_path = _safe_action_config()
+    _authorize_safe_action(authorization, token_path)
+    try:
+        prepared = prepare_moodle_live_handoff(
+            evidence_db=evidence_db, candidate_id=candidate_id, gate_public_key=public_key, gate_actors=actors,
+        )
+        result = evaluate_challenges(prepared, public_key=public_key, actors=actors)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=409, detail="fresh candidate or safety comparison unavailable") from exc
+    background_tasks.add_task(safe_action_notify.notify, safe_action_notify.format_safety_challenges(result))
+    return result
 
 
 @app.post("/api/moodle/remediation/{candidate_id}/execute")

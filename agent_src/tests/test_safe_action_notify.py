@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+import pytest
 
 import core.main as main
 from core.moodle import safe_action_notify as notify_mod
@@ -72,6 +73,10 @@ def test_prepare_message_reports_a_gate_denial() -> None:
     denied = {**PREPARED, "gate_preview": {"decision": "DENY", "reason": "kill switch is enabled"}}
     text = notify_mod.format_prepare("ev-cand", denied)
     assert "CHẶN · kill switch is enabled" in text and "ĐẠT" not in text
+    assert "start_reviewed_compose_service" in text and "moodle-app-b" in text
+    assert "inc-1" in text and "ev-cand" in text
+    assert "không mở phê duyệt" in text and "bằng chứng mới" in text
+    assert "Gate kiểm tra lại" in text and "không nới chính sách" in text
 
 
 def test_execute_message_reads_the_executor_result_not_the_workflow_status() -> None:
@@ -177,6 +182,29 @@ def test_prepare_endpoint_still_notifies_denied_gate(tmp_path, monkeypatch) -> N
         "/api/moodle/remediation/ev-cand/prepare?notify=false", headers={"Authorization": f"Bearer {TOKEN}"}
     )
     assert response.status_code == 200 and len(sent) == 1 and "CHẶN" in sent[0]
+
+
+def test_safety_challenge_endpoint_requires_auth_and_never_dispatches(tmp_path, monkeypatch) -> None:
+    _token_env(tmp_path, monkeypatch)
+    sent: list[str] = []
+    calls: list[str] = []
+    result = {
+        'scenario_id': 'CON-01', 'incident_id': 'inc-1', 'candidate_id': 'ev-cand',
+        'dangerous': {'action': 'flush_all_iptables_rules', 'decision': 'DENY'},
+        'policy_fault': {'decision': 'DENY'},
+        'reviewed': {'decision': 'REQUIRE_APPROVAL', 'action': 'start_reviewed_compose_service', 'scope': 'moodle-app-b'},
+        'execution_permitted': False,
+    }
+    monkeypatch.setattr(main, 'prepare_moodle_live_handoff', lambda **_kw: PREPARED)
+    monkeypatch.setattr(main, 'evaluate_challenges', lambda *_a, **_kw: calls.append('shadow') or result)
+    monkeypatch.setattr(main, 'execute_moodle_live_handoff', lambda **_kw: pytest.fail('must not dispatch'))
+    monkeypatch.setattr(notify_mod, 'notify', lambda message: sent.append(message) or True)
+    client = TestClient(main.app)
+    assert client.post('/api/moodle/remediation/ev-cand/safety-challenges').status_code == 401
+    assert not calls and not sent
+    response = client.post('/api/moodle/remediation/ev-cand/safety-challenges', headers={'Authorization': f'Bearer {TOKEN}'})
+    assert response.status_code == 200 and calls == ['shadow'] and len(sent) == 1
+    assert response.json()['execution_permitted'] is False and 'không phải AI' in sent[0]
 
 
 def test_execute_endpoint_reports_rejection_without_secrets(tmp_path, monkeypatch) -> None:
