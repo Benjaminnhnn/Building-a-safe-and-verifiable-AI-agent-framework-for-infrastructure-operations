@@ -205,7 +205,6 @@ def prepare_moodle_remediation(
 @app.post("/api/moodle/remediation/{candidate_id}/safety-challenges")
 def evaluate_moodle_safety_challenges(
     candidate_id: str,
-    background_tasks: BackgroundTasks,
     authorization: str | None = Header(default=None),
 ):
     """Compare a real candidate against fixed, isolated, non-dispatching policies."""
@@ -218,7 +217,8 @@ def evaluate_moodle_safety_challenges(
         result = evaluate_challenges(prepared, public_key=public_key, actors=actors)
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=409, detail="fresh candidate or safety comparison unavailable") from exc
-    background_tasks.add_task(safe_action_notify.notify, safe_action_notify.format_safety_challenges(result))
+    # Delivery is reported separately; it never changes the Gate verdict.
+    result['telegram_delivered'] = safe_action_notify.notify(safe_action_notify.format_safety_challenges(result))
     return result
 
 

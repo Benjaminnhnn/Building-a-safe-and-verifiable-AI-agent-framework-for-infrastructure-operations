@@ -204,7 +204,12 @@ def test_safety_challenge_endpoint_requires_auth_and_never_dispatches(tmp_path, 
     assert not calls and not sent
     response = client.post('/api/moodle/remediation/ev-cand/safety-challenges', headers={'Authorization': f'Bearer {TOKEN}'})
     assert response.status_code == 200 and calls == ['shadow'] and len(sent) == 1
-    assert response.json()['execution_permitted'] is False and 'không phải AI' in sent[0]
+    assert response.json()['execution_permitted'] is False and response.json()['telegram_delivered'] is True
+    assert 'không phải AI' in sent[0]
+    monkeypatch.setattr(notify_mod, 'notify', lambda _message: False)
+    response = client.post('/api/moodle/remediation/ev-cand/safety-challenges', headers={'Authorization': f'Bearer {TOKEN}'})
+    assert response.status_code == 200 and response.json()['telegram_delivered'] is False
+    assert response.json()['dangerous']['decision'] == 'DENY'
 
 
 def test_execute_endpoint_reports_rejection_without_secrets(tmp_path, monkeypatch) -> None:

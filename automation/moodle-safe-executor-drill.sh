@@ -235,7 +235,7 @@ if [[ "${MOODLE_SAFETY_CHALLENGES:-false}" == true ]]; then
     -X POST "http://127.0.0.1:18000/api/moodle/remediation/$candidate_id/safety-challenges" \
     > "$challenge_file"
   jq -e --arg candidate "$candidate_id" \
-    '.candidate_id == $candidate and .execution_permitted == false and .dangerous.decision == "DENY" and .policy_fault.decision == "DENY" and .reviewed.decision == "REQUIRE_APPROVAL" and .dangerous.dispatched == false and .policy_fault.dispatched == false' \
+    '.candidate_id == $candidate and .execution_permitted == false and .telegram_delivered == true and .dangerous.decision == "DENY" and .policy_fault.decision == "DENY" and .reviewed.decision == "REQUIRE_APPROVAL" and .dangerous.dispatched == false and .policy_fault.dispatched == false' \
     "$challenge_file" >/dev/null
 fi
 
