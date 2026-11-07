@@ -87,6 +87,27 @@ def test_missing_gate_checks_cannot_be_approved(tmp_path, capsys) -> None:
     assert bridge.approve(prepared, 0, client=FakeClient([])) == 2
 
 
+def test_indefinite_wait_retries_a_telegram_poll_error(tmp_path, capsys, monkeypatch) -> None:
+    prepared = tmp_path / "prepared.json"
+    prepared.write_text(json.dumps(PREPARED), encoding="utf-8")
+    client = FakeClient([(ADMIN, int(CHAT), 42, "approve")])
+    original = client.messages
+    attempts = 0
+
+    def interrupted(offset, timeout=20):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise bridge.TelegramError("temporary network failure")
+        return original(offset, timeout)
+
+    client.messages = interrupted
+    monkeypatch.setattr(bridge.time, "sleep", lambda _: None)
+    assert bridge.approve(prepared, 0, client=client) == 0
+    output = capsys.readouterr()
+    assert json.loads(output.out)["decision"] == "approved" and attempts == 2
+
+
 def test_reject_stops(tmp_path, capsys) -> None:
     code, out, client = _run(tmp_path, [(ADMIN, int(CHAT), 42, "reject")], capsys)
     assert code == 10 and out["decision"] == "rejected"

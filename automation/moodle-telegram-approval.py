@@ -84,7 +84,14 @@ def approve(prepared_path: Path, timeout_seconds: int, client: TelegramClient | 
         deadline = time.monotonic() + timeout_seconds if timeout_seconds > 0 else None
         while deadline is None or time.monotonic() < deadline:
             poll_timeout = 20 if deadline is None else min(20, max(1, int(deadline - time.monotonic())))
-            messages, offset = client.messages(offset, timeout=poll_timeout)
+            try:
+                messages, offset = client.messages(offset, timeout=poll_timeout)
+            except TelegramError as exc:
+                if deadline is not None:
+                    raise
+                print(f"Telegram polling interrupted ({exc}); retrying in 5 seconds.", file=sys.stderr)
+                time.sleep(5)
+                continue
             for message in messages:
                 user = message.get("from") or {}
                 chat = (message.get("chat") or {}).get("id")
