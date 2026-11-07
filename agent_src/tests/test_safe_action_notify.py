@@ -156,6 +156,29 @@ def test_prepare_endpoint_sends_step_four(tmp_path, monkeypatch) -> None:
     assert len(sent) == 1 and "④ SAFETY GATE" in sent[0]
 
 
+def test_prepare_endpoint_operator_bridge_sends_only_its_own_message(tmp_path, monkeypatch) -> None:
+    _token_env(tmp_path, monkeypatch)
+    sent: list[str] = []
+    monkeypatch.setattr(main, "prepare_moodle_live_handoff", lambda **_kw: PREPARED)
+    monkeypatch.setattr(notify_mod, "notify", lambda message: sent.append(message) or True)
+    response = TestClient(main.app).post(
+        "/api/moodle/remediation/ev-cand/prepare?notify=false", headers={"Authorization": f"Bearer {TOKEN}"}
+    )
+    assert response.status_code == 200 and sent == []
+
+
+def test_prepare_endpoint_still_notifies_denied_gate(tmp_path, monkeypatch) -> None:
+    _token_env(tmp_path, monkeypatch)
+    sent: list[str] = []
+    denied = {**PREPARED, "gate_preview": {"decision": "DENY", "reason": "kill switch is enabled"}}
+    monkeypatch.setattr(main, "prepare_moodle_live_handoff", lambda **_kw: denied)
+    monkeypatch.setattr(notify_mod, "notify", lambda message: sent.append(message) or True)
+    response = TestClient(main.app).post(
+        "/api/moodle/remediation/ev-cand/prepare?notify=false", headers={"Authorization": f"Bearer {TOKEN}"}
+    )
+    assert response.status_code == 200 and len(sent) == 1 and "CHẶN" in sent[0]
+
+
 def test_execute_endpoint_reports_rejection_without_secrets(tmp_path, monkeypatch) -> None:
     _token_env(tmp_path, monkeypatch)
     monkeypatch.setenv("AIOPS_SAFE_ACTION_LIVE_ENABLED", "true")

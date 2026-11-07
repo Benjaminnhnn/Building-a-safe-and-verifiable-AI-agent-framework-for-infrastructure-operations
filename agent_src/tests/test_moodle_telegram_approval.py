@@ -60,6 +60,8 @@ def test_one_operator_reply_approves(tmp_path, capsys) -> None:
     code, out, client = _run(tmp_path, [(ADMIN, int(CHAT), 42, "approve")], capsys)
     assert code == 0 and out["decision"] == "approved" and out["request_id"] == "req-1"
     assert "Đang ký" in client.texts[-1] and "8. ✓" in client.texts[-1]
+    assert "ĐÃ DUYỆT" in client.texts[-1] and "CHỜ OPERATOR" not in client.texts[-1]
+    assert "Reply trực tiếp" not in client.texts[-1]
 
 
 def test_indefinite_wait_accepts_approval_after_empty_polls(tmp_path, capsys) -> None:
@@ -79,6 +81,7 @@ def test_indefinite_wait_accepts_approval_after_empty_polls(tmp_path, capsys) ->
     assert json.loads(capsys.readouterr().out)["decision"] == "approved"
     assert "không giới hạn" in client.texts[0] and count == 4
     assert all(f"{index}. ✓" in client.texts[0] for index in range(1, 9))
+    assert "Khởi động lại Moodle web trên node B" in client.texts[0]
 
 
 def test_missing_gate_checks_cannot_be_approved(tmp_path, capsys) -> None:

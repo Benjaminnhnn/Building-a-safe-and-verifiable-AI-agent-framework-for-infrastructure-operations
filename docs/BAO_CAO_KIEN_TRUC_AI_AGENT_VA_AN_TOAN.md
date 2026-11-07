@@ -260,7 +260,7 @@ sửa.
 ## 8. Phê duyệt và báo cáo qua Telegram
 
 **Cầu nối phê duyệt** (`automation/moodle-telegram-approval.py`, chạy trên máy operator):
-- Safety Gate gửi kết quả ngắn và cầu nối gửi một tin yêu cầu. Operator reply trực tiếp tin đó bằng `approve` hoặc `reject`.
+- Trong drill, Agent trả kết quả `/prepare` cho cầu nối và cầu nối gửi một tin duy nhất gồm kết quả Safety Gate và yêu cầu duyệt. Operator reply trực tiếp tin đó bằng `approve` hoặc `reject`. Khi gọi `/prepare` độc lập, Agent vẫn gửi thông báo; Gate từ chối vẫn được thông báo.
 - Chỉ nhận reply của user thuộc `TELEGRAM_ADMIN_USER_IDS` trong đúng `TELEGRAM_CHAT_ID`, đúng message ID của yêu cầu hiện tại.
 - Cầu nối chờ không giới hạn theo mặc định trong khi tiến trình đang chạy; `MOODLE_APPROVAL_TIMEOUT_SECONDS` có thể đặt thời hạn riêng. Sau `approve`, drill dùng **một** khóa riêng Ed25519 trên máy operator ký hành động; Safety Gate và Executor cùng kiểm tra chữ ký. Từ chối, lỗi Telegram hoặc dừng tiến trình sẽ dừng luồng. Phiên AWS vẫn cần còn hạn cho các bước AWS/Verifier.
 - Mã thoát: 0 duyệt, 10 từ chối, 11 hết giờ, 2 lỗi cấu hình hoặc Telegram.
@@ -270,8 +270,7 @@ sửa.
 | Bước | Tin | Gửi từ |
 |---|---|---|
 | ② ③ | 🚨 ALERT ngắn: lỗi, nơi lỗi, nguyên nhân, giải pháp tập trung và mã sự cố; báo cáo chi tiết vẫn ở evidence | Celery worker |
-| ④ | 🛡 SAFETY GATE: kết quả đạt/chặn, số kiểm tra, hành động và đích | Agent API `/prepare` |
-| ④ | ✍️ YÊU CẦU PHÊ DUYỆT: reply `approve` vào đúng tin | Cầu nối trên máy operator |
+| ④ | 🛡 SAFETY GATE: 8 kiểm tra, hành động, phạm vi và yêu cầu reply `approve` | Cầu nối trên máy operator; Agent gửi riêng nếu Gate chặn |
 | ⑤ | ⚙️ EXECUTOR ĐÃ THỰC THI / ⛔ KHÔNG THỰC THI / ⛔ BỊ TỪ CHỐI | Agent API `/execute` |
 | ⑥ | 🔎 Verifier bắt đầu (hợp đồng) và từng mẫu | Verifier trên laptop (`--telegram-progress`) |
 | ⑥ | 🏁 RESOLVED hoặc ⛔ attestation bị từ chối; tổng kết probe, RTO đo được và RPO | Agent API và drill trên máy operator |

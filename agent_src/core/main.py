@@ -171,6 +171,7 @@ def prepare_moodle_remediation(
     candidate_id: str,
     background_tasks: BackgroundTasks,
     authorization: str | None = Header(default=None),
+    notify: bool = True,
 ):
     evidence_db, public_key, actors, _, token_path = _safe_action_config()
     _authorize_safe_action(authorization, token_path)
@@ -183,7 +184,20 @@ def prepare_moodle_remediation(
         )
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=404, detail="fresh remediation candidate is unavailable") from exc
-    background_tasks.add_task(safe_action_notify.notify, safe_action_notify.format_prepare(candidate_id, prepared))
+    preview = prepared.get("gate_preview") or {}
+    checks = preview.get("checks")
+    ready_for_operator = (
+        prepared.get("status") == "approval_required"
+        and prepared.get("execution_permitted") is False
+        and preview.get("decision") == "REQUIRE_APPROVAL"
+        and isinstance(checks, list)
+        and len(checks) == 8
+        and all(isinstance(item, str) and item.strip() for item in checks)
+        and bool((prepared.get("request") or {}).get("request_id"))
+        and bool(prepared.get("executor_action_sha256"))
+    )
+    if notify or not ready_for_operator:
+        background_tasks.add_task(safe_action_notify.notify, safe_action_notify.format_prepare(candidate_id, prepared))
     return prepared
 
 

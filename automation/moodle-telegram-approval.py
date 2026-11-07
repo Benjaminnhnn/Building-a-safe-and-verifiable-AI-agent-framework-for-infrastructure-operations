@@ -30,6 +30,14 @@ GATE_CHECKS = (
     "Mục tiêu và loại tài nguyên được phép",
     "Độ tin cậy chẩn đoán đạt ngưỡng",
 )
+REMEDIATION_TEXT = {
+    "BIZ-01": "Tắt chế độ bảo trì sau khi xác nhận Moodle không nâng cấp.",
+    "BIZ-02": "Khởi động lại Moodle cron trên node A; giữ dữ liệu hàng đợi.",
+    "CON-01": "Khởi động lại Moodle web trên node B bằng Compose đã duyệt.",
+    "DB-01": "Gỡ đúng rule chặn TCP 5432 tới RDS trên hai node Moodle.",
+    "RES-01": "Dừng container tải CPU được gắn nhãn lỗi trên node B.",
+    "NET-01": "Tạo lại web container để bỏ bản ghi /etc/hosts sai.",
+}
 
 
 def _now() -> str:
@@ -44,16 +52,24 @@ def _who(user: dict) -> str:
 def _request_text(prepared: dict, timeout_seconds: int = 0) -> str:
     request = prepared.get("request") or {}
     action = request.get("action") or {}
+    scenario = request.get("scenario_id")
     checks = (prepared.get("gate_preview") or {}).get("checks") or []
     return "\n".join([
         "🛡 SAFETY GATE: ĐẠT 8/8, CHỜ OPERATOR",
-        f"Kịch bản: {request.get('scenario_id')} · {request.get('catalog_action_id')}",
-        f"Đích: {action.get('target_resource_id') or request.get('target_scope')}",
+        f"Kịch bản: {scenario}",
+        f"Hành động: {REMEDIATION_TEXT.get(scenario, request.get('catalog_action_id'))}",
+        f"Phạm vi: {request.get('target_scope') or 'chưa xác định'} · Tài nguyên: {action.get('target_resource_id') or 'chưa xác định'}",
         *[f"{index}. ✓ {label}" for index, label in enumerate(GATE_CHECKS, 1) if index <= len(checks)],
         f"Request: {request.get('request_id')}",
         "Reply trực tiếp tin này bằng approve để duyệt; reject để dừng.",
         "Thời gian chờ: không giới hạn." if timeout_seconds == 0 else f"Thời gian chờ: {timeout_seconds} giây.",
     ])
+
+
+def _closed_request_text(prepared: dict, timeout_seconds: int, decision: str) -> str:
+    lines = _request_text(prepared, timeout_seconds).splitlines()
+    lines[0] = lines[0].replace("CHỜ OPERATOR", decision)
+    return "\n".join(lines[:-2])
 
 
 def approve(prepared_path: Path, timeout_seconds: int, client: TelegramClient | None = None) -> int:
@@ -100,11 +116,13 @@ def approve(prepared_path: Path, timeout_seconds: int, client: TelegramClient | 
                     continue
                 decision = str(message.get("text") or "").strip().lower()
                 if decision == "reject":
-                    client.edit(message_id, _request_text(prepared, timeout_seconds) + f"\n⛔ Operator {_who(user)} từ chối. Không thực thi.")
+                    text = _closed_request_text(prepared, timeout_seconds, "ĐÃ TỪ CHỐI")
+                    client.edit(message_id, text + f"\n⛔ Operator {_who(user)} từ chối. Không thực thi.")
                     print(json.dumps({"decision": "rejected", "user_id": user["id"], "at": _now()}))
                     return 10
                 if decision == "approve":
-                    client.edit(message_id, _request_text(prepared, timeout_seconds) + f"\n✅ Operator {_who(user)} đã duyệt. Đang ký và kiểm tra lại trước thực thi.")
+                    text = _closed_request_text(prepared, timeout_seconds, "ĐÃ DUYỆT")
+                    client.edit(message_id, text + f"\n✅ Operator {_who(user)} đã duyệt. Đang ký và kiểm tra lại trước thực thi.")
                     print(json.dumps({"decision": "approved", "user_id": user["id"], "at": _now(), "request_id": request["request_id"]}))
                     return 0
         client.edit(message_id, "⌛ Hết thời gian chờ Operator. Không thực thi.")

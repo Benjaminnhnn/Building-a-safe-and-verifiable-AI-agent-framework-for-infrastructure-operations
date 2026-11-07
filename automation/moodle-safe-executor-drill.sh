@@ -206,7 +206,7 @@ mark_time t_plan
 stage=prepare
 curl --fail --silent --show-error \
   -H "Authorization: Bearer $agent_token" \
-  -X POST "http://127.0.0.1:18000/api/moodle/remediation/$candidate_id/prepare" \
+  -X POST "http://127.0.0.1:18000/api/moodle/remediation/$candidate_id/prepare?notify=false" \
   > "$prepared_file"
 jq -e --arg scenario "$scenario" \
   --arg scope "$expected_scope" \
