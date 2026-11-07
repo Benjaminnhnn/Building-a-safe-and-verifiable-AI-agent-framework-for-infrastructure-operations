@@ -58,7 +58,14 @@ def test_prepare_message_summarizes_gate_and_waits_for_operator() -> None:
     text = notify_mod.format_prepare("ev-cand", PREPARED)
     assert "④ SAFETY GATE" in text and "ĐẠT 8/8" in text
     assert "chờ Operator" in text and "chưa thực thi" in text
+    assert all(f"{index}. ✓" in text for index in range(1, 9))
     assert "a" * 64 not in text  # only a hash prefix is shown
+
+
+def test_prepare_message_does_not_claim_incomplete_checks_passed() -> None:
+    incomplete = {**PREPARED, "gate_preview": {"decision": "REQUIRE_APPROVAL", "checks": ["one"]}}
+    text = notify_mod.format_prepare("ev-cand", incomplete)
+    assert "KHÔNG XÁC ĐỊNH" in text and "Không mở phê duyệt" in text
 
 
 def test_prepare_message_reports_a_gate_denial() -> None:

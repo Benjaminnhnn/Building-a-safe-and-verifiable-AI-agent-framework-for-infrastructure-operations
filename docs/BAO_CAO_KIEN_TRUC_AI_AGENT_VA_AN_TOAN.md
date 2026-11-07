@@ -174,8 +174,9 @@ bảng forced-command luôn trùng khớp.
 ### 5.2. Gate tự giải thích (`explain`)
 
 Khi chuẩn bị yêu cầu (`/prepare`), Gate chạy `explain()`: gọi `evaluate()` **không kèm chữ ký**, nên không thể cho
-qua một hành động cần duyệt. Kết quả `gate_preview` liệt kê 8 nhóm kiểm tra đã đạt và lý do vẫn cần người duyệt (ví
-dụ *confidence 0.65 < 0.80*, *catalog bắt buộc duyệt*). Đây là nội dung tin Telegram ④.
+qua một hành động cần duyệt. Khi `gate_preview` trả `REQUIRE_APPROVAL`, tin Telegram liệt kê 8 nhóm đã đạt: cấu trúc
+yêu cầu; kill switch; bằng chứng; catalog và timeout; rollback; vai trò, phạm vi và môi trường; mục tiêu và loại tài
+nguyên; độ tin cậy chẩn đoán. Đây là kiểm tra trước duyệt, chưa phải `ALLOW`.
 
 ### 5.3. Một chữ ký Operator
 
@@ -197,6 +198,9 @@ khôi phục; chỉ attestation hợp lệ mới chuyển incident sang `RESOLVE
 - `execute`: đọc lại candidate, dựng lại yêu cầu, **so khớp tuyệt đối** với yêu cầu đã duyệt; khác là từ chối. Chỉ
   chạy khi công tắc `AIOPS_SAFE_ACTION_LIVE_ENABLED` bật. `SafeActionLiveWorkflow` ghi audit chuỗi hash, gọi Executor,
   và điều phối rollback có điều kiện khi thực thi một phần.
+- Nếu bằng chứng ban đầu đã cũ, `execute` thu thập lại probe chỉ đọc; chỉ tiếp tục khi chẩn đoán mới vẫn khớp cùng
+  hành động, phạm vi và mục tiêu đã duyệt. Bằng chứng mới được ghi vào snapshot audit; thiếu probe hoặc khác hành động
+  thì từ chối, không thực thi.
 
 ---
 
@@ -258,7 +262,7 @@ sửa.
 **Cầu nối phê duyệt** (`automation/moodle-telegram-approval.py`, chạy trên máy operator):
 - Safety Gate gửi kết quả ngắn và cầu nối gửi một tin yêu cầu. Operator reply trực tiếp tin đó bằng `approve` hoặc `reject`.
 - Chỉ nhận reply của user thuộc `TELEGRAM_ADMIN_USER_IDS` trong đúng `TELEGRAM_CHAT_ID`, đúng message ID của yêu cầu hiện tại.
-- Cầu nối không ký và không gọi Agent. Sau `approve`, drill dùng **một** khóa riêng Ed25519 trên máy operator ký hành động; Safety Gate và Executor cùng kiểm tra chữ ký theo digest hành động, với khóa công khai đã cài. Từ chối, hết giờ hay lỗi Telegram đều dừng.
+- Cầu nối chờ không giới hạn theo mặc định trong khi tiến trình đang chạy; `MOODLE_APPROVAL_TIMEOUT_SECONDS` có thể đặt thời hạn riêng. Sau `approve`, drill dùng **một** khóa riêng Ed25519 trên máy operator ký hành động; Safety Gate và Executor cùng kiểm tra chữ ký. Từ chối, lỗi Telegram hoặc dừng tiến trình sẽ dừng luồng. Phiên AWS vẫn cần còn hạn cho các bước AWS/Verifier.
 - Mã thoát: 0 duyệt, 10 từ chối, 11 hết giờ, 2 lỗi cấu hình hoặc Telegram.
 
 **Tin báo theo bước:**

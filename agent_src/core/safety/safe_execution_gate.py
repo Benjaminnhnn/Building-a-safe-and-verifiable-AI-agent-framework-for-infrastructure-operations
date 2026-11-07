@@ -306,7 +306,7 @@ class SafeExecutionGate:
         entry = self._catalog.lookup(request.catalog_action_id)
         action = request.action
         summary["checks"] = [
-            "request and approval schema are valid",
+            "request schema is valid",
             "kill switch is off",
             f"{len(set(action.evidence_refs))} distinct evidence references (minimum 3)",
             f"catalog action {request.catalog_action_id}, timeout {request.timeout_seconds}s <= {entry.timeout_seconds}s",

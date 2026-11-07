@@ -20,6 +20,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 
 from telegram_client import TelegramClient, TelegramError  # noqa: E402
 
+GATE_CHECKS = (
+    "Cấu trúc yêu cầu hợp lệ",
+    "Kill switch đang tắt",
+    "Có ít nhất 3 bằng chứng khác nhau",
+    "Hành động và thời gian thực thi nằm trong catalog",
+    "Có phương án rollback đối ứng",
+    "Đúng vai trò, phạm vi và môi trường",
+    "Mục tiêu và loại tài nguyên được phép",
+    "Độ tin cậy chẩn đoán đạt ngưỡng",
+)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -30,25 +41,33 @@ def _who(user: dict) -> str:
     return name or user.get("username") or str(user.get("id"))
 
 
-def _request_text(prepared: dict) -> str:
+def _request_text(prepared: dict, timeout_seconds: int = 0) -> str:
     request = prepared.get("request") or {}
     action = request.get("action") or {}
+    checks = (prepared.get("gate_preview") or {}).get("checks") or []
     return "\n".join([
-        "🛡 SAFETY GATE: đã kiểm tra, CHỜ OPERATOR",
+        "🛡 SAFETY GATE: ĐẠT 8/8, CHỜ OPERATOR",
         f"Kịch bản: {request.get('scenario_id')} · {request.get('catalog_action_id')}",
         f"Đích: {action.get('target_resource_id') or request.get('target_scope')}",
+        *[f"{index}. ✓ {label}" for index, label in enumerate(GATE_CHECKS, 1) if index <= len(checks)],
         f"Request: {request.get('request_id')}",
-        "Reply trực tiếp tin này bằng approve để ký và thực thi; reject để dừng.",
+        "Reply trực tiếp tin này bằng approve để duyệt; reject để dừng.",
+        "Thời gian chờ: không giới hạn." if timeout_seconds == 0 else f"Thời gian chờ: {timeout_seconds} giây.",
     ])
 
 
 def approve(prepared_path: Path, timeout_seconds: int, client: TelegramClient | None = None) -> int:
     prepared = json.loads(prepared_path.read_text(encoding="utf-8"))
     request = prepared.get("request") or {}
+    checks = (prepared.get("gate_preview") or {}).get("checks")
     if (
-        prepared.get("status") != "approval_required"
+        timeout_seconds < 0
+        or prepared.get("status") != "approval_required"
         or prepared.get("execution_permitted") is not False
         or (prepared.get("gate_preview") or {}).get("decision") != "REQUIRE_APPROVAL"
+        or not isinstance(checks, list)
+        or len(checks) != len(GATE_CHECKS)
+        or any(not isinstance(item, str) or not item.strip() for item in checks)
         or not request.get("request_id")
         or not prepared.get("executor_action_sha256")
     ):
@@ -61,10 +80,11 @@ def approve(prepared_path: Path, timeout_seconds: int, client: TelegramClient | 
 
     try:
         offset = client.latest_update_offset(["message"])
-        message_id = client.send(_request_text(prepared))
-        deadline = time.monotonic() + timeout_seconds
-        while time.monotonic() < deadline:
-            messages, offset = client.messages(offset, timeout=min(20, max(1, int(deadline - time.monotonic()))))
+        message_id = client.send(_request_text(prepared, timeout_seconds))
+        deadline = time.monotonic() + timeout_seconds if timeout_seconds > 0 else None
+        while deadline is None or time.monotonic() < deadline:
+            poll_timeout = 20 if deadline is None else min(20, max(1, int(deadline - time.monotonic())))
+            messages, offset = client.messages(offset, timeout=poll_timeout)
             for message in messages:
                 user = message.get("from") or {}
                 chat = (message.get("chat") or {}).get("id")
@@ -73,11 +93,11 @@ def approve(prepared_path: Path, timeout_seconds: int, client: TelegramClient | 
                     continue
                 decision = str(message.get("text") or "").strip().lower()
                 if decision == "reject":
-                    client.edit(message_id, f"⛔ Operator {_who(user)} từ chối. Không thực thi.")
+                    client.edit(message_id, _request_text(prepared, timeout_seconds) + f"\n⛔ Operator {_who(user)} từ chối. Không thực thi.")
                     print(json.dumps({"decision": "rejected", "user_id": user["id"], "at": _now()}))
                     return 10
                 if decision == "approve":
-                    client.edit(message_id, f"✅ Operator {_who(user)} đã duyệt. Đang ký và gọi Executor.")
+                    client.edit(message_id, _request_text(prepared, timeout_seconds) + f"\n✅ Operator {_who(user)} đã duyệt. Đang ký và kiểm tra lại trước thực thi.")
                     print(json.dumps({"decision": "approved", "user_id": user["id"], "at": _now(), "request_id": request["request_id"]}))
                     return 0
         client.edit(message_id, "⌛ Hết thời gian chờ Operator. Không thực thi.")
@@ -119,7 +139,7 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     approve_parser = sub.add_parser("approve")
     approve_parser.add_argument("--prepared", type=Path, required=True)
-    approve_parser.add_argument("--timeout-seconds", type=int, default=600)
+    approve_parser.add_argument("--timeout-seconds", type=int, default=0, help="0 means wait until an Operator responds")
     who_parser = sub.add_parser("whoami")
     who_parser.add_argument("--timeout-seconds", type=int, default=180)
     args = parser.parse_args()

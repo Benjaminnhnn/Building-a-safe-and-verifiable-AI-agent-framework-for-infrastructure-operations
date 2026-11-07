@@ -212,6 +212,67 @@ def test_one_operator_signature_passes_gate_and_executor(tmp_path: Path, monkeyp
     assert called[0]["approval"] == approval
 
 
+@pytest.mark.parametrize("state", ["same_fault", "recovered", "different_target"])
+def test_late_approval_rechecks_fresh_probes(tmp_path: Path, monkeypatch: Any, state: str) -> None:
+    """A late approval must recollect probes and never execute a recovered incident."""
+    import core.moodle.live_handoff as handoff
+
+    evidence_db = tmp_path / "evidence.sqlite3"
+    monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "investigate")
+    monkeypatch.setenv("AIOPS_EVIDENCE_DB", str(evidence_db))
+    monkeypatch.setenv("PROMETHEUS_URL", "http://prometheus:9090")
+    monkeypatch.setenv("AIOPS_APPROVAL_MODE", "operator")
+    _mock_con01_prometheus(monkeypatch)
+    report = process_moodle_alert(_con01_alert())
+    with SQLiteEvidenceStore(evidence_db) as store:
+        candidate_id = next(item.evidence_id for item in store.query(
+            incident_id=report["incident_id"], source="ai_decision"
+        ) if item.metadata["decision_kind"] == "remediation_candidate")
+    private, _, public = _generate_ed25519_pair()
+    prepared = prepare_moodle_live_handoff(
+        evidence_db=evidence_db, candidate_id=candidate_id, gate_public_key=public, gate_actors={"operator"},
+    )
+    old_refs = set(prepared["request"]["action"]["evidence_refs"])
+    original_diagnose = handoff.diagnose_moodle_alert
+
+    def late_diagnosis(alert_name, evidence):
+        if any(item.evidence_id in old_refs for item in evidence):
+            return {"status": "insufficient_evidence", "confidence": 0.0}
+        return original_diagnose(alert_name, evidence) if state != "recovered" else {"status": "insufficient_evidence", "confidence": 0.0}
+
+    monkeypatch.setattr(handoff, "diagnose_moodle_alert", late_diagnosis)
+    original_planner = handoff.plan_moodle_s3_3_remediation
+
+    def refreshed_planner(**kwargs):
+        candidate = original_planner(**kwargs)
+        if candidate and state == "different_target":
+            candidate["action"]["target_resource_id"] = "another-target"
+        return candidate
+
+    monkeypatch.setattr(handoff, "plan_moodle_s3_3_remediation", refreshed_planner)
+    called = []
+
+    def executor(**kwargs):
+        called.append(kwargs)
+        return {"status": "executed", "scenario_id": kwargs["scenario_id"], "completed_nodes": ["b"], "mutated": True}
+
+    def run():
+        return execute_moodle_live_handoff(
+            evidence_db=evidence_db, candidate_id=candidate_id, request_data=prepared["request"],
+            gate_approval=None, executor_approval=_sign_executor_approval(prepared["executor_action_sha256"], private),
+            gate_public_key=public, gate_actors={"operator"}, audit_db=tmp_path / "audit.sqlite3",
+            kill_switch_enabled=False, executor=executor,
+        )
+
+    if state == "same_fault":
+        assert run()["status"] == "awaiting_verification"
+        assert len(called) == 1
+    else:
+        with pytest.raises(ValueError, match="fresh evidence"):
+            run()
+        assert not called
+
+
 def test_one_operator_signature_rejects_tampering(tmp_path: Path, monkeypatch: Any) -> None:
     evidence_db = tmp_path / "evidence.sqlite3"
     monkeypatch.setenv("AIOPS_UNIFIED_CORE_MODE", "investigate")

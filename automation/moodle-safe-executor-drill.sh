@@ -47,6 +47,24 @@ stage_times='{}'
 mark_time() {
   stage_times="$(jq -c --arg name "$1" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '. + {($name): $at}' <<<"$stage_times")"
 }
+wait_for_aws_session() {
+  local profile="${AWS_PROFILE:-target-account}" expected_account current_account exported notified=false
+  expected_account="$(cut -d: -f5 <<<"$target_group_arn")"
+  while true; do
+    current_account="$(aws sts get-caller-identity --profile "$profile" --query Account --output text </dev/null 2>/dev/null || true)"
+    if [[ "$current_account" == "$expected_account" ]] && \
+        exported="$(aws configure export-credentials --profile "$profile" --format env </dev/null 2>/dev/null)"; then
+      eval "$exported"
+      return 0
+    fi
+    if [[ "$notified" == false ]]; then
+      echo "AWS session needs refresh for profile $profile; waiting for Operator MFA." >&2
+      PYTHONPATH="$script_dir/lib" python3 -c 'import sys; from telegram_client import notify; notify(f"⏳ AWS cần làm mới MFA. Chạy aws sts get-caller-identity --profile {sys.argv[1]} trên máy Operator; drill sẽ tự tiếp tục.")' "$profile" || true
+      notified=true
+    fi
+    sleep 30
+  done
+}
 umask 077
 mkdir -p "$evidence_dir"
 chmod 0700 "$evidence_dir"
@@ -202,11 +220,14 @@ stage=human-approval-telegram
 human_approval_file="$evidence_dir/$run_id-human-approval.json"
 if ! python3 "$script_dir/moodle-telegram-approval.py" approve \
     --prepared "$prepared_file" \
-    --timeout-seconds "${MOODLE_APPROVAL_TIMEOUT_SECONDS:-600}" > "$human_approval_file"; then
+    --timeout-seconds "${MOODLE_APPROVAL_TIMEOUT_SECONDS:-0}" > "$human_approval_file"; then
   echo "Operator approval was not granted ($(jq -r '.decision' "$human_approval_file")); nothing was executed." >&2
   exit 1
 fi
 jq -e --arg request "$request_id" '.decision == "approved" and .request_id == $request' "$human_approval_file" >/dev/null
+
+stage=wait-for-aws-session
+wait_for_aws_session
 
 stage=operator-signature
 python3 "$script_dir/moodle-safe-approval.py" "$scenario" \
@@ -246,6 +267,7 @@ remove_scenario_marker "$scenario"
 fault_injected=false
 
 stage=pre-verifier-recovery
+wait_for_aws_session
 wait_for_alb_healthy 2
 run_synthetic_once >/dev/null
 "$script_dir/moodle-environment-baseline.sh" verify >/dev/null
@@ -258,6 +280,7 @@ done
 [[ "$active_alert" == clear ]] || { echo "Alert did not resolve after the executed action." >&2; exit 1; }
 
 stage=export-audit-and-independent-verification
+wait_for_aws_session
 python3 "$script_dir/export-moodle-safe-action-audit.py" \
   --ssh-config "$ssh_config" --output "$audit_file" >/dev/null
 AWS_PROFILE="${AWS_PROFILE:-target-account}" python3 "$script_dir/moodle-independent-verifier.py" \

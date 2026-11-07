@@ -20,13 +20,13 @@ from typing import Any, Callable
 logger = logging.getLogger(__name__)
 
 _GATE_CHECK_LABELS = (
-    "Schema yêu cầu hợp lệ",
+    "Cấu trúc yêu cầu hợp lệ",
     "Kill switch đang tắt",
-    "Đủ bằng chứng",
-    "Hành động có trong catalog đã review",
+    "Có ít nhất 3 bằng chứng khác nhau",
+    "Hành động và thời gian thực thi nằm trong catalog",
     "Có rollback đối ứng",
-    "Đúng RBAC, phạm vi và môi trường staging",
-    "Mục tiêu nằm trong phạm vi được phép",
+    "Đúng vai trò, phạm vi và môi trường",
+    "Mục tiêu và loại tài nguyên được phép",
     "Độ tin cậy chẩn đoán đạt ngưỡng",
 )
 
@@ -109,8 +109,14 @@ def format_prepare(candidate_id: str, prepared: dict[str, Any]) -> str:
         lines += [f"Kết quả: CHẶN · {str(preview.get('reason') or 'không đạt chính sách')[:180]}", "Không mở phê duyệt."]
         return "\n".join(lines)
     checks = preview.get("checks") or []
+    if (preview.get("decision") != "REQUIRE_APPROVAL" or not isinstance(checks, list)
+            or len(checks) != len(_GATE_CHECK_LABELS)
+            or any(not isinstance(item, str) or not item.strip() for item in checks)):
+        lines += ["Kết quả: KHÔNG XÁC ĐỊNH · dữ liệu kiểm tra không đầy đủ.", "Không mở phê duyệt."]
+        return "\n".join(lines)
     lines += [
         f"Kết quả: ĐẠT {len(checks)}/{len(_GATE_CHECK_LABELS)} kiểm tra; chờ Operator.",
+        *[f"{index}. ✓ {label}" for index, label in enumerate(_GATE_CHECK_LABELS, 1)],
         f"Hành động: {_REMEDIATION_TEXT.get(scenario, str(request.get('catalog_action_id') or 'đã duyệt'))}",
         f"Đích: {action.get('target_resource_id') or request.get('target_scope')}",
         f"Request: {_short(request.get('request_id'), 8)} · chưa thực thi.",

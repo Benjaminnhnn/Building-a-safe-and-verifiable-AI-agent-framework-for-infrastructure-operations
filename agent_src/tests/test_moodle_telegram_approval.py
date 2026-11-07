@@ -16,7 +16,7 @@ spec.loader.exec_module(bridge)
 ADMIN, STRANGER, CHAT = 111, 999, "-100123"
 PREPARED = {
     "status": "approval_required", "execution_permitted": False,
-    "gate_preview": {"decision": "REQUIRE_APPROVAL"},
+    "gate_preview": {"decision": "REQUIRE_APPROVAL", "checks": [f"check {n}" for n in range(8)]},
     "executor_action_sha256": "a" * 64,
     "request": {"request_id": "req-1", "scenario_id": "CON-01", "catalog_action_id": "start_reviewed_compose_service",
                 "action": {"target_resource_id": "moodle-app-b"}},
@@ -59,7 +59,32 @@ def _run(tmp_path, replies, capsys, timeout=1):
 def test_one_operator_reply_approves(tmp_path, capsys) -> None:
     code, out, client = _run(tmp_path, [(ADMIN, int(CHAT), 42, "approve")], capsys)
     assert code == 0 and out["decision"] == "approved" and out["request_id"] == "req-1"
-    assert "Đang ký" in client.texts[-1]
+    assert "Đang ký" in client.texts[-1] and "8. ✓" in client.texts[-1]
+
+
+def test_indefinite_wait_accepts_approval_after_empty_polls(tmp_path, capsys) -> None:
+    prepared = tmp_path / "prepared.json"
+    prepared.write_text(json.dumps(PREPARED), encoding="utf-8")
+    client = FakeClient([(ADMIN, int(CHAT), 42, "approve")])
+    original = client.messages
+    count = 0
+
+    def delayed(offset, timeout=20):
+        nonlocal count
+        count += 1
+        return ([], offset) if count <= 3 else original(offset, timeout)
+
+    client.messages = delayed
+    assert bridge.approve(prepared, 0, client=client) == 0
+    assert json.loads(capsys.readouterr().out)["decision"] == "approved"
+    assert "không giới hạn" in client.texts[0] and count == 4
+    assert all(f"{index}. ✓" in client.texts[0] for index in range(1, 9))
+
+
+def test_missing_gate_checks_cannot_be_approved(tmp_path, capsys) -> None:
+    prepared = tmp_path / "prepared.json"
+    prepared.write_text(json.dumps({**PREPARED, "gate_preview": {"decision": "REQUIRE_APPROVAL"}}), encoding="utf-8")
+    assert bridge.approve(prepared, 0, client=FakeClient([])) == 2
 
 
 def test_reject_stops(tmp_path, capsys) -> None:
