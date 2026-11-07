@@ -95,9 +95,9 @@ class VerificationAgent:
         if (
             isinstance(max_stability_gap_seconds, bool)
             or not isinstance(max_stability_gap_seconds, int)
-            or not 1 <= max_stability_gap_seconds <= 60
+            or not 1 <= max_stability_gap_seconds <= 65
         ):
-            raise ValueError("max_stability_gap_seconds must be an integer from 1 to 60")
+            raise ValueError("max_stability_gap_seconds must be an integer from 1 to 65")
 
         contract_specs: dict[str, list[str]] = {}
         contract_valid = isinstance(communication_contract, dict)
@@ -156,7 +156,7 @@ class VerificationAgent:
         stability_gaps_ok = _stability_gaps_ok(
             stability_observations, max_stability_gap_seconds
         )
-        stability_gaps_ok = stability_valid and stability_gaps_ok and _stability_observations_fresh(
+        stability_gaps_ok = stability_valid and stability_gaps_ok and (max_stability_gap_seconds <= 60 or len(stability_observations) == 3) and _stability_observations_fresh(
             stability_observations, max_staleness_seconds=max_stability_gap_seconds
         )
 

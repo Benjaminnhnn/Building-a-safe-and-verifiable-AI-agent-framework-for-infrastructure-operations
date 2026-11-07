@@ -35,8 +35,8 @@ class TestVerificationAgent:
     def test_stability_configuration_enforces_thesis_window_and_sampling_gap(self):
         with pytest.raises(ValueError, match="at least 120"):
             self.agent.verify(self.incident, self.contract, stability_window_seconds=119)
-        with pytest.raises(ValueError, match="from 1 to 60"):
-            self.agent.verify(self.incident, self.contract, max_stability_gap_seconds=61)
+        with pytest.raises(ValueError, match="from 1 to 65"):
+            self.agent.verify(self.incident, self.contract, max_stability_gap_seconds=66)
         with pytest.raises(ValueError, match="integer of at least 120"):
             self.agent.verify(self.incident, self.contract, stability_window_seconds=True)
 

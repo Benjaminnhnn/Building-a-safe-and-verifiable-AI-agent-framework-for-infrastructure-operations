@@ -118,7 +118,7 @@ def test_safe_executor_drill_uses_agent_handoff_and_independent_verification() -
     assert "/api/moodle/remediation/$candidate_id/execute" in source
     assert "moodle-safe-executor-request.py" not in source
     assert "moodle-independent-verifier.py" in source
-    assert "--window-seconds 120 --interval-seconds 30" in source
+    assert "--window-seconds 120 --interval-seconds 60" in source
     assert '/api/moodle/verifications/$request_id' in source
     assert '/api/moodle/incidents/$incident_id/requests/$request_id/status' in source
     assert '"resolved"' in source

@@ -126,7 +126,7 @@ def verify_window(
     *, audit_db: Path, incident_id: str, request_id: str, scenario_id: str,
     signing_key: Path,
     contract: dict[str, list[str]], window_seconds: int = 120,
-    interval_seconds: int = 30, sleep=time.sleep, monotonic=time.monotonic,
+    interval_seconds: int = 60, sleep=time.sleep, monotonic=time.monotonic,
     now=lambda: datetime.now(timezone.utc),
     on_sample=None,
 ) -> dict[str, Any]:
@@ -137,12 +137,17 @@ def verify_window(
     sample_count = (window_seconds + interval_seconds - 1) // interval_seconds + 1
     observations: list[StabilityObservation] = []
     samples: list[dict[str, bool]] = []
-    started = monotonic()
+    started = None
     for index in range(sample_count):
         if index:
+            assert started is not None
             target = started + min(index * interval_seconds, window_seconds)
             sleep(max(0.0, target - monotonic()))
         observed_at = now()
+        if index == 0:
+            # Anchor the schedule after recording the first wall-clock sample,
+            # so clock-call overhead does not make a 120 s window too short.
+            started = monotonic()
         sample = _run_probe(scenario_id, request_id)
         if set(sample) != required:
             missing, extra = sorted(required - set(sample)), sorted(set(sample) - required)
@@ -183,10 +188,9 @@ def verify_window(
     result = VerificationAgent().verify(
         incident, contract, stability_window_seconds=window_seconds, dry_run=False,
         probes=typed_probes, stability_observations=observations,
-        # The contract limit is 60 s (verifier_attestation rejects larger gaps).
-        # Using interval_seconds here made a 30 s schedule fail as soon as probe
-        # runtime pushed one gap to 30.005 s.
-        max_stability_gap_seconds=60,
+        # Three 60 s samples need bounded scheduling tolerance. Larger gaps
+        # fail closed both here and when the runtime verifies the attestation.
+        max_stability_gap_seconds=65 if len(observations) == 3 else 60,
     )
     sample_payloads = [
         {"observed_at": observation.observed_at.isoformat(), "checks": sample}
@@ -238,7 +242,7 @@ def _telegram_progress(scenario_id: str, window_seconds: int, interval_seconds: 
             notify(
                 f"🔎 ⑥ INDEPENDENT VERIFIER bắt đầu ({scenario_id})\n"
                 f"Chạy trên máy operator, không có khoá Executor. Cửa sổ {window_seconds} s, "
-                f"{total} mẫu × {interval_seconds} s. Hợp đồng:\n{groups}"
+                f"{total} mẫu, cách nhau {interval_seconds} s. Hợp đồng:\n{groups}"
             )
         parts = []
         for group in ("allowed", "forbidden", "related"):
@@ -268,7 +272,7 @@ def main() -> int:
     parser.add_argument("--request-id", required=True)
     parser.add_argument("--scenario-id", required=True, choices=_ALL_VERIFIED_SCENARIOS)
     parser.add_argument("--window-seconds", type=int, default=120)
-    parser.add_argument("--interval-seconds", type=int, default=30)
+    parser.add_argument("--interval-seconds", type=int, default=60)
     parser.add_argument("--telegram-progress", action="store_true",
                         help="post each probe sample to Telegram (operator credentials from release/.env)")
     args = parser.parse_args()

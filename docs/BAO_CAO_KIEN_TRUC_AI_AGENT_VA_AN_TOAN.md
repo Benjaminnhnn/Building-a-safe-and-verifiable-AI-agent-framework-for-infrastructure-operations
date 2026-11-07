@@ -230,8 +230,8 @@ Executor, không có LLM trong vòng lặp.
 **Làm gì:**
 1. Đọc bản export audit (chỉ đọc), kiểm tra chuỗi hash, tìm **đúng một** biên nhận `executed`, `mutated=true` khớp
    incident, request và kịch bản.
-2. Chạy probe đã review (`moodle-scenario-verify.sh`) lặp lại: cửa sổ ≥ 120 s, mẫu cách nhau ≤ 60 s (mặc định 30 s,
-   5 mẫu). Probe phải phủ **đúng** hợp đồng; thiếu hay thừa đều bị từ chối.
+2. Chạy probe đã review (`moodle-scenario-verify.sh`) lặp lại: mặc định 3 mẫu cách nhau 60 s trong cửa sổ ≥ 120 s.
+   Khoảng cách thực tế giữa hai mẫu tối đa 65 s để cho phép độ trễ lập lịch; probe phải phủ **đúng** hợp đồng.
 3. Đọc lại audit ở cuối cửa sổ, để audit bị sửa giữa chừng không lọt qua.
 4. Ký attestation Ed25519 trên payload chuẩn hoá, gắn với `receipt_event_hash` của biên nhận.
 
@@ -244,7 +244,8 @@ Executor, không có LLM trong vòng lặp.
 | related | liên quan sự cố | `scenario_alert_resolved` + probe riêng: CON-01 `moodle_app_b_container_healthy`, `both_alb_targets_healthy`; DB-01 TLS DB của hai node, hai target; RES-01 `named_cpu_fixture_absent`; NET-01 DNS DB của hai node, hai target; BIZ-01 `moodle_cli_maintenance_disabled`; BIZ-02 `moodle_cron_service_active`, `overdue_adhoc_tasks_zero` |
 
 **Agent chấp nhận attestation** (`POST /api/moodle/verifications/{request_id}`) chỉ khi: chữ ký đúng khoá Verifier,
-attestation ký chưa quá **120 s**, các mẫu tăng dần theo thời gian, phủ ≥ 120 s, khoảng cách ≤ 60 s, gắn đúng biên
+attestation ký chưa quá **120 s**, tối thiểu 3 mẫu tăng dần theo thời gian, phủ ≥ 120 s, khoảng cách ≤ 65 s với 3 mẫu
+(≤ 60 s khi có hơn 3 mẫu), gắn đúng biên
 nhận đang chờ xác minh. State machine (`core/verification/state_machine.py`) chỉ cho `RESOLVED` qua
 `resolve_verified` với kết quả đủ điều kiện; mọi đường khác bị từ chối.
 

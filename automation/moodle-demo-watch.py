@@ -297,7 +297,7 @@ class Board:
                          f"{verifier['_mtime']} {passed}/{len(samples)} mẫu đạt · {verifier.get('verdict')}"
                          + ("" if ok else self._failing_probes(samples))))
         elif result:
-            rows.append(("⑥a", "Verifier lấy mẫu", RUN, "đang chạy cửa sổ ổn định 120 s (5 mẫu × 30 s)"))
+            rows.append(("⑥a", "Verifier lấy mẫu", RUN, "đang chạy cửa sổ ổn định 120 s (3 mẫu cách nhau 60 s)"))
         else:
             rows.append(("⑥a", "Verifier lấy mẫu", WAIT, "chưa"))
         status = files.get("runtime-verification.json.status")

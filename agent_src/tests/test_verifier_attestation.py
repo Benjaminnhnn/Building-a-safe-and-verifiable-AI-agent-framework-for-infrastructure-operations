@@ -132,6 +132,47 @@ def test_verifier_attestation_is_persisted_by_runtime_and_idempotent(tmp_path):
         assert len(results) == 1
 
 
+def test_three_samples_with_bounded_scheduling_jitter_are_accepted(tmp_path):
+    audit_db = tmp_path / "audit.sqlite3"
+
+    def three_samples(payload):
+        end = datetime.fromisoformat(payload["probe_samples"][-1]["observed_at"])
+        samples = [payload["probe_samples"][index] for index in (0, 2, 4)]
+        for sample, seconds in zip(samples, (120.5, 60.2, 0), strict=True):
+            sample["observed_at"] = (end - timedelta(seconds=seconds)).isoformat()
+        payload["probe_samples"] = samples
+        payload["verification"]["stability_observations"] = [
+            {"observed_at": sample["observed_at"], "healthy": True, "simulated": False}
+            for sample in samples
+        ]
+    attestation, _, public_key = _attestation(tmp_path, audit_db, mutate=three_samples)
+    assert accept_verifier_attestation(audit_db=audit_db, public_key_path=public_key,
+                                       request_id="req-1", attestation=attestation)["status"] == "resolved"
+
+
+@pytest.mark.parametrize("case", ["two_samples", "gap_over_65", "short_window"])
+def test_three_sample_contract_rejects_missing_or_unsafe_windows(tmp_path, case):
+    audit_db = tmp_path / "audit.sqlite3"
+
+    def invalid_samples(payload):
+        end = datetime.fromisoformat(payload["probe_samples"][-1]["observed_at"])
+        samples = [payload["probe_samples"][index] for index in (0, 2, 4)]
+        offsets = {"two_samples": (120, 0), "gap_over_65": (120.5, 55, 0), "short_window": (119, 60, 0)}[case]
+        samples = samples[:len(offsets)]
+        for sample, seconds in zip(samples, offsets, strict=True):
+            sample["observed_at"] = (end - timedelta(seconds=seconds)).isoformat()
+        payload["probe_samples"] = samples
+        payload["verification"]["stability_observations"] = [
+            {"observed_at": sample["observed_at"], "healthy": True, "simulated": False}
+            for sample in samples
+        ]
+
+    attestation, _, public_key = _attestation(tmp_path, audit_db, mutate=invalid_samples)
+    with pytest.raises(ValueError):
+        accept_verifier_attestation(audit_db=audit_db, public_key_path=public_key,
+                                    request_id="req-1", attestation=attestation)
+
+
 def test_tampered_signature_does_not_resolve_runtime(tmp_path):
     audit_db = tmp_path / "audit.sqlite3"
     attestation, _, public_key = _attestation(tmp_path, audit_db)

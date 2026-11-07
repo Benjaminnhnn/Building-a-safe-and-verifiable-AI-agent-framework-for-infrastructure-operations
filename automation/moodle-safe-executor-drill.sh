@@ -286,10 +286,10 @@ python3 "$script_dir/export-moodle-safe-action-audit.py" \
 AWS_PROFILE="${AWS_PROFILE:-target-account}" python3 "$script_dir/moodle-independent-verifier.py" \
   --audit-db "$audit_file" --signing-key "$verifier_signing_key" \
   --incident-id "$incident_id" --request-id "$request_id" \
-  --scenario-id "$scenario" --window-seconds 120 --interval-seconds 30 \
+  --scenario-id "$scenario" --window-seconds 120 --interval-seconds 60 \
   --telegram-progress \
   > "$verifier_file"
-jq -e '.verdict == "ready_for_runtime_acceptance" and .resolution_eligible == true and (.probe_samples | length >= 5) and (.attestation.signature | type == "string" and length > 0)' "$verifier_file" >/dev/null
+jq -e '.verdict == "ready_for_runtime_acceptance" and .resolution_eligible == true and (.probe_samples | length == 3) and (.attestation.signature | type == "string" and length > 0)' "$verifier_file" >/dev/null
 jq '.attestation' "$verifier_file" > "$verifier_attestation_file"
 mark_time t_verify
 chmod 0600 "$verifier_file" "$verifier_attestation_file"

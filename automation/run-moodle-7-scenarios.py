@@ -357,7 +357,7 @@ def run_scenario(scenario_id: str, interactive: bool = False) -> bool:
         return False
 
     # 5. Xác minh độc lập
-    print("\n[BƯỚC 4] BỘ XÁC MINH ĐỘC LẬP (Đo đạc 5 mẫu trong 120s)")
+    print("\n[BƯỚC 4] BỘ XÁC MINH ĐỘC LẬP (Mô phỏng 3 mẫu trong 120s)")
     contract = MOODLE_LIVE_CONTRACTS.get(scenario_id)
     if not contract:
         print(f"   [!] Thiếu hợp đồng xác minh cho {scenario_id}")
@@ -400,7 +400,7 @@ def run_scenario(scenario_id: str, interactive: bool = False) -> bool:
             for grp in ("allowed", "forbidden", "related")
             for check in contract[grp]
         }
-        samples = [{"observed_at": (now - timedelta(seconds=120 - 30 * i)).isoformat(), "checks": all_checks} for i in range(5)]
+        samples = [{"observed_at": (now - timedelta(seconds=120 - 60 * i)).isoformat(), "checks": all_checks} for i in range(3)]
         observations = [StabilityObservation(observed_at=s["observed_at"], healthy=True, simulated=False) for s in samples]
 
         verification = VerificationResult(
@@ -411,9 +411,9 @@ def run_scenario(scenario_id: str, interactive: bool = False) -> bool:
             stability_seconds=120,
             stability_observations=observations,
             resolution_eligible=True,
-            allowed_probes=[ProbeResult(name=n, passed=True, simulated=False, details="5/5") for n in contract["allowed"]],
-            forbidden_probes=[ProbeResult(name=n, passed=True, simulated=False, details="5/5") for n in contract["forbidden"]],
-            related_probes=[ProbeResult(name=n, passed=True, simulated=False, details="5/5") for n in contract["related"]],
+            allowed_probes=[ProbeResult(name=n, passed=True, simulated=False, details="3/3") for n in contract["allowed"]],
+            forbidden_probes=[ProbeResult(name=n, passed=True, simulated=False, details="3/3") for n in contract["forbidden"]],
+            related_probes=[ProbeResult(name=n, passed=True, simulated=False, details="3/3") for n in contract["related"]],
             verdict="resolved",
             simulated=False,
             checked_at=now,

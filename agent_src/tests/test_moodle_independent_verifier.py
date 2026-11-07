@@ -242,6 +242,7 @@ def test_successful_window_signs_result_without_resolving_the_local_snapshot(
     )
     assert result["verdict"] == "ready_for_runtime_acceptance"
     assert result["verification"]["resolution_eligible"] is True
+    assert len(result["probe_samples"]) == 3
     assert result["attestation"]["payload"]["receipt_event_hash"]
     assert result["attestation"]["signature"]
     with verifier.SafeActionAuditStore(audit_db) as audit:
@@ -276,7 +277,35 @@ def test_progress_callback_sees_every_sample_and_cannot_change_the_verdict(
         monotonic=lambda: elapsed[0], now=lambda: base + timedelta(seconds=elapsed[0]),
         on_sample=on_sample,
     )
-    assert [item[0] for item in seen] == [1, 2, 3, 4, 5] and all(item[2] for item in seen)
+    assert [item[0] for item in seen] == [1, 2, 3] and all(item[1] == 3 and item[2] for item in seen)
+    assert result["verdict"] == "ready_for_runtime_acceptance"
+
+
+def test_three_sample_window_accounts_for_first_clock_call_overhead(tmp_path, monkeypatch):
+    audit_db = tmp_path / "audit.sqlite"
+    _audit_db(audit_db)
+    contract = {"allowed": ["moodle_healthy"], "forbidden": ["internet_to_postgresql"], "related": ["targets_healthy"]}
+    monkeypatch.setattr(verifier, "_run_probe", lambda *_: {
+        "moodle_healthy": True, "internet_to_postgresql": True, "targets_healthy": True,
+    })
+    elapsed = [0.0]
+    calls = [0]
+    base = datetime.now(timezone.utc) - timedelta(seconds=121)
+
+    def now():
+        calls[0] += 1
+        if calls[0] == 1:
+            elapsed[0] += 0.1
+        return base + timedelta(seconds=elapsed[0])
+
+    result = verifier.verify_window(
+        audit_db=audit_db, signing_key=_private_key(tmp_path / "verifier.pem"),
+        incident_id="inc-1", request_id="req-1", scenario_id="DB-01", contract=contract,
+        sleep=lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds),
+        monotonic=lambda: elapsed[0], now=now,
+    )
+    assert len(result["probe_samples"]) == 3
+    assert result["verification"]["stability_seconds"] >= 120
     assert result["verdict"] == "ready_for_runtime_acceptance"
 
 

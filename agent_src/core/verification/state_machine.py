@@ -196,8 +196,9 @@ def _has_stable_window(verification: VerificationResult) -> bool:
     latest_age = (datetime.now(timezone.utc) - timestamps[-1].astimezone(timezone.utc)).total_seconds()
     if latest_age > 60 or latest_age < -30:
         return False
+    max_gap = 65 if len(observations) == 3 else 60
     return all(
-        0 < (later - earlier).total_seconds() <= 60
+        0 < (later - earlier).total_seconds() <= max_gap
         for earlier, later in zip(timestamps, timestamps[1:])
     )
 

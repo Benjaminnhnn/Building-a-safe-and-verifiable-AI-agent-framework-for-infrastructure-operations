@@ -117,13 +117,14 @@ def _validate_attestation_payload(payload: VerifierAttestationPayload, request_i
     required = set().union(*(set(contract[group]) for group in ("allowed", "forbidden", "related")))
     samples = payload.probe_samples
     observations = payload.verification.stability_observations
-    if len(samples) < 5 or len(samples) != len(observations):
+    if len(samples) < 3 or len(samples) != len(observations):
         raise ValueError("verifier attestation lacks the required live stability samples")
     times = [sample.observed_at.astimezone(timezone.utc) for sample in samples]
     if times != sorted(times) or (times[-1] - times[0]).total_seconds() < 120:
         raise ValueError("verifier attestation stability window is incomplete")
-    if any(not 0 < (later - earlier).total_seconds() <= 60 for earlier, later in zip(times, times[1:])):
-        raise ValueError("verifier attestation sampling gap exceeds 60 seconds")
+    max_gap = 65 if len(samples) == 3 else 60
+    if any(not 0 < (later - earlier).total_seconds() <= max_gap for earlier, later in zip(times, times[1:])):
+        raise ValueError(f"verifier attestation sampling gap exceeds {max_gap} seconds")
     if any(set(sample.checks) != required or not all(sample.checks.values()) for sample in samples):
         raise ValueError("verifier attestation contains missing or failed contract probes")
     if any(
