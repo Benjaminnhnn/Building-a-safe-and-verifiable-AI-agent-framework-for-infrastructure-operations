@@ -144,6 +144,17 @@ def test_controlled_safety_comparison_rejects_other_scenarios_before_access() ->
     assert result.returncode == 64 and 'require NET-01' in result.stderr
 
 
+def test_controlled_related_outage_is_owned_reset_and_never_submitted_as_recovery() -> None:
+    source = EXECUTOR_DRILL.read_text(encoding='utf-8')
+    assert 'MOODLE_FAULT_CONFIRM=staging "$script_dir/moodle-fault-inject.sh" CON-01' in source
+    assert source.index('related_fault_injected=true') < source.index('moodle-fault-inject.sh" CON-01')
+    assert '"$script_dir/moodle-fault-reset.sh" CON-01' in source
+    assert 'remove_scenario_marker CON-01' in source
+    assert '.checks["common_synthetic_transaction"] == true' in source
+    assert '.checks["both_alb_targets_healthy"] == false' in source
+    assert '--data-binary "@$collateral_file"' not in source
+
+
 def test_obsolete_unsafe_fault_implementations_are_absent() -> None:
     source = INJECTOR.read_text(encoding="utf-8") + RESET.read_text(encoding="utf-8")
     for obsolete in (

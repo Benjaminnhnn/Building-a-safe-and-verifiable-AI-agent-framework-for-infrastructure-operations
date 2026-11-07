@@ -113,10 +113,15 @@ rm -f "$operator_public_key"
 agent_live_enabled=false
 executor_live_enabled=false
 fault_injected=false
+related_fault_injected=false
 agent_tunnel_pid=""
 stage=preflight
 cleanup() {
   local cleanup_status=$?
+  if [[ "$related_fault_injected" == true ]]; then
+    "$script_dir/moodle-fault-reset.sh" CON-01 >/dev/null 2>&1 || cleanup_status=1
+    remove_scenario_marker CON-01 >/dev/null 2>&1 || cleanup_status=1
+  fi
   if [[ "$fault_injected" == true ]]; then
     "$script_dir/moodle-fault-reset.sh" "$scenario" >/dev/null 2>&1 || cleanup_status=1
     remove_scenario_marker "$scenario" >/dev/null 2>&1 || cleanup_status=1
@@ -308,19 +313,24 @@ python3 "$script_dir/export-moodle-safe-action-audit.py" \
   --ssh-config "$ssh_config" --output "$audit_file" >/dev/null
 if [[ "${MOODLE_COLLATERAL_PROBE_TEST:-false}" == true ]]; then
   stage=controlled-related-fault
-  # Mark first so every failure path resets the NET-01 fixture. This is a
-  # separately injected fault, not a claim that the Executor caused it.
-  fault_injected=true
-  remote moodle-app-a "
-    set -eu
-    if sudo docker exec release-moodle-web-1 grep -Fq '# moodle-fault-NET-01' /etc/hosts; then
-      echo 'A NET-01 marker already exists; refusing to stack fixtures.' >&2
-      exit 1
-    fi
-    printf '%s\\n' '127.0.0.1 $database_endpoint # moodle-fault-NET-01' | sudo docker exec -i -u 0 release-moodle-web-1 sh -c 'cat >> /etc/hosts'
-  "
+  # Use the reviewed CON-01 fixture after NET-01 recovery: one web node is
+  # deliberately stopped while the other serves traffic. This is independent
+  # fault injection, never a claim that the Executor caused the damage.
+  related_fault_injected=true
+  MOODLE_FAULT_CONFIRM=staging "$script_dir/moodle-fault-inject.sh" CON-01 >/dev/null
+  wait_for_aws_session
+  wait_for_alb_healthy 1
+  run_synthetic_once >/dev/null
+  wait_for_prometheus_query 'moodle_synthetic_success{job="moodle_synthetic",instance="monitor-ai-01"} == 1' 180
+  active_alert=active
+  for _ in {1..36}; do
+    active_alert="$(remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=ALERTS{alertname=\"$alert_name\",alertstate=\"firing\"}' http://127.0.0.1:9090/api/v1/query | jq -r 'if (.data.result | length) > 0 then \"active\" else \"clear\" end'")"
+    [[ "$active_alert" == clear ]] && break
+    sleep 5
+  done
+  [[ "$active_alert" == clear ]] || { echo 'Synthetic alert did not clear while one target remained healthy.' >&2; exit 1; }
   collateral_health="$(curl --silent --output /dev/null --max-time 10 --write-out '%{http_code}' "$public_url/healthz.php" || true)"
-  PYTHONPATH="$script_dir/lib" python3 -c 'from telegram_client import notify; notify("🧪 STAGING NET-01: đã cấy lỗi DNS riêng trên node A sau Executor để kiểm thử Verifier. Đây là lỗi có chủ đích, không phải bằng chứng Executor gây ra. Chưa RESOLVED.")' || true
+  PYTHONPATH="$script_dir/lib" python3 -c 'from telegram_client import notify; notify("🧪 STAGING NET-01: sau Executor đã chủ động dừng riêng web node B bằng fixture CON-01 để thử Verifier. Đây là lỗi có chủ đích, không phải bằng chứng Executor gây ra. Chưa RESOLVED.")' || true
   set +e
   AWS_PROFILE="${AWS_PROFILE:-target-account}" python3 "$script_dir/moodle-independent-verifier.py" \
     --audit-db "$audit_file" --signing-key "$verifier_signing_key" \
@@ -336,7 +346,7 @@ if [[ "${MOODLE_COLLATERAL_PROBE_TEST:-false}" == true ]]; then
   }
   jq -e '.verdict == "not_resolved" and .resolution_eligible == false and
     (.probe_samples | length == 3) and
-    all(.probe_samples[]; .checks["moodle-app-a_database_dns"] == false)' "$collateral_file" >/dev/null
+    all(.probe_samples[]; .checks["common_synthetic_transaction"] == true and .checks["both_alb_targets_healthy"] == false)' "$collateral_file" >/dev/null
   curl --fail --silent --show-error -H "Authorization: Bearer $agent_token" \
     "http://127.0.0.1:18000/api/moodle/incidents/$incident_id/requests/$request_id/status" \
     > "$collateral_file.runtime-status.json"
@@ -344,10 +354,11 @@ if [[ "${MOODLE_COLLATERAL_PROBE_TEST:-false}" == true ]]; then
     '.status == "verifying" and .incident_id == $incident and .request_id == $request and .verification_event_id == null' \
     "$collateral_file.runtime-status.json" >/dev/null
   collateral_verdict="$(jq -r '.verification.verdict' "$collateral_file")"
-  PYTHONPATH="$script_dir/lib" python3 -c 'import sys; from telegram_client import notify; notify(f"🔎 NET-01 thử lỗi phụ có chủ đích: health HTTP 200; DNS node A thất bại; Verifier {sys.argv[1]}, chưa RESOLVED. Đang reset fixture và kiểm tra lại.")' "$collateral_verdict" || true
+  PYTHONPATH="$script_dir/lib" python3 -c 'import sys; from telegram_client import notify; notify(f"🔎 NET-01 thử lỗi phụ có chủ đích: health HTTP 200; giao dịch chính đạt; một target không khỏe; Verifier {sys.argv[1]}, chưa RESOLVED. Đang reset fixture và kiểm tra lại.")' "$collateral_verdict" || true
   stage=reset-controlled-related-fault
-  "$script_dir/moodle-fault-reset.sh" NET-01 >/dev/null
-  fault_injected=false
+  "$script_dir/moodle-fault-reset.sh" CON-01 >/dev/null
+  remove_scenario_marker CON-01
+  related_fault_injected=false
   wait_for_aws_session
   wait_for_alb_healthy 2
   run_synthetic_once >/dev/null
