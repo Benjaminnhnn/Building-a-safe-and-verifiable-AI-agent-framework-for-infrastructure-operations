@@ -129,6 +129,19 @@ for _ in {1..30}; do
 done
 curl --fail --silent http://127.0.0.1:18000/health \
   | jq -e '.safe_action_live_enabled == false and .approval_mode == "operator"' >/dev/null
+for key_name in approval-ed25519.pub verifier-ed25519.pub; do
+  if [[ "$key_name" == approval-ed25519.pub ]]; then
+    container_key=/run/secrets/operator_approval_public_key
+  else
+    container_key=/run/secrets/verifier_public_key
+  fi
+  expected_key_hash="$(sha256sum "$secrets_dir/$key_name" | cut -d' ' -f1)"
+  mounted_key_hash="$(remote monitor-ai-01 "sudo docker exec moodle-ai-agent sha256sum '$container_key'" | cut -d' ' -f1)"
+  [[ "$mounted_key_hash" == "$expected_key_hash" ]] || {
+    echo "Agent has a stale $key_name mount; recreate ai-agent before running the drill." >&2
+    exit 66
+  }
+done
 remote monitor-ai-01 \
   "curl --fail --silent http://172.17.0.1:8765/healthz | jq -e '.execution_enabled == false' >/dev/null"
 

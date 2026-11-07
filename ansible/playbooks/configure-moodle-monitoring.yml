@@ -1092,6 +1092,12 @@
         cmd: docker compose -f {{ moodle_observability_root }}/docker-compose.yml up -d
       changed_when: true
 
+    - name: Recreate Agent to reload bind-mounted approval and verifier keys
+      ansible.builtin.command:
+        cmd: docker compose -f {{ moodle_observability_root }}/docker-compose.yml up -d --no-deps --force-recreate ai-agent
+      changed_when: true
+      when: moodle_agent_enabled | bool
+
     - name: Recreate metric and alert services after bind-mounted configuration changes
       ansible.builtin.command:
         # blackbox-exporter reads its bind-mounted modules only at start; without

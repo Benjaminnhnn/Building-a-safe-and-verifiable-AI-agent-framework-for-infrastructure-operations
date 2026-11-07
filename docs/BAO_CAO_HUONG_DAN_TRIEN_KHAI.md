@@ -903,8 +903,8 @@ Máy Operator giữ khóa riêng của Operator và Verifier tại vị trí ri�
 
 ```bash
 export MOODLE_SAFE_EXECUTOR_CONFIRM=staging
-export MOODLE_OPERATOR_SIGNING_KEY_FILE="$HOME/.keys/operator.pem"
-export MOODLE_VERIFIER_SIGNING_KEY_FILE="$HOME/.keys/verifier.pem"
+export MOODLE_OPERATOR_SIGNING_KEY_FILE="$HOME/.config/moodle-aiops/keys/operator.pem"
+export MOODLE_VERIFIER_SIGNING_KEY_FILE="$HOME/.config/moodle-aiops/keys/verifier.pem"
 bash automation/moodle-safe-executor-drill.sh CON-01
 ```
 
