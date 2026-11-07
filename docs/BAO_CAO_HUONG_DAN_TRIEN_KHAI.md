@@ -908,7 +908,7 @@ export MOODLE_VERIFIER_SIGNING_KEY_FILE="$HOME/.config/moodle-aiops/keys/verifie
 bash automation/moodle-safe-executor-drill.sh CON-01
 ```
 
-Script kiểm tra khóa Operator khớp khóa công khai đã cài, chờ Operator reply `approve` trên Telegram, rồi ký đúng
+Script kiểm tra khóa Operator khớp khóa công khai đã cài, chờ Operator gửi `approve` trong nhóm Telegram (hoặc reply tin yêu cầu), rồi ký đúng
 request đang chờ. Gate và Executor cùng kiểm tra chữ ký; Verifier ký attestation riêng. Khi nghi token API của
 safe-action bị lộ, thay file
 `/etc/aiops-safe-executor/safe-action-api-token` rồi khởi động lại Agent.

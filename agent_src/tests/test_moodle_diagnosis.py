@@ -77,7 +77,9 @@ def test_every_configured_moodle_alert_has_a_fixed_query_and_diagnosis_contract(
     }
     memory_rule = " ".join(rules_by_name["MoodleNodeMemoryPressure"]["expr"].split())
     memory_query = " ".join(METRIC_QUERIES_BY_ALERT["MoodleNodeMemoryPressure"][0][1].split())
-    assert memory_rule == f"{memory_query} > 33554432"
+    assert "33554432" in memory_rule
+    assert 'node_memory_MemTotal_bytes{job="moodle_node"}' in memory_rule
+    assert "< 0.20" in memory_rule and "< 0.20" in memory_query
     configured_query_ids = {
         query_id
         for queries in query_catalog.values()

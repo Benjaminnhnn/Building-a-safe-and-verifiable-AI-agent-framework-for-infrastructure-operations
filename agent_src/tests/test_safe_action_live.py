@@ -196,7 +196,7 @@ def test_live_workflow_calls_executor_only_after_gate_and_audit(tmp_path) -> Non
         assert audit.verify_chain("incident-DB-01") is True
         events = audit.list_for_incident("incident-DB-01")
         assert [event["event_type"] for event in events] == [
-            "live_gate", "live_pre_snapshot", "live_executor_result", "live_verification_pending"
+            "live_gate", "live_pre_snapshot", "live_dispatch_started", "live_executor_result", "live_verification_pending"
         ]
         assert events[1]["payload"]["database_password"] == "[REDACTED]"
     finally:

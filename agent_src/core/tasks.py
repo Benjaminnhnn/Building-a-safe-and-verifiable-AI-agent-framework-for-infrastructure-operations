@@ -27,6 +27,8 @@ from core.moodle.alert_integration import process_moodle_alert
 from core.moodle.operator_report import build_admin_action_report
 from utils.telegram_bot import send_telegram_message
 from core.moodle import safe_action_notify
+from core.moodle.alert_correlation import con01_dispatch_for_alert, verification_resolved
+from core.moodle.notification_receipt import was_delivered
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -621,6 +623,15 @@ async def process_single_alert(alert: dict) -> None:
             if not _reserve_alert_notification(alert, "resolved"):
                 ALERTS_PROCESSED_TOTAL.labels(status="deduped").inc()
                 return
+            correlated = con01_dispatch_for_alert(alert)
+            if correlated:
+                try:
+                    deferred_con01_resolved.apply_async(args=[alert, *correlated], countdown=600)
+                    logger.info("Deferred CON-01 alert resolution until verifier summary: incident=%s", correlated[0])
+                    ALERTS_PROCESSED_TOTAL.labels(status="verification_pending").inc()
+                    return
+                except Exception as exc:
+                    logger.warning("Unable to defer alert resolution: %s", type(exc).__name__)
             send_telegram_message(safe_action_notify.format_alert_resolved(alert_name, instance), parse_mode=None)
             ALERTS_PROCESSED_TOTAL.labels(status="verification_pending").inc()
             return
@@ -662,6 +673,20 @@ async def process_single_alert(alert: dict) -> None:
         raise
     finally:
         ACTIVE_TASKS.dec()
+
+@celery_app.task(bind=True, acks_late=True, reject_on_worker_lost=True, max_retries=3)
+def deferred_con01_resolved(self, alert: dict, incident_id: str, request_id: str):
+    """Send a fallback if the exact CON-01 did not reach verified resolution."""
+    if verification_resolved(incident_id, request_id) and was_delivered(incident_id, request_id):
+        return "included_in_verifier_summary"
+    labels = alert.get("labels") or {}
+    message = safe_action_notify.format_alert_resolved(
+        str(labels.get("alertname") or "Unknown"), str(labels.get("instance") or "Unknown")
+    )
+    if not send_telegram_message(message, parse_mode=None):
+        raise self.retry(countdown=60)
+    return "fallback_sent"
+
 
 # PHASE 9: Automatic Verification Task
 # ─────────────────────────────────────────────────────────────────────

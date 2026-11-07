@@ -120,7 +120,7 @@ def format_prepare(candidate_id: str, prepared: dict[str, Any]) -> str:
         f"Hành động: {_REMEDIATION_TEXT.get(scenario, str(request.get('catalog_action_id') or 'đã duyệt'))}",
         f"Đích: {action.get('target_resource_id') or request.get('target_scope')}",
         f"Request: {_short(request.get('request_id'), 8)} · chưa thực thi.",
-        "Reply `approve` vào tin yêu cầu của bot để xác nhận hành động này.",
+        "Gửi `approve` trong nhóm khi bot gửi yêu cầu duyệt.",
     ]
     return "\n".join(lines)
 

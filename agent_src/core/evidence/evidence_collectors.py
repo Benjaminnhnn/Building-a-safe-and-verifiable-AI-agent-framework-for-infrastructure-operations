@@ -106,7 +106,8 @@ METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
     "MoodleNodeMemoryPressure": (
         (
             "moodle_node_memory_available_drop_bytes",
-            '-delta(node_memory_MemAvailable_bytes{job="moodle_node"}[1m])',
+            '(-delta(node_memory_MemAvailable_bytes{job="moodle_node"}[1m])) and on(instance) '
+            '(node_memory_MemAvailable_bytes{job="moodle_node"} / node_memory_MemTotal_bytes{job="moodle_node"} < 0.20)',
         ),
     ),
     "MoodleEfsMountMissing": (

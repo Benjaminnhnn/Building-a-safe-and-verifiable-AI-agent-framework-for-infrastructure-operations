@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""Wait for one authorized Operator to reply `approve` to a specific bot prompt.
+"""Wait for one authorized Operator to send `approve` after the bot prompt.
 
 The bridge records a human decision only. The caller holds the Ed25519 private
-key and signs the prepared action after approval. Reject, timeout, stale reply,
-wrong chat, wrong user, or Telegram error never approves the action.
+key and signs the prepared action after approval. Wrong chat, wrong user,
+stale messages, replies to a different prompt, or concurrent local requests
+never approve the action.
 """
 
 from __future__ import annotations
 
 import argparse
+import fcntl
+import hashlib
 import json
+import os
 import secrets
 import sys
 import time
@@ -61,7 +65,7 @@ def _request_text(prepared: dict, timeout_seconds: int = 0) -> str:
         f"Phạm vi: {request.get('target_scope') or 'chưa xác định'} · Tài nguyên: {action.get('target_resource_id') or 'chưa xác định'}",
         *[f"{index}. ✓ {label}" for index, label in enumerate(GATE_CHECKS, 1) if index <= len(checks)],
         f"Request: {request.get('request_id')}",
-        "Reply trực tiếp tin này bằng approve để duyệt; reject để dừng.",
+        "Gửi approve trong nhóm để duyệt; gửi reject để dừng. Bạn cũng có thể Reply tin này.",
         "Thời gian chờ: không giới hạn." if timeout_seconds == 0 else f"Thời gian chờ: {timeout_seconds} giây.",
     ])
 
@@ -94,6 +98,16 @@ def approve(prepared_path: Path, timeout_seconds: int, client: TelegramClient | 
         print(json.dumps({"decision": "invalid", "error": "set TELEGRAM_TOKEN, TELEGRAM_CHAT_ID and TELEGRAM_ADMIN_USER_IDS"}))
         return 2
 
+    lock_dir = Path(os.getenv("MOODLE_APPROVAL_LOCK_DIR", "~/.config/moodle-aiops")).expanduser()
+    lock_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    lock_path = lock_dir / ("telegram-approval-" + hashlib.sha256(str(client.chat_id).encode()).hexdigest()[:16] + ".lock")
+    lock_file = lock_path.open("a", encoding="utf-8")
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock_file.close()
+        print(json.dumps({"decision": "invalid", "error": "another approval is already pending for this chat"}))
+        return 2
     try:
         offset = client.latest_update_offset(["message"])
         message_id = client.send(_request_text(prepared, timeout_seconds))
@@ -111,8 +125,12 @@ def approve(prepared_path: Path, timeout_seconds: int, client: TelegramClient | 
             for message in messages:
                 user = message.get("from") or {}
                 chat = (message.get("chat") or {}).get("id")
-                reply_to = (message.get("reply_to_message") or {}).get("message_id")
-                if str(chat) != str(client.chat_id) or reply_to != message_id or user.get("id") not in client.admin_ids:
+                reply = message.get("reply_to_message")
+                reply_to = (reply or {}).get("message_id")
+                incoming_id = message.get("message_id")
+                if (str(chat) != str(client.chat_id) or user.get("id") not in client.admin_ids
+                        or type(incoming_id) is not int or incoming_id <= message_id
+                        or (reply is not None and reply_to != message_id)):
                     continue
                 decision = str(message.get("text") or "").strip().lower()
                 if decision == "reject":
@@ -131,6 +149,9 @@ def approve(prepared_path: Path, timeout_seconds: int, client: TelegramClient | 
     except TelegramError as exc:
         print(json.dumps({"decision": "error", "error": str(exc)}))
         return 2
+    finally:
+        fcntl.flock(lock_file, fcntl.LOCK_UN)
+        lock_file.close()
 
 
 def whoami(timeout_seconds: int) -> int:

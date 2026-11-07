@@ -25,8 +25,14 @@ def format_summary(evidence: dict) -> str:
     samples = (evidence.get("verifier") or {}).get("probe_samples") or []
     passed = sum(bool(sample.get("checks")) and all(sample["checks"].values()) for sample in samples)
     rate = round(100 * passed / len(samples)) if samples else 0
+    alert_line = (
+        ["Alert MoodleWebContainerMissing trên node B: đã hết firing."]
+        if evidence.get("scenario_id") == "CON-01" and evidence.get("alert_resolved") == "passed"
+        else []
+    )
     return "\n".join([
         f"🏁 KHÔI PHỤC {evidence.get('scenario_id')} · RESOLVED (1/1 sự cố)",
+        *alert_line,
         f"Verifier: {passed}/{len(samples)} mẫu đạt ({rate}%), attestation đã được Agent chấp nhận.",
         f"RTO đo từ lúc phát hiện đến RESOLVED: {rto} giây.",
         "RPO: không áp dụng; kịch bản này không khôi phục dữ liệu từ bản sao lưu.",

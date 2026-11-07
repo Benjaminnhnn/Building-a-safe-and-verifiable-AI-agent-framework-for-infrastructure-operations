@@ -519,6 +519,7 @@ def test_e2e_happy_path_alert_to_verified_resolved_with_intact_audit_chain(
         assert event_types == [
             "live_gate",
             "live_pre_snapshot",
+            "live_dispatch_started",
             "live_executor_result",
             "live_verification_pending",
             "live_verification_result",

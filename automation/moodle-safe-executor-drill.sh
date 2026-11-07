@@ -338,5 +338,10 @@ python3 "$script_dir/moodle-drill-summary.py" "$evidence_file" || {
   echo "Recovery verified, but the Telegram summary was not delivered; evidence: $evidence_file" >&2
   exit 1
 }
+if [[ "$scenario" == CON-01 ]]; then
+  # The delayed alert fallback is suppressed only after the final summary was sent.
+  remote monitor-ai-01 "sudo docker exec moodle-ai-agent python -c 'import sys; from core.moodle.notification_receipt import mark_delivered; mark_delivered(sys.argv[1], sys.argv[2])' '$incident_id' '$request_id'" || \
+    echo "Could not record summary delivery; the alert fallback may also be sent." >&2
+fi
 stage=complete
 echo "$scenario Agent handoff drill passed; evidence: $evidence_file"

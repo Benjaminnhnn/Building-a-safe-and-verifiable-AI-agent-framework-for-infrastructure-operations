@@ -209,6 +209,13 @@ class SafeActionLiveWorkflow:
             "idempotency_key": request.idempotency_key,
             "gate_action_sha256": verdict.action_sha256,
         }
+        # Record the exact incident and target before dispatch so that a fast
+        # Alertmanager resolution can be correlated without silencing other alerts.
+        self._audit.append(
+            incident_id=incident_id,
+            event_type="live_dispatch_started",
+            payload=request_binding,
+        )
         try:
             result = self._executor(
                 scenario_id=request.scenario_id,

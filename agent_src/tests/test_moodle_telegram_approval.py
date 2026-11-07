@@ -44,8 +44,11 @@ class FakeClient:
         if not self.replies:
             return [], offset
         user, chat, reply_to, text = self.replies.pop(0)
-        return [{"from": {"id": user, "first_name": "Tester"}, "chat": {"id": chat},
-                 "reply_to_message": {"message_id": reply_to}, "text": text}], offset + 1
+        message = {"message_id": 43 + offset, "from": {"id": user, "first_name": "Tester"},
+                   "chat": {"id": chat}, "text": text}
+        if reply_to is not None:
+            message["reply_to_message"] = {"message_id": reply_to}
+        return [message], offset + 1
 
 
 def _run(tmp_path, replies, capsys, timeout=1):
@@ -62,6 +65,34 @@ def test_one_operator_reply_approves(tmp_path, capsys) -> None:
     assert "Đang ký" in client.texts[-1] and "8. ✓" in client.texts[-1]
     assert "ĐÃ DUYỆT" in client.texts[-1] and "CHỜ OPERATOR" not in client.texts[-1]
     assert "Reply trực tiếp" not in client.texts[-1]
+
+
+def test_plain_operator_message_approves(tmp_path, capsys) -> None:
+    code, out, client = _run(tmp_path, [(ADMIN, int(CHAT), None, "approve")], capsys)
+    assert code == 0 and out["decision"] == "approved"
+    assert "Gửi approve trong nhóm" in client.texts[0]
+
+
+def test_old_plain_message_is_ignored(tmp_path, capsys) -> None:
+    prepared = tmp_path / "prepared.json"
+    prepared.write_text(json.dumps(PREPARED), encoding="utf-8")
+    client = FakeClient([])
+    client.messages = lambda offset, timeout=20: ([{"message_id": 41, "from": {"id": ADMIN}, "chat": {"id": int(CHAT)}, "text": "approve"}], offset)
+    assert bridge.approve(prepared, 0.01, client=client) == 11
+    assert json.loads(capsys.readouterr().out)["decision"] == "timeout"
+
+
+def test_second_pending_approval_is_refused(tmp_path, capsys, monkeypatch) -> None:
+    monkeypatch.setenv("MOODLE_APPROVAL_LOCK_DIR", str(tmp_path))
+    prepared = tmp_path / "prepared.json"
+    prepared.write_text(json.dumps(PREPARED), encoding="utf-8")
+    lock_name = "telegram-approval-" + bridge.hashlib.sha256(CHAT.encode()).hexdigest()[:16] + ".lock"
+    with (tmp_path / lock_name).open("a") as lock:
+        bridge.fcntl.flock(lock, bridge.fcntl.LOCK_EX | bridge.fcntl.LOCK_NB)
+        client = FakeClient([(ADMIN, int(CHAT), None, "approve")])
+        assert bridge.approve(prepared, 0, client=client) == 2
+        assert "already pending" in json.loads(capsys.readouterr().out)["error"]
+        assert not client.texts
 
 
 def test_indefinite_wait_accepts_approval_after_empty_polls(tmp_path, capsys) -> None:

@@ -105,10 +105,11 @@ groups:
         annotations: {summary: "Isolated Moodle fault scratch filesystem is full on {{ $labels.instance }}"}
       - alert: MoodleNodeMemoryPressure
         expr: |
-          -delta(node_memory_MemAvailable_bytes{job="moodle_node"}[1m]) > 33554432
+          (-delta(node_memory_MemAvailable_bytes{job="moodle_node"}[1m]) > 33554432)
+          and on(instance) (node_memory_MemAvailable_bytes{job="moodle_node"} / node_memory_MemTotal_bytes{job="moodle_node"} < 0.20)
         for: 15s
         labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-bounded-memory}
-        annotations: {summary: "Moodle node available memory dropped by more than 32 MiB in one minute on {{ $labels.instance }}"}
+        annotations: {summary: "Moodle node available memory is below 20% and dropped by more than 32 MiB in one minute on {{ $labels.instance }}"}
       - alert: MoodleWebContainerRestarting
         expr: changes(moodle_node_web_restart_count{job="moodle_node"}[2m]) >= 2
         for: 15s

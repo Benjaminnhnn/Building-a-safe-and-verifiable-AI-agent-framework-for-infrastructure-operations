@@ -162,7 +162,7 @@ _DIRECT_THRESHOLD_RULES = {
         "moodle_node_memory_available_drop_bytes",
         33554432.0,
         "node_available_memory_drop",
-        "Node available memory dropped by more than 32 MiB in the last minute",
+        "Node available memory is below 20% and dropped by more than 32 MiB in the last minute",
         True,
         False,
     ),

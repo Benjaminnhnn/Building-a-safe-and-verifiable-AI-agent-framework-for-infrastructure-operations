@@ -180,8 +180,8 @@ nguyên; độ tin cậy chẩn đoán. Đây là kiểm tra trước duyệt, c
 
 ### 5.3. Một chữ ký Operator
 
-Operator reply `approve` vào đúng tin yêu cầu của bot. Cầu nối chỉ chấp nhận Telegram user ID trong allowlist và đúng
-chat/message ID; sau đó máy Operator ký Ed25519 lên digest gồm môi trường staging, kịch bản, hành động catalog, phạm
+Operator gửi `approve` trong nhóm hoặc reply tin yêu cầu của bot. Cầu nối chỉ chấp nhận Telegram user ID trong allowlist,
+đúng chat, tin gửi sau yêu cầu; mỗi nhóm chỉ có một yêu cầu chờ trên máy vận hành. Sau đó máy Operator ký Ed25519 lên digest gồm môi trường staging, kịch bản, hành động catalog, phạm
 vi và idempotency key. Chữ ký hết hạn sau 5 phút. Safety Gate trong Agent và Executor API trên monitor cùng kiểm tra
 chữ ký bằng khóa công khai Operator. Gate vẫn kiểm tra toàn bộ yêu cầu, bằng chứng, catalog, rollback và kill switch;
 Executor vẫn chỉ chạy hành động cố định trong allowlist. Agent không giữ khóa riêng.
@@ -260,8 +260,8 @@ sửa.
 ## 8. Phê duyệt và báo cáo qua Telegram
 
 **Cầu nối phê duyệt** (`automation/moodle-telegram-approval.py`, chạy trên máy operator):
-- Trong drill, Agent trả kết quả `/prepare` cho cầu nối và cầu nối gửi một tin duy nhất gồm kết quả Safety Gate và yêu cầu duyệt. Operator reply trực tiếp tin đó bằng `approve` hoặc `reject`. Khi gọi `/prepare` độc lập, Agent vẫn gửi thông báo; Gate từ chối vẫn được thông báo.
-- Chỉ nhận reply của user thuộc `TELEGRAM_ADMIN_USER_IDS` trong đúng `TELEGRAM_CHAT_ID`, đúng message ID của yêu cầu hiện tại.
+- Trong drill, Agent trả kết quả `/prepare` cho cầu nối và cầu nối gửi một tin duy nhất gồm kết quả Safety Gate và yêu cầu duyệt. Operator gửi `approve` hoặc `reject` trong nhóm, hoặc reply tin yêu cầu. Khi gọi `/prepare` độc lập, Agent vẫn gửi thông báo; Gate từ chối vẫn được thông báo.
+- Chỉ nhận tin của user thuộc `TELEGRAM_ADMIN_USER_IDS` trong đúng `TELEGRAM_CHAT_ID`, có message ID mới hơn tin yêu cầu. Nếu là reply thì phải reply đúng tin. Khóa cục bộ giới hạn một yêu cầu đang chờ cho mỗi nhóm trên máy vận hành; không chạy cầu nối của cùng bot từ máy khác cùng lúc.
 - Cầu nối chờ không giới hạn theo mặc định trong khi tiến trình đang chạy; `MOODLE_APPROVAL_TIMEOUT_SECONDS` có thể đặt thời hạn riêng. Sau `approve`, drill dùng **một** khóa riêng Ed25519 trên máy operator ký hành động; Safety Gate và Executor cùng kiểm tra chữ ký. Từ chối, lỗi Telegram hoặc dừng tiến trình sẽ dừng luồng. Phiên AWS vẫn cần còn hạn cho các bước AWS/Verifier.
 - Mã thoát: 0 duyệt, 10 từ chối, 11 hết giờ, 2 lỗi cấu hình hoặc Telegram.
 
@@ -270,11 +270,11 @@ sửa.
 | Bước | Tin | Gửi từ |
 |---|---|---|
 | ② ③ | 🚨 ALERT ngắn: lỗi, nơi lỗi, nguyên nhân, giải pháp tập trung và mã sự cố; báo cáo chi tiết vẫn ở evidence | Celery worker |
-| ④ | 🛡 SAFETY GATE: 8 kiểm tra, hành động, phạm vi và yêu cầu reply `approve` | Cầu nối trên máy operator; Agent gửi riêng nếu Gate chặn |
+| ④ | 🛡 SAFETY GATE: 8 kiểm tra, hành động, phạm vi và yêu cầu gửi `approve` | Cầu nối trên máy operator; Agent gửi riêng nếu Gate chặn |
 | ⑤ | ⚙️ EXECUTOR ĐÃ THỰC THI / ⛔ KHÔNG THỰC THI / ⛔ BỊ TỪ CHỐI | Agent API `/execute` |
 | ⑥ | 🔎 Verifier bắt đầu (hợp đồng) và từng mẫu | Verifier trên laptop (`--telegram-progress`) |
 | ⑥ | 🏁 RESOLVED hoặc ⛔ attestation bị từ chối; tổng kết probe, RTO đo được và RPO | Agent API và drill trên máy operator |
-| Hết alert | ✅ hết firing, "chưa phải RESOLVED" | Celery worker |
+| Hết alert | ✅ hết firing, "chưa phải RESOLVED"; CON-01 khớp sự cố đã dispatch được gộp vào tổng kết cuối, với tin dự phòng sau 10 phút nếu chưa xác minh hoặc gửi thất bại | Celery worker |
 
 Tin chỉ chứa ID, quyết định và tiền tố hash; không có chữ ký, token hay body yêu cầu. Tin ④–⑥ gửi **sau** khi API đã
 trả lời (`BackgroundTasks`), nên Telegram chậm hay lỗi không đổi quyết định an toàn. Callback tiến độ của Verifier lỗi

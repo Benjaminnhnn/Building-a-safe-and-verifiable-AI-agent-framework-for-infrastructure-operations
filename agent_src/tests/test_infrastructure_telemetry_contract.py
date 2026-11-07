@@ -34,7 +34,7 @@ EXPORTER_SOURCES = (
     REPO / "automation" / "moodle-synthetic-transaction.py",
 )
 # Metrics produced by Prometheus itself, node exporter, cAdvisor or Blackbox.
-STANDARD_METRICS = {"up", "probe_success", "node_cpu_seconds_total", "node_memory_MemAvailable_bytes", "container_last_seen"}
+STANDARD_METRICS = {"up", "probe_success", "node_cpu_seconds_total", "node_memory_MemAvailable_bytes", "node_memory_MemTotal_bytes", "container_last_seen"}
 
 THESIS_SCENARIO_ALERTS = {
     "BIZ-01": "MoodleMaintenanceModeStuck",
