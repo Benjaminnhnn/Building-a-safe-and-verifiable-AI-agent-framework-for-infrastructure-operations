@@ -59,6 +59,11 @@ def test_model_shadow_requires_explicit_enablement_and_valid_json(tmp_path, monk
     with pytest.raises(ValueError):
         evaluate_model_proposal(prepared, public_key=key, actors={"operator"},
                                 audit_db=str(tmp_path / "audit.sqlite3"), client=fake)
+    fake.answer = {"action_id": "unknown_action", "target_scope": "staging_moodle_nodes",
+                   "rationale": "diagnostic context " * 26}
+    result = evaluate_model_proposal(prepared, public_key=key, actors={"operator"},
+                                     audit_db=str(tmp_path / "audit.sqlite3"), client=fake)
+    assert len(result["proposal"]["rationale"]) > 300
 
 
 def test_model_client_uses_sdk_compatible_bounded_http_options(tmp_path, monkeypatch):

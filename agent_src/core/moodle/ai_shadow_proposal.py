@@ -29,7 +29,7 @@ class ModelIntent(BaseModel):
 
     action_id: str = Field(min_length=1, max_length=100)
     target_scope: str = Field(min_length=1, max_length=100)
-    rationale: str = Field(min_length=1, max_length=300)
+    rationale: str = Field(min_length=1, max_length=1000)
 
 
 def summarize_incident_signals(evidence_db: str, *, incident_id: str, evidence_refs: list[str]) -> list[dict[str, Any]]:
@@ -117,7 +117,7 @@ def evaluate_model_proposal(
         "candidate_id": prepared["candidate_id"],
         "request_id": request.request_id,
         "scenario_id": request.scenario_id,
-        "proposal": sanitize_untrusted_data(intent.model_dump(), max_chars=300),
+        "proposal": sanitize_untrusted_data(intent.model_dump(), max_chars=1000),
         "model_response_id": str(getattr(response, "response_id", "") or "")[:100],
         "model_version": str(getattr(response, "model_version", "") or "")[:100],
         "gate_decision": decision["decision"],
