@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.moodle.ai_shadow_proposal import evaluate_model_proposal
+from core.moodle import ai_shadow_proposal
 from core.safety.safe_action_audit import SafeActionAuditStore
 from test_moodle_safety_shadow import prepared_candidate
 
@@ -51,3 +52,20 @@ def test_model_shadow_requires_explicit_enablement_and_valid_json(tmp_path, monk
     with pytest.raises(ValueError):
         evaluate_model_proposal(prepared, public_key=key, actors={"operator"},
                                 audit_db=str(tmp_path / "audit.sqlite3"), client=fake)
+
+
+def test_model_client_uses_sdk_compatible_bounded_http_options(tmp_path, monkeypatch):
+    prepared, key = prepared_candidate()
+    monkeypatch.setenv("AIOPS_AI_SHADOW_PROPOSALS_ENABLED", "true")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only-key")
+    fake = FakeModel({"action_id": "unknown_action", "target_scope": "staging_moodle_nodes",
+                      "rationale": "inspect candidate"})
+    options = []
+    def create_client(**kwargs):
+        options.append(kwargs["http_options"])
+        return fake
+    monkeypatch.setattr(ai_shadow_proposal.genai, "Client", create_client)
+    result = evaluate_model_proposal(prepared, public_key=key, actors={"operator"},
+                                     audit_db=str(tmp_path / "audit.sqlite3"))
+    assert result["gate_decision"] == "DENY"
+    assert options == [{"timeout": 10000}]

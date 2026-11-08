@@ -60,7 +60,7 @@ def evaluate_model_proposal(
         + json.dumps(context, sort_keys=True)
     )
     if client is None:
-        client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=10000))
+        client = genai.Client(api_key=key, http_options={"timeout": 10000})
     response = client.models.generate_content(
         model=model, contents=prompt,
         config=types.GenerateContentConfig(
