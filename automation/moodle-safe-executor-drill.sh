@@ -156,13 +156,29 @@ remote moodle-app-b \
   "sudo -n test -r /opt/moodle/release/moodle-runtime.env && sudo -n docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml config --quiet"
 
 stage=preflight-kill-switches
-ssh -F "$ssh_config" -N -L 127.0.0.1:18000:127.0.0.1:8000 monitor-ai-01 &
-agent_tunnel_pid=$!
-for _ in {1..30}; do
-  if curl --fail --silent http://127.0.0.1:18000/health >/dev/null; then break; fi
-  sleep 1
-done
-curl --fail --silent http://127.0.0.1:18000/health \
+ensure_agent_tunnel() {
+  if [[ -n "$agent_tunnel_pid" ]] && kill -0 "$agent_tunnel_pid" 2>/dev/null && \
+      curl --fail --silent --max-time 5 http://127.0.0.1:18000/health >/dev/null; then
+    return 0
+  fi
+  if [[ -n "$agent_tunnel_pid" ]]; then
+    kill "$agent_tunnel_pid" >/dev/null 2>&1 || true
+    wait "$agent_tunnel_pid" 2>/dev/null || true
+  fi
+  ssh -F "$ssh_config" -o BatchMode=yes -o ExitOnForwardFailure=yes \
+    -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+    -N -L 127.0.0.1:18000:127.0.0.1:8000 monitor-ai-01 &
+  agent_tunnel_pid=$!
+  for _ in {1..30}; do
+    kill -0 "$agent_tunnel_pid" 2>/dev/null || break
+    if curl --fail --silent --max-time 5 http://127.0.0.1:18000/health >/dev/null; then return 0; fi
+    sleep 1
+  done
+  echo 'Cannot establish the Agent tunnel; stopping before execution.' >&2
+  return 1
+}
+ensure_agent_tunnel
+curl --fail --silent --max-time 5 http://127.0.0.1:18000/health \
   | jq -e '.safe_action_live_enabled == false and .approval_mode == "operator"' >/dev/null
 for key_name in approval-ed25519.pub verifier-ed25519.pub; do
   if [[ "$key_name" == approval-ed25519.pub ]]; then
@@ -256,6 +272,7 @@ jq -e --arg request "$request_id" '.decision == "approved" and .request_id == $r
 
 stage=wait-for-aws-session
 wait_for_aws_session
+ensure_agent_tunnel
 
 stage=operator-signature
 python3 "$script_dir/moodle-safe-approval.py" "$scenario" \

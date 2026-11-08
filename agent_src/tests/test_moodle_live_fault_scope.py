@@ -155,6 +155,13 @@ def test_controlled_related_outage_is_owned_reset_and_never_submitted_as_recover
     assert '--data-binary "@$collateral_file"' not in source
 
 
+def test_agent_tunnel_is_rechecked_after_unbounded_operator_approval():
+    source = EXECUTOR_DRILL.read_text(encoding='utf-8')
+    assert '-o ExitOnForwardFailure=yes' in source and '-o ServerAliveInterval=30' in source
+    wait_stage = source.split('stage=wait-for-aws-session', 1)[1].split('stage=operator-signature', 1)[0]
+    assert wait_stage.index('wait_for_aws_session') < wait_stage.index('ensure_agent_tunnel')
+
+
 def test_obsolete_unsafe_fault_implementations_are_absent() -> None:
     source = INJECTOR.read_text(encoding="utf-8") + RESET.read_text(encoding="utf-8")
     for obsolete in (
