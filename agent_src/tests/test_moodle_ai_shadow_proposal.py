@@ -69,3 +69,4 @@ def test_model_client_uses_sdk_compatible_bounded_http_options(tmp_path, monkeyp
                                      audit_db=str(tmp_path / "audit.sqlite3"))
     assert result["gate_decision"] == "DENY"
     assert options == [{"timeout": 10000}]
+    assert fake.calls[0]["config"].max_output_tokens == 1024

@@ -64,7 +64,7 @@ def evaluate_model_proposal(
     response = client.models.generate_content(
         model=model, contents=prompt,
         config=types.GenerateContentConfig(
-            response_mime_type="application/json", temperature=0.4, max_output_tokens=256,
+            response_mime_type="application/json", temperature=0.4, max_output_tokens=1024,
         ),
     )
     intent = ModelIntent.model_validate_json(response.text or "")
