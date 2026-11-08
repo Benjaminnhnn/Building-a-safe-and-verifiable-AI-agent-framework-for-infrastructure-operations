@@ -39,7 +39,7 @@ from core.coordination.tool_auto_discovery import (
 )
 from core.moodle.live_handoff import execute_moodle_live_handoff, prepare_moodle_live_handoff
 from core.moodle.safety_shadow import evaluate_challenges
-from core.moodle.ai_shadow_proposal import evaluate_model_proposal
+from core.moodle.ai_shadow_proposal import evaluate_model_proposal, summarize_incident_signals
 from core.safety.safe_execution_gate import ApprovalRecord
 from core.safety.verifier_attestation import (
     InvalidVerifierSignature,
@@ -236,8 +236,12 @@ def evaluate_moodle_ai_shadow_proposal(
             evidence_db=evidence_db, candidate_id=candidate_id,
             gate_public_key=public_key, gate_actors=actors,
         )
+        refs = (prepared.get("request") or {}).get("action", {}).get("evidence_refs") or []
+        signals = summarize_incident_signals(
+            str(evidence_db), incident_id=prepared["incident_id"], evidence_refs=refs,
+        )
         result = evaluate_model_proposal(
-            prepared, public_key=public_key, actors=actors, audit_db=str(audit_db),
+            prepared, public_key=public_key, actors=actors, audit_db=str(audit_db), signals=signals,
         )
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=409, detail="fresh candidate or model shadow configuration unavailable") from exc

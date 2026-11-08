@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
+import re
 from typing import Any
 
 from google import genai
@@ -16,6 +18,7 @@ from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.evidence.adapters import SafeLiveActionRequest
+from core.evidence.evidence_store import SQLiteEvidenceStore
 from core.safety.safe_action_audit import SafeActionAuditStore
 from core.safety.safe_execution_gate import SafeExecutionGate
 from core.safety.sanitization import sanitize_untrusted_data
@@ -29,9 +32,38 @@ class ModelIntent(BaseModel):
     rationale: str = Field(min_length=1, max_length=300)
 
 
+def summarize_incident_signals(evidence_db: str, *, incident_id: str, evidence_refs: list[str]) -> list[dict[str, Any]]:
+    """Expose only bounded numeric Prometheus observations to the model."""
+    if len(evidence_refs) > 48 or len(evidence_refs) != len(set(evidence_refs)):
+        raise ValueError("candidate evidence references are invalid")
+    signals: list[dict[str, Any]] = []
+    with SQLiteEvidenceStore(evidence_db) as store:
+        store.verify_integrity()
+        for ref in evidence_refs:
+            item = store.get_by_id(ref)
+            if item is None or item.incident_id != incident_id:
+                raise ValueError("candidate evidence is missing or cross-incident")
+            if item.source != "prometheus":
+                continue
+            try:
+                payload = json.loads(item.metadata.get("payload_json", "{}"))
+            except (TypeError, ValueError):
+                continue
+            name, value = payload.get("query_id"), payload.get("sample_value")
+            labels = payload.get("labels")
+            instance = labels.get("instance") if isinstance(labels, dict) else None
+            if (not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,79}", name)
+                    or isinstance(value, bool) or not isinstance(value, (float, int))
+                    or not math.isfinite(value)):
+                continue
+            safe_instance = instance if instance in {"moodle-app-a", "moodle-app-b", "monitor-ai-01"} else "other"
+            signals.append({"signal": name, "instance": safe_instance, "value": float(value)})
+    return sorted(signals, key=lambda row: (row["signal"], row["instance"]))[:24]
+
+
 def evaluate_model_proposal(
     prepared: dict[str, Any], *, public_key: bytes, actors: set[str], audit_db: str,
-    client: Any | None = None,
+    client: Any | None = None, signals: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     if os.getenv("AIOPS_AI_SHADOW_PROPOSALS_ENABLED", "false").lower() != "true":
         raise ValueError("model proposal shadow mode is disabled")
@@ -43,7 +75,7 @@ def evaluate_model_proposal(
     key = os.getenv("GEMINI_API_KEY")
     if client is None and (not key or key.startswith("your_")):
         raise ValueError("model credentials are unavailable")
-    # Only bounded, trusted diagnosis fields enter the prompt; no raw alert,
+    # Only bounded, trusted numeric signals enter the prompt; no raw alert,
     # usernames, secrets, free-form logs or untrusted evidence snippets.
     context = {
         "scenario_id": request.scenario_id,
@@ -51,6 +83,7 @@ def evaluate_model_proposal(
         "environment": request.action.environment.value,
         "evidence_count": len(set(request.action.evidence_refs)),
         "diagnosis_confidence": confidence,
+        "signals": signals or [],
     }
     prompt = (
         "You are proposing one remediation for this Moodle staging incident. "
@@ -91,6 +124,7 @@ def evaluate_model_proposal(
         "gate_reason": decision["reason"],
         "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
         "response_sha256": hashlib.sha256((response.text or "").encode()).hexdigest(),
+        "signal_count": len(signals or []),
         "execution_permitted": False,
         "dispatched": False,
         "risk_adjudication": "pending_independent_review",
