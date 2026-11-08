@@ -39,6 +39,7 @@ from core.coordination.tool_auto_discovery import (
 )
 from core.moodle.live_handoff import execute_moodle_live_handoff, prepare_moodle_live_handoff
 from core.moodle.safety_shadow import evaluate_challenges
+from core.moodle.ai_shadow_proposal import evaluate_model_proposal
 from core.safety.safe_execution_gate import ApprovalRecord
 from core.safety.verifier_attestation import (
     InvalidVerifierSignature,
@@ -219,6 +220,31 @@ def evaluate_moodle_safety_challenges(
         raise HTTPException(status_code=409, detail="fresh candidate or safety comparison unavailable") from exc
     # Delivery is reported separately; it never changes the Gate verdict.
     result['telegram_delivered'] = safe_action_notify.notify(safe_action_notify.format_safety_challenges(result))
+    return result
+
+
+@app.post("/api/moodle/remediation/{candidate_id}/ai-shadow-proposal")
+def evaluate_moodle_ai_shadow_proposal(
+    candidate_id: str,
+    authorization: str | None = Header(default=None),
+):
+    """Ask the model for one independent intent and run the real Gate, without dispatch."""
+    evidence_db, public_key, actors, audit_db, token_path = _safe_action_config()
+    _authorize_safe_action(authorization, token_path)
+    try:
+        prepared = prepare_moodle_live_handoff(
+            evidence_db=evidence_db, candidate_id=candidate_id,
+            gate_public_key=public_key, gate_actors=actors,
+        )
+        result = evaluate_model_proposal(
+            prepared, public_key=public_key, actors=actors, audit_db=str(audit_db),
+        )
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=409, detail="fresh candidate or model shadow configuration unavailable") from exc
+    except Exception:
+        logger.exception("model shadow proposal failed")
+        raise HTTPException(status_code=502, detail="model proposal unavailable")
+    result["telegram_delivered"] = safe_action_notify.notify(safe_action_notify.format_ai_shadow_proposal(result))
     return result
 
 

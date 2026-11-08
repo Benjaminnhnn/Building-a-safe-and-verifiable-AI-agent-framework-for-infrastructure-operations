@@ -89,7 +89,7 @@ fi
 
 mkdir -p "$artifacts_dir"
 
-# Optional Telegram reporting: copy only the Telegram keys from the operator's
+# Optional Telegram reporting: copy only the needed keys from the operator's
 # Git-ignored env file, so laptop-only values (REDIS_HOST, paths) never reach staging.
 telegram_args=()
 telegram_source="${MOODLE_AGENT_TELEGRAM_ENV_FILE:-$repo_root/release/.env}"
@@ -103,6 +103,22 @@ if [[ "$agent_enabled" == true && -r "$telegram_source" ]]; then
   else
     echo "Agent Telegram reporting: skipped (TELEGRAM_TOKEN or TELEGRAM_CHAT_ID empty in $telegram_source)"
   fi
+fi
+
+shadow_args=(--extra-vars moodle_ai_shadow_proposals_enabled=false)
+if [[ "${MOODLE_AI_SHADOW_PROPOSALS_ENABLED:-false}" == true ]]; then
+  [[ "$agent_enabled" == true && -r "$telegram_source" && ${#telegram_args[@]} -gt 0 ]] || {
+    echo "AI shadow requires an Agent image and configured Telegram env file." >&2
+    exit 66
+  }
+  grep -Eq '^GEMINI_API_KEY=[^[:space:]]+' "$telegram_source" &&
+    ! grep -Eq '^GEMINI_API_KEY=(your_|change_me)' "$telegram_source" || {
+      echo "AI shadow requires a configured GEMINI_API_KEY in the local Agent env file." >&2
+      exit 66
+    }
+  (umask 077; grep -E '^(GEMINI_API_KEY|GEMINI_MODEL)=' "$telegram_source" >> "$telegram_env_file")
+  shadow_args=(--extra-vars moodle_ai_shadow_proposals_enabled=true)
+  echo "Agent AI shadow proposal: enabled for explicit operator calls"
 fi
 
 # The Okta log reader is opt-in and uses a read-only service app. Never place
@@ -154,5 +170,6 @@ ansible-playbook \
   --extra-vars "moodle_agent_enabled=$agent_enabled" \
   --extra-vars "moodle_agent_image=$agent_image" \
   "${live_args[@]}" \
+  "${shadow_args[@]}" \
   "${okta_args[@]}" \
   ${telegram_args[@]+"${telegram_args[@]}"}

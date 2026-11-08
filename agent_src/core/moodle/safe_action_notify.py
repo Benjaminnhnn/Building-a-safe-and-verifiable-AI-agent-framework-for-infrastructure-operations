@@ -118,6 +118,22 @@ def format_safety_challenges(result: dict[str, Any]) -> str:
     ])
 
 
+def format_ai_shadow_proposal(result: dict[str, Any]) -> str:
+    """Report actual model provenance and Gate verdict without implying dispatch."""
+    proposal = result.get("proposal") or {}
+    def one_line(value: Any, limit: int = 180) -> str:
+        return " ".join(str(value or "?").split())[:limit]
+    return "\n".join([
+        f"🤖 AI SHADOW · {one_line(result.get('scenario_id'), 24)} · staging",
+        f"Mô hình: {one_line(result.get('model'), 60)} · đề xuất: {one_line(proposal.get('action_id'))}",
+        f"Phạm vi AI chọn: {one_line(proposal.get('target_scope'))}",
+        f"Lý do AI: {one_line(proposal.get('rationale'), 240)}",
+        f"Safety Gate đang vận hành: {one_line(result.get('gate_decision'), 32)} · {one_line(result.get('gate_reason'))}",
+        "Chỉ đánh giá: không cấp quyền, không gọi Executor. Mức rủi ro cần người độc lập xác nhận.",
+        f"Bằng chứng audit: {one_line(result.get('audit_event_id'), 40)}",
+    ])
+
+
 def format_prepare(candidate_id: str, prepared: dict[str, Any]) -> str:
     """Step 4: concise result of the reviewed Safety Gate checks."""
     request = prepared.get("request") or {}

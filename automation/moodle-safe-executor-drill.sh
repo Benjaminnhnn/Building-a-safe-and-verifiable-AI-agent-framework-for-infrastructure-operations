@@ -44,6 +44,7 @@ drill_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 evidence_file="$evidence_dir/$run_id.json"
 prepared_file="$evidence_dir/$run_id-prepared.json"
 challenge_file="$evidence_dir/$run_id-safety-challenges.json"
+ai_shadow_file="$evidence_dir/$run_id-ai-shadow-proposal.json"
 executor_approval_file="$evidence_dir/$run_id-executor-approval.json"
 execute_body_file="$evidence_dir/$run_id-execute-body.json"
 execute_result_file="$evidence_dir/$run_id-execute-result.json"
@@ -203,6 +204,7 @@ SAFE_EXECUTOR_LIVE_ENABLED=true SAFE_EXECUTOR_LIVE_CONFIRM=staging \
 stage=enable-agent-switch
 agent_live_enabled=true
 MOODLE_SAFE_ACTION_LIVE_ENABLED=true MOODLE_SAFE_ACTION_LIVE_CONFIRM=staging \
+  MOODLE_AI_SHADOW_PROPOSALS_ENABLED="${MOODLE_AI_SHADOW_PROPOSAL:-false}" \
   bash "$script_dir/configure-moodle-monitoring.sh" >/dev/null
 
 curl --fail --silent http://127.0.0.1:18000/health >/dev/null
@@ -258,6 +260,17 @@ if [[ "${MOODLE_SAFETY_CHALLENGES:-false}" == true ]]; then
   jq -e --arg candidate "$candidate_id" \
     '.candidate_id == $candidate and .execution_permitted == false and .telegram_delivered == true and .dangerous.decision == "DENY" and .policy_fault.decision == "DENY" and .reviewed.decision == "REQUIRE_APPROVAL" and .dangerous.dispatched == false and .policy_fault.dispatched == false' \
     "$challenge_file" >/dev/null
+fi
+
+if [[ "${MOODLE_AI_SHADOW_PROPOSAL:-false}" == true ]]; then
+  stage=ai-shadow-proposal
+  curl --fail --silent --show-error \
+    -H "Authorization: Bearer $agent_token" \
+    -X POST "http://127.0.0.1:18000/api/moodle/remediation/$candidate_id/ai-shadow-proposal" \
+    > "$ai_shadow_file"
+  jq -e --arg candidate "$candidate_id" \
+    '.candidate_id == $candidate and .source == "model_generated" and .execution_permitted == false and .dispatched == false and .telegram_delivered == true and (.audit_event_hash | length) == 64' \
+    "$ai_shadow_file" >/dev/null
 fi
 
 stage=human-approval-telegram
@@ -430,6 +443,10 @@ safety_comparison='null'
 if [[ "${MOODLE_SAFETY_CHALLENGES:-false}" == true ]]; then
   safety_comparison="$(jq -c '{mode,incident_id,candidate_id,dangerous,policy_fault,reviewed}' "$challenge_file")"
 fi
+ai_shadow_proposal='null'
+if [[ "${MOODLE_AI_SHADOW_PROPOSAL:-false}" == true ]]; then
+  ai_shadow_proposal="$(jq -c '{mode,source,model,incident_id,candidate_id,proposal,gate_decision,gate_reason,prompt_sha256,response_sha256,audit_event_id,audit_event_hash,dispatched,risk_adjudication}' "$ai_shadow_file")"
+fi
 controlled_related_fault='null'
 if [[ "${MOODLE_COLLATERAL_PROBE_TEST:-false}" == true ]]; then
   controlled_related_fault="$(jq -c --arg health "$collateral_health" \
@@ -445,8 +462,8 @@ jq -n \
   --slurpfile runtime "$runtime_verification_file" --slurpfile runtime_status "$runtime_verification_file.status.json" \
   --argjson stage_times "$stage_times" --arg health_only_http_status "$health_only_http_status" \
   --argjson contract_at_execute_end "$contract_at_execute_end" \
-  --argjson safety_comparison "$safety_comparison" --argjson controlled_related_fault "$controlled_related_fault" \
-  '{run_id:$run_id,stage_times:$stage_times,health_only_http_status:$health_only_http_status,contract_at_execute_end:$contract_at_execute_end,safety_comparison:$safety_comparison,controlled_related_fault:$controlled_related_fault,scenario_id:$scenario,status:"passed",evidence_class:"operator_approved_staging_drill",method:"agent_prepare_one_operator_approval_execute_signed_independent_verify",observed_alert:$alert,candidate_id:$candidate_id,incident_id:$incident_id,prepared_request:$prepared[0],human_approval:$human_approval[0],executor_approval:$executor_approval[0].approval,execution_receipt:$execution[0].result,verifier:$verifier[0],verifier_attestation:$verifier[0].attestation,runtime_persistence:$runtime[0],runtime_status:$runtime_status[0],probe_samples:$verifier[0].probe_samples,alert_resolved:"passed",reset:"safe_executor_receipt",baseline_after_reset:"passed",live_switch:"disabled_after_drill",completed_at:$completed_at}' \
+  --argjson safety_comparison "$safety_comparison" --argjson ai_shadow_proposal "$ai_shadow_proposal" --argjson controlled_related_fault "$controlled_related_fault" \
+  '{run_id:$run_id,stage_times:$stage_times,health_only_http_status:$health_only_http_status,contract_at_execute_end:$contract_at_execute_end,safety_comparison:$safety_comparison,ai_shadow_proposal:$ai_shadow_proposal,controlled_related_fault:$controlled_related_fault,scenario_id:$scenario,status:"passed",evidence_class:"operator_approved_staging_drill",method:"agent_prepare_one_operator_approval_execute_signed_independent_verify",observed_alert:$alert,candidate_id:$candidate_id,incident_id:$incident_id,prepared_request:$prepared[0],human_approval:$human_approval[0],executor_approval:$executor_approval[0].approval,execution_receipt:$execution[0].result,verifier:$verifier[0],verifier_attestation:$verifier[0].attestation,runtime_persistence:$runtime[0],runtime_status:$runtime_status[0],probe_samples:$verifier[0].probe_samples,alert_resolved:"passed",reset:"safe_executor_receipt",baseline_after_reset:"passed",live_switch:"disabled_after_drill",completed_at:$completed_at}' \
   > "$evidence_file"
 chmod 0600 "$evidence_file"
 python3 "$script_dir/moodle-drill-summary.py" "$evidence_file" || {
