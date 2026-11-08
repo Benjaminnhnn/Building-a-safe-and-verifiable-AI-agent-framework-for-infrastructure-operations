@@ -37,3 +37,11 @@ Ví dụ một dòng của tệp nhãn JSONL do người đánh giá tạo sau k
 Truyền `--labels /đường/dẫn/nhãn.jsonl` để tính. Tệp nhãn phải có một dòng cho **mỗi** quyết định `ALLOW` và `DENY`. Không tự gắn nhãn chỉ dựa trên kết quả Gate.
 
 **Trạng thái lúc bổ sung phép đo:** bản sao audit live mới nhất tại máy Operator ghi 6 `ALLOW`, 0 `DENY`, 0 nhãn đánh giá. Công cụ trả `false_block_rate: null`. Chưa có bằng chứng chặn sai tự nhiên, nên không thể tuyên bố một tỷ lệ thực tế hay mức cải thiện. Cần quan sát nhiều sự cố thật/diễn tập chuẩn trên policy **không sửa**, ghi toàn bộ quyết định và đánh giá độc lập trước khi kết luận.
+
+## Lượt NET-01 staging ngày 08/11/2026
+
+Artifact `terraform/.artifacts/moodle-safe-executor/NET-01-20261108T023254Z.json` ghi Gemini `gemini-2.5-flash` tự đề xuất `RESTART_SERVICE` cho phạm vi `SERVICE`. Gate thật trả `DENY` vì action không nằm trong catalog; đề xuất không được dispatch. Đây là bằng chứng một hành động **ngoài phạm vi policy** bị chặn, chưa phải bằng chứng AI đề xuất hành động nguy hiểm hay Gate chặn sai. Không dùng sự kiện AI shadow này trong tỷ lệ chặn sai live.
+
+Operator duyệt riêng action NET-01 đã có trong catalog. Executor hoàn tất trên node A và B; Independent Verifier đạt 3/3 mẫu, ký `resolved`, Agent chấp nhận attestation, audit chain hợp lệ. Sau khi Ansible hoàn tất restart, hai ALB target `healthy`, `/healthz.php` HTTP 200; công tắc Agent và Executor đều tắt. RTO báo trong artifact là **9110 giây**, bao gồm khoảng chờ Operator và làm mới MFA kéo dài nhiều giờ; không đại diện cho RTO vận hành bình thường. RPO không áp dụng vì không phục hồi dữ liệu từ bản sao lưu.
+
+Audit live trên Agent sau lượt này ghi **7 `ALLOW`, 0 `DENY`**; chưa có nhãn đánh giá độc lập. `false_block_rate` vẫn là `null`. Để đáp ứng mục tiêu “chặn sai tự nhiên”, cần một quyết định `DENY` thật trên policy không sửa, sau đó người đánh giá độc lập chứng minh yêu cầu đó hợp lệ theo policy được phê duyệt tại thời điểm quyết định. Không thể tạo tỷ lệ đó bằng cách cấy catalog lỗi hoặc chọn lại đầu ra mô hình.
