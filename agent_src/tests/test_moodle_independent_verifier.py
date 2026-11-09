@@ -106,6 +106,8 @@ def test_probe_invokes_only_the_reviewed_script_without_a_shell(
     assert verifier._run_probe("DB-01", "req-1") == {"one": True}
     assert captured["command"] == ["bash", str(verifier._PROBE_SCRIPT), "DB-01", "req-1"]
     assert captured["kwargs"]["shell"] is False
+    assert captured["kwargs"]["stdin"] is verifier.subprocess.DEVNULL
+    assert captured["kwargs"]["start_new_session"] is True
 
 
 @pytest.mark.parametrize(

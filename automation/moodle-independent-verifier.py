@@ -94,6 +94,10 @@ def _run_probe(scenario_id: str, request_id: str) -> dict[str, bool]:
         capture_output=True,
         text=True,
         shell=False,
+        # AWS CLI can otherwise read an MFA prompt from the Operator's TTY
+        # while stderr is captured, leaving this probe hung until timeout.
+        stdin=subprocess.DEVNULL,
+        start_new_session=True,
         timeout=180,
     )
     try:
