@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
+from core.environment_profile import get_environment_profile
 from core.schema.common import ActionType, ResourceType
 
 # ---------------------------------------------------------------------------
@@ -270,7 +271,14 @@ class ActionCatalog:
     ) -> bool:
         """Fail closed unless a request matches the reviewed S3.3 or Business live boundary."""
         scope = _S3_3_STAGING_EXECUTION_SCOPES.get(scenario_id) or _BIZ_STAGING_EXECUTION_SCOPES.get(scenario_id)
-        if scope is None or environment != "staging" or scope.get(action_id) != target_scope:
+        # The environment must be the one the reviewed profile describes AND be
+        # listed in the entry's environment_scope (checked by is_allowed). No
+        # production entry exists until one is reviewed, so production denies.
+        if (
+            scope is None
+            or environment != get_environment_profile().environment
+            or scope.get(action_id) != target_scope
+        ):
             return False
         return self.is_allowed(action_id, environment=environment, role=role)
 
@@ -977,6 +985,19 @@ class ActionCatalog:
             ),
         ]
         return cls(entries=entries)
+
+    @classmethod
+    def load_reviewed_rollback_catalog(cls) -> ActionCatalog:
+        """Catalog used to look up reciprocal rollback actions.
+
+        Unlike ``load_full_catalog`` it also holds the Business actions
+        (BIZ-01/BIZ-02), whose rollbacks live only in the business catalog.
+        """
+        entries: dict[str, CatalogEntry] = {}
+        for source in (cls.load_moodle_catalog(), cls.load_moodle_business_catalog(), cls.load_erpnext_catalog()):
+            for action_id, entry in source._entries.items():
+                entries.setdefault(action_id, entry)
+        return cls(entries=list(entries.values()))
 
     @classmethod
     def load_full_catalog(cls) -> ActionCatalog:

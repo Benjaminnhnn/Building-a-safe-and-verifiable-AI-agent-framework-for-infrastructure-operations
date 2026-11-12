@@ -13,14 +13,36 @@ _SECRET_NAME = (
     r"access[_-]?key|private[_-]?key|authorization|credential|"
     r"connection[_-]?string|dsn)[A-Za-z0-9_-]*"
 )
-_SECRET_ASSIGNMENT = re.compile(
-    rf"(?i)(?<![A-Za-z0-9])({_SECRET_NAME})(\s*[:=]\s*)((?:Bearer\s+)?[^\s,;]+)"
+_QUOTED_OR_BARE_VALUE = (
+    r'"(?:[^"\\]|\\.)*(?:"|\Z)'  # double-quoted, may contain spaces or be truncated
+    r"|'(?:[^'\\]|\\.)*(?:'|\Z)"  # single-quoted, may contain spaces or be truncated
+    r"|\[REDACTED[A-Z_]*\]"  # already redacted: keep the pass idempotent
+    r"|(?:Bearer\s+)?[^\s,;}\]]+"  # bare token, optionally a Bearer credential
 )
+# The key may itself be quoted (JSON): "password": "a b c"
+_SECRET_ASSIGNMENT = re.compile(
+    rf"""(?i)(?<![A-Za-z0-9])(["']?)({_SECRET_NAME})(\1)(\s*[:=]\s*)({_QUOTED_OR_BARE_VALUE})"""
+)
+
+
+def _redact_assignment(match: re.Match[str]) -> str:
+    quote, name, closing, separator, value = match.groups()
+    value_quote = value[:1] if value[:1] in {'"', "'"} else ""
+    redacted = f"{value_quote}[REDACTED]{value_quote}" if value_quote else "[REDACTED]"
+    return f"{quote}{name}{closing}{separator}{redacted}"
+
+
 _BEARER = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
 _AWS_ACCESS_KEY = re.compile(r"\bAKIA[0-9A-Z]{16}\b")
 _PRIVATE_KEY = re.compile(
-    r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----.*?"
-    r"-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
+    r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----.*?"
+    r"-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----",
+    re.DOTALL,
+)
+# A PEM block whose END marker was cut off by upstream truncation, or a header
+# that is itself cut off, must still be redacted up to the end of the text.
+_TRUNCATED_PRIVATE_KEY = re.compile(
+    r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----.*\Z|-----BEGIN[ A-Z0-9]{0,30}-*\Z",
     re.DOTALL,
 )
 _URL_CREDENTIALS = re.compile(r"(://)[^/@\s]+:[^/@\s]+@")
@@ -39,7 +61,8 @@ def sanitize_log_excerpt(value: Any, *, max_chars: int = 1024) -> str:
     """Redact common credentials and bound copied log context."""
     text = str(value or "")
     text = _PRIVATE_KEY.sub("[REDACTED_PRIVATE_KEY]", text)
-    text = _SECRET_ASSIGNMENT.sub(r"\1\2[REDACTED]", text)
+    text = _TRUNCATED_PRIVATE_KEY.sub("[REDACTED_PRIVATE_KEY]", text)
+    text = _SECRET_ASSIGNMENT.sub(_redact_assignment, text)
     text = _BEARER.sub("Bearer [REDACTED]", text)
     text = _AWS_ACCESS_KEY.sub("[REDACTED_AWS_ACCESS_KEY]", text)
     text = _URL_CREDENTIALS.sub(r"\1[REDACTED]@", text)

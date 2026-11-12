@@ -16,6 +16,7 @@ import base64
 from threading import Lock
 from datetime import datetime, timedelta, timezone
 
+from core.environment_profile import get_environment_profile
 from core.safety.action_catalog import ActionCatalog, CatalogEntry
 from core.evidence.adapters import SafeActionRequest, SafeLiveActionRequest
 from core.platform_adapter import PlatformAdapter, PlatformAdapterRegistry
@@ -88,6 +89,11 @@ class ApprovalRecord(BaseModel):
         )
 
 
+def _evidence_reason(minimum: int) -> str:
+    words = "three" if minimum == 3 else str(minimum)
+    return f"at least {words} distinct evidence references are required"
+
+
 class SafeExecutionGate:
     """Validate catalog, evidence, RBAC, timeout, approval and kill switch."""
 
@@ -130,7 +136,7 @@ class SafeExecutionGate:
         else:
             self._catalog = ActionCatalog.load_full_catalog()
 
-        self._rollback_catalog = rollback_catalog or ActionCatalog.load_full_catalog()
+        self._rollback_catalog = rollback_catalog or ActionCatalog.load_reviewed_rollback_catalog()
 
         if scope_resources is not None:
             self._scope_resources = scope_resources
@@ -146,6 +152,11 @@ class SafeExecutionGate:
         else:
             self._resource_types = {}
 
+        # Idempotency note: this set lives in process memory only, so it stops
+        # duplicate dispatches from THIS gate instance. The authoritative
+        # replay guard is the Safe Executor's durable idempotency claim, which
+        # survives restarts and is shared by every gate instance; a second
+        # gate (or a restarted Agent) that re-issues a key is refused there.
         self._seen_idempotency_keys: dict[str, str] = {}
         self._idempotency_lock = Lock()
 
@@ -211,8 +222,9 @@ class SafeExecutionGate:
         with self._idempotency_lock:
             if request.idempotency_key in self._seen_idempotency_keys:
                 return self._deny(action_hash, "idempotency key has already passed the gate")
-        if len(set(request.action.evidence_refs)) < 3:
-            return self._deny(action_hash, "at least three distinct evidence references are required")
+        policy = get_environment_profile()
+        if len(set(request.action.evidence_refs)) < policy.gate.min_evidence_refs:
+            return self._deny(action_hash, _evidence_reason(policy.gate.min_evidence_refs))
         if request.action.parameters:
             return self._deny(action_hash, "caller parameters are not supported by the fixed staging executor")
 
@@ -235,6 +247,8 @@ class SafeExecutionGate:
         expected_type = entry.action_type
         if expected_type is None or request.action.action_type != expected_type:
             return self._deny(action_hash, "typed action does not match the reviewed catalog action")
+        if request.action.environment.value != policy.environment:
+            return self._deny(action_hash, "request environment does not match the active environment profile")
         if not self._catalog.is_safe_execution_allowed(
             request.catalog_action_id,
             scenario_id=request.scenario_id,
@@ -250,13 +264,13 @@ class SafeExecutionGate:
             item.value == target_type for item in entry.valid_target_resource_types
         ):
             return self._deny(action_hash, "target resource class is not allowed by the catalog")
-        if confidence < 0.65:
-            return self._deny(action_hash, "diagnosis confidence is below 0.65")
+        if confidence < policy.gate.min_confidence:
+            return self._deny(action_hash, f"diagnosis confidence is below {policy.gate.min_confidence:g}")
 
         approval_required = (
             request.action.requires_approval
             or bool(entry.default_requires_approval)
-            or confidence < 0.80
+            or confidence < policy.gate.auto_confidence
             or entry.blast_radius != "LOW"
         )
         if approval_required:
@@ -299,6 +313,7 @@ class SafeExecutionGate:
         fast, so a REQUIRE_APPROVAL or ALLOW verdict means every listed check
         passed; a DENY verdict names the first failing check in ``reason``.
         """
+        policy = get_environment_profile()
         verdict = self.evaluate(request, actor_role=actor_role, confidence=confidence)
         summary = {"decision": verdict.decision, "reason": verdict.reason, "checks": [], "approval_reasons": []}
         if verdict.decision == "DENY":
@@ -314,18 +329,18 @@ class SafeExecutionGate:
         summary["checks"] = [
             "request schema is valid",
             "kill switch is off",
-            f"{len(set(action.evidence_refs))} distinct evidence references (minimum 3)",
+            f"{len(set(action.evidence_refs))} distinct evidence references (minimum {policy.gate.min_evidence_refs})",
             f"catalog action {request.catalog_action_id}, timeout {request.timeout_seconds}s <= {entry.timeout_seconds}s",
             f"reciprocal rollback {entry.rollback_action or 'not required (read-only)'}",
             f"scope {request.target_scope}, environment {action.environment.value}, role {actor_role} allowed",
             f"target {action.target_resource_id} is inside the reviewed scope and resource class",
-            f"diagnosis confidence {confidence:.2f} >= 0.65",
+            f"diagnosis confidence {confidence:.2f} >= {policy.gate.min_confidence:g}",
         ]
         reasons = []
         if action.requires_approval or entry.default_requires_approval:
             reasons.append("the catalog marks this action as approval-required")
-        if confidence < 0.80:
-            reasons.append(f"confidence {confidence:.2f} < 0.80")
+        if confidence < policy.gate.auto_confidence:
+            reasons.append(f"confidence {confidence:.2f} < {policy.gate.auto_confidence:g}")
         if entry.blast_radius != "LOW":
             reasons.append(f"blast radius is {entry.blast_radius}")
         summary["approval_reasons"] = reasons
@@ -381,8 +396,9 @@ class SafeExecutionGate:
         record("G03", "REMEDIABLE", not reused, "idempotency key has already passed the gate",
                "already used" if reused else "unused", "a new idempotency key")
         evidence_count = len(set(action.evidence_refs))
-        record("G04", "REMEDIABLE", evidence_count >= 3,
-               "at least three distinct evidence references are required", str(evidence_count), ">= 3")
+        min_refs = get_environment_profile().gate.min_evidence_refs
+        record("G04", "REMEDIABLE", evidence_count >= min_refs,
+               _evidence_reason(min_refs), str(evidence_count), f">= {min_refs}")
         record("G05", "HARD", not action.parameters,
                "caller parameters are not supported by the fixed staging executor",
                ", ".join(sorted(action.parameters)) or "none", "none")
@@ -422,6 +438,10 @@ class SafeExecutionGate:
                     "action type from catalog",
                     lambda: entry.action_type is not None and action.action_type == entry.action_type,
                     lambda: action.action_type.value)
+        active_environment = get_environment_profile().environment
+        record("G15", "HARD", action.environment.value == active_environment,
+               "request environment does not match the active environment profile",
+               action.environment.value, active_environment)
         entry_check("G11", "request is outside the catalog, scope, environment, or RBAC boundary",
                     "reviewed scenario/scope/environment/role",
                     lambda: self._catalog.is_safe_execution_allowed(
@@ -439,8 +459,10 @@ class SafeExecutionGate:
                         item.value == target_type for item in entry.valid_target_resource_types
                     ),
                     lambda: target_type or "unknown")
-        record("G14", "REMEDIABLE", confidence_valid and confidence >= 0.65, "diagnosis confidence is below 0.65",
-               f"{confidence:.2f}" if confidence_valid else repr(confidence), ">= 0.65")
+        min_conf = get_environment_profile().gate.min_confidence
+        record("G14", "REMEDIABLE", confidence_valid and confidence >= min_conf,
+               f"diagnosis confidence is below {min_conf:g}",
+               f"{confidence:.2f}" if confidence_valid else repr(confidence), f">= {min_conf:g}")
         return results
 
     def release_before_execution(
@@ -464,7 +486,7 @@ class SafeExecutionGate:
         if approval.expires_at.tzinfo is None or approval.expires_at.utcoffset() is None:
             return False
         now = datetime.now(timezone.utc)
-        if approval.expires_at <= now or approval.expires_at > now + timedelta(minutes=15):
+        if approval.expires_at <= now or approval.expires_at > now + timedelta(seconds=get_environment_profile().approval.ttl_max_seconds):
             return False
         if not hmac.compare_digest(approval.action_sha256, action_hash):
             return False
@@ -492,7 +514,7 @@ class SafeExecutionGate:
             rollback
             and not rollback.permission.read_only
             and rollback.permission.required_role == entry.permission.required_role
-            and "staging" in rollback.permission.environment_scope
+            and get_environment_profile().environment in rollback.permission.environment_scope
             and rollback.adapter == entry.adapter
             and rollback.is_reversible
             and rollback.rollback_action == entry.action_id

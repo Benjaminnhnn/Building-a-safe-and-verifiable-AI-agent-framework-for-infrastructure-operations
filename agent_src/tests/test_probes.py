@@ -8,14 +8,21 @@ from core.verification.probes import LoginObservation, MoodleAuthVerifier, Moodl
 
 
 class _Session:
-    def __init__(self, authenticated: bool) -> None:
+    def __init__(self, authenticated: bool, *, marker: bool = True) -> None:
         self.authenticated = authenticated
+        self.marker = marker
         self.cookies = {"MoodleSession": "opaque"} if authenticated else {}
         self.closed = False
 
     def get(self, *args, **kwargs):
+        dashboard = not args[0].endswith("login/index.php")
+        text = (
+            '<div data-region="usermenu"></div>' if dashboard and self.marker
+            else "<html>dashboard without user menu</html>" if dashboard
+            else '<input type="hidden" name="logintoken" value="csrf">'
+        )
         return SimpleNamespace(
-            text='<input type="hidden" name="logintoken" value="csrf">',
+            text=text,
             url=args[0],
             status_code=200,
             raise_for_status=lambda: None,
@@ -32,6 +39,13 @@ class _Session:
 
     def close(self):
         self.closed = True
+
+
+def test_session_cookie_without_authenticated_marker_is_not_a_login() -> None:
+    probe = MoodleLoginProbe(
+        "https://moodle.example", session_factory=lambda: _Session(True, marker=False)
+    )
+    assert probe.login("synthetic", "secret").authenticated is False
 
 
 def test_login_probe_requires_https_except_explicit_loopback() -> None:

@@ -120,6 +120,15 @@ def _verification(incident_id: str = "inc-db-01", **overrides: object) -> Verifi
     return VerificationResult(**values)
 
 
+def _forged(**overrides: object) -> VerificationResult:
+    """A result that bypasses schema validation, as a hostile caller could.
+
+    The schema now refuses to build an ineligible "resolved" verdict, so the
+    state machine's own re-validation is exercised through ``model_copy``.
+    """
+    return _verification().model_copy(update=overrides)
+
+
 def test_full_valid_transition_path_requires_independent_verifier() -> None:
     incident = _incident()
     machine = IncidentStateMachine()
@@ -207,12 +216,12 @@ def test_only_verifier_can_resolve(actor: str) -> None:
 @pytest.mark.parametrize(
     "verification",
     [
-        _verification(resolution_eligible=False),
-        _verification(verdict="false_recovery", communication_contract_passed=False),
-        _verification(health_passed=False),
-        _verification(stability_seconds=119),
-        _verification(stability_observations=[]),
-        _verification(
+        _forged(resolution_eligible=False),
+        _forged(verdict="false_recovery", communication_contract_passed=False),
+        _forged(health_passed=False),
+        _forged(stability_seconds=119),
+        _forged(stability_observations=[]),
+        _forged(
             stability_observations=[
                 StabilityObservation(
                     observed_at=datetime.now(timezone.utc) - timedelta(seconds=300),
@@ -228,7 +237,7 @@ def test_only_verifier_can_resolve(actor: str) -> None:
                 ),
             ]
         ),
-        _verification(
+        _forged(
             stability_observations=[
                 StabilityObservation(
                     observed_at=datetime.now(timezone.utc) - timedelta(seconds=120),
@@ -237,22 +246,22 @@ def test_only_verifier_can_resolve(actor: str) -> None:
                 StabilityObservation(observed_at=datetime.now(timezone.utc), healthy=True),
             ]
         ),
-        _verification(allowed_probes=[ProbeResult(name="moodle", passed=False, details="down")]),
-        _verification(forbidden_probes=[]),
-        _verification(related_probes=[]),
-        _verification(related_probes=[
+        _forged(allowed_probes=[ProbeResult(name="moodle", passed=False, details="down")]),
+        _forged(forbidden_probes=[]),
+        _forged(related_probes=[]),
+        _forged(related_probes=[
             ProbeResult(name="monitoring", passed=True, simulated=False, details="ok"),
             ProbeResult(name="monitoring", passed=True, simulated=False, details="duplicate"),
         ]),
-        _verification(allowed_probes=[ProbeResult(name="moodle", passed=True, simulated=True, details="fixture")]),
-        _verification(stability_observations=[StabilityObservation(
+        _forged(allowed_probes=[ProbeResult(name="moodle", passed=True, simulated=True, details="fixture")]),
+        _forged(stability_observations=[StabilityObservation(
             observed_at=datetime.now(timezone.utc) - timedelta(seconds=120),
             healthy=True,
             simulated=True,
         ), StabilityObservation(
             observed_at=datetime.now(timezone.utc), healthy=True, simulated=False
         )]),
-        _verification(incident_id="another-incident"),
+        _forged(incident_id="another-incident"),
     ],
 )
 def test_resolution_requires_eligible_matching_verifier_evidence(

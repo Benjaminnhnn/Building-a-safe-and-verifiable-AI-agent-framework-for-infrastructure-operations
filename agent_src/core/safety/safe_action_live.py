@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from core.environment_profile import get_environment_profile
 from core.safety.action_catalog import ActionCatalog
 from core.evidence.adapters import SafeLiveActionRequest
 from core.safety.safe_action_audit import SafeActionAuditStore
@@ -18,11 +19,11 @@ from core.safety.safe_executor_client import action_digest, execute_approved_sta
 from core.safety.sanitization import sanitize_log_excerpt
 
 _Executor = Callable[..., dict[str, Any]]
-_EXECUTOR_NODES_BY_SCOPE = {
-    "staging_moodle_nodes": {"a", "b"},
-    "moodle-app-b": {"b"},
-    "moodledata_synthetic_fixture_directory": {"a"},
-}
+
+
+def _executor_nodes_for_scope(scope: str) -> frozenset[str]:
+    """Nodes an executor may report for ``scope``; an unknown scope yields none (fail closed)."""
+    return get_environment_profile().executor_nodes(scope)
 
 
 def _normalize_executor_result(
@@ -60,7 +61,7 @@ def _normalize_executor_result(
         and mutated is None
         and result.get("mutation_state") == "unknown"
     )
-    allowed_nodes = _EXECUTOR_NODES_BY_SCOPE.get(request.target_scope, set())
+    allowed_nodes = _executor_nodes_for_scope(request.target_scope)
     if (
         result.get("scenario_id") != request.scenario_id
         or not isinstance(nodes, list)
@@ -121,7 +122,7 @@ class SafeActionLiveWorkflow:
     ) -> None:
         self._gate = gate
         self._audit = audit
-        self._catalog = catalog or ActionCatalog.load_moodle_s3_3_execution_catalog()
+        self._catalog = catalog or ActionCatalog.load_moodle_7_scenario_catalog()
         self._executor = executor
 
     def run(
@@ -177,7 +178,7 @@ class SafeActionLiveWorkflow:
         if (
             not isinstance(executor_approval, dict)
             or set(executor_approval) != {"actor_id", "expires_at", "action_sha256", "signature"}
-            or executor_approval.get("actor_id") not in {"operator", "human-approver"}
+            or executor_approval.get("actor_id") not in get_environment_profile().approval.approved_actors
             or executor_approval.get("action_sha256") != expected_api_digest
             or not all(isinstance(executor_approval.get(key), str) for key in ("expires_at", "signature"))
         ):
@@ -237,6 +238,8 @@ class SafeActionLiveWorkflow:
         except Exception as exc:  # fail closed; exception text may contain transport details
             safe_result = {
                 "status": "transport_error",
+                # The outcome of the dispatch is unknown, so treat it as a mutation of unknown extent.
+                "failure_class": "unknown_mutation",
                 "error_type": type(exc).__name__,
                 "mutated": None,
                 "mutation_state": "unknown",
@@ -390,7 +393,7 @@ class SafeActionLiveWorkflow:
             or rollback_entry.rollback_action != original_request.catalog_action_id
             or original_entry.adapter != rollback_entry.adapter
             or original_entry.permission.required_role != rollback_entry.permission.required_role
-            or "staging" not in rollback_entry.permission.environment_scope
+            or get_environment_profile().environment not in rollback_entry.permission.environment_scope
             or rollback_entry.permission.read_only
             or not rollback_entry.is_reversible
             or rollback_action.rollback_plan.rollback_action_id != original_request.catalog_action_id
@@ -415,7 +418,7 @@ class SafeActionLiveWorkflow:
                 "original_action_id": original_action.action_id,
                 "rollback_request_id": rollback_request.request_id,
                 "rollback_action_id": rollback_action.action_id,
-                "trigger": "unknown_mutation" if status == "failed" else "partial_failure",
+                "trigger": "unknown_mutation" if status in {"failed", "transport_error"} else "partial_failure",
             },
         )
         result = self.run(

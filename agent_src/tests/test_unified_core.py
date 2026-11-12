@@ -105,21 +105,24 @@ def test_legacy_resolution_revalidates_verifier_model_copy() -> None:
 def test_live_state_rejects_simulated_nested_probe_evidence() -> None:
     checked = datetime.now(timezone.utc)
     incident = Incident(incident_id="i1", fingerprint="f1", environment="staging", resource_ids=["moodle"], state=IncidentState.VERIFYING)
-    verification = VerificationResult(
-        verification_id="v1", incident_id="i1", health_passed=True,
-        communication_contract_passed=True, stability_seconds=120,
-        stability_observations=[
-            StabilityObservation(observed_at=checked - timedelta(seconds=120), healthy=True, simulated=False),
-            StabilityObservation(observed_at=checked - timedelta(seconds=60), healthy=True, simulated=False),
-            StabilityObservation(observed_at=checked, healthy=True, simulated=False),
-        ],
-        allowed_probes=[ProbeResult(name="moodle", passed=True, details="fixture")],
-        forbidden_probes=[ProbeResult(name="public_db", passed=True, simulated=False, details="blocked")],
-        related_probes=[ProbeResult(name="monitoring", passed=True, simulated=False, details="ok")],
-        verdict="resolved", resolution_eligible=True, simulated=False,
-    )
-    with pytest.raises(ValueError, match="verifier evidence"):
+    # A non-simulated "resolved" result carrying a simulated (fixture) probe is
+    # now unrepresentable: the schema refuses it before resolution is attempted.
+    with pytest.raises(ValueError, match="non-simulated"):
+        verification = VerificationResult(
+            verification_id="v1", incident_id="i1", health_passed=True,
+            communication_contract_passed=True, stability_seconds=120,
+            stability_observations=[
+                StabilityObservation(observed_at=checked - timedelta(seconds=120), healthy=True, simulated=False),
+                StabilityObservation(observed_at=checked - timedelta(seconds=60), healthy=True, simulated=False),
+                StabilityObservation(observed_at=checked, healthy=True, simulated=False),
+            ],
+            allowed_probes=[ProbeResult(name="moodle", passed=True, details="fixture")],
+            forbidden_probes=[ProbeResult(name="public_db", passed=True, simulated=False, details="blocked")],
+            related_probes=[ProbeResult(name="monitoring", passed=True, simulated=False, details="ok")],
+            verdict="resolved", resolution_eligible=True, simulated=False,
+        )
         resolve_verified(incident, verification)
+    assert incident.state == IncidentState.VERIFYING
 
 
 def test_action_lifecycle_rejects_skipping_gate_and_terminal_reuse() -> None:

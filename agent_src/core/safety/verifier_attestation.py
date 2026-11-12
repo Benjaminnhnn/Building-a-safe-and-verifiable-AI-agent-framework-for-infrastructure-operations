@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, field_validator
 
+from core.environment_profile import get_environment_profile
 from core.safety.safe_action_audit import SafeActionAuditStore
 from core.schema.common import IncidentStatus
 from core.schema.incident import Incident
@@ -22,8 +23,9 @@ from core.schema.verification import VerificationResult
 from core.verification.live_contracts import MOODLE_LIVE_CONTRACTS
 from core.verification.state_machine import IncidentStateMachine
 
-MAX_ATTESTATION_AGE_SECONDS = 120
-MAX_FUTURE_SKEW_SECONDS = 30
+# Timing bounds (attestation age, future skew, stability window, minimum
+# samples) come from the reviewed environment profile, the same source the
+# state machine and the verification agent use, so the three can never drift.
 
 
 class ProbeSample(BaseModel):
@@ -98,10 +100,11 @@ def verify_attestation_signature(
 
 
 def _validate_attestation_payload(payload: VerifierAttestationPayload, request_id: str) -> None:
+    policy = get_environment_profile().verification
     now = datetime.now(timezone.utc)
     signed_at = payload.signed_at.astimezone(timezone.utc)
     age = (now - signed_at).total_seconds()
-    if age > MAX_ATTESTATION_AGE_SECONDS or age < -MAX_FUTURE_SKEW_SECONDS:
+    if age > policy.max_attestation_age_seconds or age < -policy.max_future_skew_seconds:
         raise ValueError("verifier attestation is stale or from the future")
     if (
         type(payload.version) is not int
@@ -117,10 +120,10 @@ def _validate_attestation_payload(payload: VerifierAttestationPayload, request_i
     required = set().union(*(set(contract[group]) for group in ("allowed", "forbidden", "related")))
     samples = payload.probe_samples
     observations = payload.verification.stability_observations
-    if len(samples) < 3 or len(samples) != len(observations):
+    if len(samples) < policy.min_samples or len(samples) != len(observations):
         raise ValueError("verifier attestation lacks the required live stability samples")
     times = [sample.observed_at.astimezone(timezone.utc) for sample in samples]
-    if times != sorted(times) or (times[-1] - times[0]).total_seconds() < 120:
+    if times != sorted(times) or (times[-1] - times[0]).total_seconds() < policy.stability_window_seconds:
         raise ValueError("verifier attestation stability window is incomplete")
     max_gap = 65 if len(samples) == 3 else 60
     if any(not 0 < (later - earlier).total_seconds() <= max_gap for earlier, later in zip(times, times[1:])):
@@ -139,7 +142,7 @@ def _validate_attestation_payload(payload: VerifierAttestationPayload, request_i
     if result.checked_at.tzinfo is None or result.checked_at.utcoffset() is None:
         raise ValueError("verifier result timestamp must be timezone-aware")
     checked_at = result.checked_at.astimezone(timezone.utc)
-    if checked_at < times[-1] or (signed_at - checked_at).total_seconds() < -MAX_FUTURE_SKEW_SECONDS:
+    if checked_at < times[-1] or (signed_at - checked_at).total_seconds() < -policy.max_future_skew_seconds:
         raise ValueError("verifier result timestamp does not follow its live probe samples")
     if (
         result.incident_id != payload.incident_id
@@ -163,6 +166,66 @@ def _validate_attestation_payload(payload: VerifierAttestationPayload, request_i
             for probe in probes
         ):
             raise ValueError("verifier result does not satisfy the reviewed probe contract")
+
+
+def _require_samples_after_receipt(payload: VerifierAttestationPayload, receipt: dict[str, Any]) -> None:
+    """Every probe sample must be taken after the executor receipt was recorded.
+
+    A sample older than the mutation proves nothing about its outcome.
+    """
+    try:
+        receipt_at = datetime.fromisoformat(str(receipt.get("occurred_at")))
+    except ValueError as exc:
+        raise ValueError("executor receipt has no valid timestamp") from exc
+    if receipt_at.tzinfo is None or receipt_at.utcoffset() is None:
+        raise ValueError("executor receipt timestamp must be timezone-aware")
+    receipt_at = receipt_at.astimezone(timezone.utc)
+    if any(sample.observed_at.astimezone(timezone.utc) <= receipt_at for sample in payload.probe_samples):
+        raise ValueError("verifier probe samples must all be taken after the executor receipt")
+
+
+def _incident_awaiting_verification(
+    audit: SafeActionAuditStore, payload: VerifierAttestationPayload, request_id: str
+) -> Incident:
+    """Rebuild the incident through the guarded state machine from the audited events.
+
+    The incident reaches VERIFYING only by walking every transition the state
+    machine allows, and only if the audit holds an ALLOW gate verdict for this
+    request ahead of its executor receipt. Nothing is fabricated in VERIFYING.
+    """
+    events = audit.list_for_incident(payload.incident_id)
+    gate_index = next((
+        index for index, event in enumerate(events)
+        if event.get("event_type") == "live_gate"
+        and event.get("payload", {}).get("request_id") == request_id
+        and event.get("payload", {}).get("decision") == "ALLOW"
+    ), None)
+    receipt_index = next((
+        index for index, event in enumerate(events)
+        if event.get("event_type") == "live_executor_result"
+        and event.get("payload", {}).get("request_id") == request_id
+        and event.get("payload", {}).get("status") == "executed"
+    ), None)
+    if gate_index is None or receipt_index is None or gate_index > receipt_index:
+        raise ValueError("runtime audit has no ALLOW gate verdict preceding the executor receipt")
+    machine = IncidentStateMachine()
+    incident = Incident(
+        incident_id=payload.incident_id,
+        fingerprint=f"safe-action:{request_id}",
+        title=f"Moodle safe action {payload.scenario_id}",
+        severity="warning",
+        affected_resources=[payload.scenario_id],
+    )
+    for state in (
+        IncidentStatus.TRIAGED, IncidentStatus.PLANNED, IncidentStatus.GATED,
+        IncidentStatus.EXECUTED, IncidentStatus.VERIFYING,
+    ):
+        machine.transition(
+            incident, state, actor="agent_runtime",
+            reason=f"audited safe-action request {request_id}",
+            evidence_refs=[f"safe-action-request:{request_id}"],
+        )
+    return incident
 
 
 def _receipt_event(
@@ -201,10 +264,11 @@ def accept_verifier_attestation(
     payload = attestation.payload
     _validate_attestation_payload(payload, request_id)
 
-    with SafeActionAuditStore(audit_db) as audit:
+    with SafeActionAuditStore(audit_db, verifier_public_key_path=public_key_path) as audit:
         receipt = _receipt_event(audit, payload.incident_id, request_id, payload.scenario_id)
         if receipt.get("event_hash") != payload.receipt_event_hash:
             raise ValueError("verifier attestation does not bind the runtime executor receipt")
+        _require_samples_after_receipt(payload, receipt)
 
         current_status = audit.get_live_incident_status(payload.incident_id, request_id)
         previous_results = [
@@ -224,14 +288,7 @@ def accept_verifier_attestation(
             return {"status": "verifying", "event_id": event["event_id"], "event_hash": event["event_hash"], "idempotent": True}
 
         transition = IncidentStateMachine().resolve_verified(
-            Incident(
-                incident_id=payload.incident_id,
-                fingerprint=f"safe-action:{request_id}",
-                title=f"Moodle safe action {payload.scenario_id}",
-                severity="warning",
-                affected_resources=[payload.scenario_id],
-                status=IncidentStatus.VERIFYING,
-            ),
+            _incident_awaiting_verification(audit, payload, request_id),
             payload.verification,
             reason=f"Independent live contract verification for request {request_id}",
             evidence_refs=[f"safe-action-request:{request_id}", payload.verification.verification_id],
@@ -263,9 +320,13 @@ def accept_verifier_attestation(
 
 
 def get_runtime_verification_status(
-    *, audit_db: str | Path, incident_id: str, request_id: str
+    *,
+    audit_db: str | Path,
+    incident_id: str,
+    request_id: str,
+    public_key_path: str | Path | None = None,
 ) -> dict[str, Any]:
-    with SafeActionAuditStore(audit_db) as audit:
+    with SafeActionAuditStore(audit_db, verifier_public_key_path=public_key_path) as audit:
         status = audit.get_live_incident_status(incident_id, request_id)
         events = [
             event for event in audit.list_for_incident(incident_id)

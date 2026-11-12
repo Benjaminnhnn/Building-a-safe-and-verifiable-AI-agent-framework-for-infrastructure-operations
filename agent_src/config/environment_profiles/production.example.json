@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "environment": "production",
+  "reviewed": false,
+  "reviewed_by": "",
+  "reviewed_at": "",
+  "description": "TEMPLATE ONLY. Copy, fill in the real production inventory, have it reviewed, set reviewed=true and pin its SHA-256 in AIOPS_ENVIRONMENT_PROFILE_SHA256. An unreviewed or unpinned production profile is refused at startup.",
+  "public_url_patterns": ["^https://moodle\\.example\\.edu(/.*)?$"],
+  "monitor_host": "monitor-prod-01",
+  "nodes": [
+    {"alias": "a", "host": "moodle-prod-a", "roles": ["web", "cron"]},
+    {"alias": "b", "host": "moodle-prod-b", "roles": ["web"]}
+  ],
+  "executor_scopes": {
+    "production_moodle_nodes": ["a", "b"]
+  },
+  "containers": {
+    "web": "release-moodle-web-1",
+    "cron": "release-moodle-cron-1"
+  },
+  "approval": {
+    "mode": "two_person",
+    "approved_actors": ["safety-officer", "operator"],
+    "ttl_max_seconds": 600
+  },
+  "gate": {
+    "min_confidence": 0.8,
+    "auto_confidence": 1.0,
+    "min_evidence_refs": 3
+  },
+  "verification": {
+    "stability_window_seconds": 300,
+    "min_samples": 5,
+    "max_attestation_age_seconds": 120,
+    "max_future_skew_seconds": 30
+  },
+  "evidence": {
+    "max_sample_age_seconds": 60
+  },
+  "executor": {
+    "allow_plain_http": false
+  }
+}

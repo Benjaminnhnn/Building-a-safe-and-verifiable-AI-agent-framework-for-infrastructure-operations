@@ -21,6 +21,7 @@ from __future__ import annotations
 import base64
 import json
 import tempfile
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -363,6 +364,12 @@ def test_sec01_human_only_escalation_refuses_automated_execution() -> None:
     assert "SEC-01" not in MOODLE_LIVE_CONTRACTS
 
 
+class _PastClock(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return datetime.now(tz) - timedelta(seconds=200)
+
+
 @pytest.mark.parametrize("scenario_id", ALLOWED_6_SCENARIOS)
 def test_rq2_independent_verifier_resolves_all_6_allowed_scenarios(
     scenario_id: str,
@@ -381,7 +388,13 @@ def test_rq2_independent_verifier_resolves_all_6_allowed_scenarios(
         action_id = info["catalog_action_id"]
         target_scope = info["target_scope"]
 
-        with SafeActionAuditStore(audit_db) as store:
+        # Runtime events precede the probe window, as on a real run.
+        with patch("core.safety.safe_action_audit.datetime", _PastClock), SafeActionAuditStore(audit_db) as store:
+            store.append(
+                incident_id=incident_id,
+                event_type="live_gate",
+                payload={"request_id": request_id, "scenario_id": scenario_id, "decision": "ALLOW"},
+            )
             receipt_event = store.append(
                 incident_id=incident_id,
                 event_type="live_executor_result",

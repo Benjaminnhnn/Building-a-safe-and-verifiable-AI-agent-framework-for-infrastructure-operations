@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from datetime import datetime, timedelta, timezone
 import json
+from unittest.mock import patch
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -39,8 +40,21 @@ def _keys(tmp_path):
     return private, private_path, public_path
 
 
+class _ReceiptClock(datetime):
+    """Record the runtime events before the probe window, as on a real run."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return datetime.now(tz) - timedelta(seconds=200)
+
+
 def _runtime_audit(path):
-    with SafeActionAuditStore(path) as audit:
+    with patch("core.safety.safe_action_audit.datetime", _ReceiptClock), SafeActionAuditStore(path) as audit:
+        audit.append(
+            incident_id="inc-1",
+            event_type="live_gate",
+            payload={"request_id": "req-1", "scenario_id": "CON-01", "decision": "ALLOW"},
+        )
         receipt = audit.append(
             incident_id="inc-1",
             event_type="live_executor_result",
@@ -125,8 +139,12 @@ def test_verifier_attestation_is_persisted_by_runtime_and_idempotent(tmp_path):
     assert second["event_id"] == first["event_id"]
     assert second["idempotent"] is True
     assert get_runtime_verification_status(
-        audit_db=audit_db, incident_id="inc-1", request_id="req-1",
+        audit_db=audit_db, incident_id="inc-1", request_id="req-1", public_key_path=public_key,
     )["status"] == "resolved"
+    # Without the verifier key the stored claim cannot be re-verified: fail closed.
+    assert get_runtime_verification_status(
+        audit_db=audit_db, incident_id="inc-1", request_id="req-1",
+    )["status"] == "verifying"
     with SafeActionAuditStore(audit_db) as audit:
         results = [e for e in audit.list_for_incident("inc-1") if e["event_type"] == "live_verification_result"]
         assert len(results) == 1
@@ -167,8 +185,9 @@ def test_three_sample_contract_rejects_missing_or_unsafe_windows(tmp_path, case)
             for sample in samples
         ]
 
-    attestation, _, public_key = _attestation(tmp_path, audit_db, mutate=invalid_samples)
     with pytest.raises(ValueError):
+        # Too few samples is already unrepresentable in the signed payload schema.
+        attestation, _, public_key = _attestation(tmp_path, audit_db, mutate=invalid_samples)
         accept_verifier_attestation(audit_db=audit_db, public_key_path=public_key,
                                     request_id="req-1", attestation=attestation)
 

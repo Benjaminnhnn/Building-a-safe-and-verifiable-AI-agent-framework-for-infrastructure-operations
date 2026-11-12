@@ -8,6 +8,7 @@ from typing import ClassVar
 
 from pydantic import ValidationError
 
+from core.environment_profile import get_environment_profile
 from core.schema.action import TypedAction
 from core.schema.audit import AuditEvent
 from core.schema.common import ActionDecision, ActionStatus, IncidentStatus
@@ -137,6 +138,7 @@ class IncidentStateMachine:
                 else reason
             ),
             evidence_refs=evidence_refs,
+            verifier_attestation_ref=verification.verification_id,
         )
 
     def _apply_transition(
@@ -147,13 +149,17 @@ class IncidentStateMachine:
         actor: str,
         reason: str,
         evidence_refs: list[str] | None = None,
+        verifier_attestation_ref: str | None = None,
     ) -> AuditEvent:
         current_state = incident.status
         if requested_state not in self.ALLOWED_TRANSITIONS[current_state]:
             raise StateTransitionError(current_state, requested_state, reason)
-
-        if requested_state == IncidentStatus.ESCALATED:
-            pass  # We could log this if there was a logger, but we just transition.
+        if requested_state == IncidentStatus.RESOLVED and not (
+            verifier_attestation_ref and verifier_attestation_ref.strip()
+        ):
+            raise StateTransitionError(
+                current_state, requested_state, "RESOLVED requires a verifier attestation reference"
+            )
 
         occurred_at = datetime.now(timezone.utc)
         refs = list(dict.fromkeys(evidence_refs or []))
@@ -174,27 +180,30 @@ class IncidentStateMachine:
             evidence_refs=refs,
             occurred_at=occurred_at,
         )
+        # Incident.__setattr__ blocks direct mutation of status and the verifier
+        # markers; only this validated, audited state-machine path may apply them.
         if requested_state == IncidentStatus.RESOLVED:
-            incident.resolved_by_verifier = True
-        # Incident.__setattr__ blocks all direct status mutation; only this
-        # validated, audited state-machine path may apply a transition.
+            object.__setattr__(incident, "verifier_attestation_ref", verifier_attestation_ref)
+            object.__setattr__(incident, "resolved_by_verifier", True)
         object.__setattr__(incident, "status", requested_state)
         incident.updated_at = occurred_at
         return event
 
 
 def _has_stable_window(verification: VerificationResult) -> bool:
+    policy = get_environment_profile().verification
     observations = verification.stability_observations
-    if len(observations) < 2 or not all(item.healthy for item in observations):
+    if len(observations) < policy.min_samples or not all(item.healthy for item in observations):
         return False
     timestamps = [item.observed_at for item in observations]
     if timestamps != sorted(timestamps):
         return False
     measured_window = int((timestamps[-1] - timestamps[0]).total_seconds())
-    if measured_window < 120 or verification.stability_seconds != measured_window:
+    if measured_window < policy.stability_window_seconds or verification.stability_seconds != measured_window:
         return False
+    # Same freshness bounds as the attestation check: one policy, no drift.
     latest_age = (datetime.now(timezone.utc) - timestamps[-1].astimezone(timezone.utc)).total_seconds()
-    if latest_age > 60 or latest_age < -30:
+    if latest_age > policy.max_attestation_age_seconds or latest_age < -policy.max_future_skew_seconds:
         return False
     max_gap = 65 if len(observations) == 3 else 60
     return all(

@@ -18,6 +18,14 @@ def _make_incident() -> Incident:
     )
 
 
+def _stab():
+    now = datetime.now(timezone.utc)
+    return [
+        StabilityObservation(observed_at=now - timedelta(seconds=offset), healthy=True)
+        for offset in (120, 60, 0)
+    ]
+
+
 def _sample_contract() -> dict:
     return {
         "allowed": ["client_to_moodle", "moodle_to_database"],
@@ -34,19 +42,38 @@ class TestVerificationAgent:
 
     def test_stability_configuration_enforces_thesis_window_and_sampling_gap(self):
         with pytest.raises(ValueError, match="at least 120"):
-            self.agent.verify(self.incident, self.contract, stability_window_seconds=119)
+            self.agent.verify(self.incident, self.contract, dry_run=True, stability_window_seconds=119)
         with pytest.raises(ValueError, match="from 1 to 65"):
-            self.agent.verify(self.incident, self.contract, max_stability_gap_seconds=66)
+            self.agent.verify(self.incident, self.contract, dry_run=True, max_stability_gap_seconds=66)
         with pytest.raises(ValueError, match="integer of at least 120"):
-            self.agent.verify(self.incident, self.contract, stability_window_seconds=True)
+            self.agent.verify(self.incident, self.contract, dry_run=True, stability_window_seconds=True)
 
-    def test_dry_run_probes_are_always_marked_simulated(self):
-        result = self.agent.verify(self.incident, self.contract)
-        assert result.verdict == "resolved"
-        assert result.health_passed
-        assert result.communication_contract_passed
-        assert result.simulated
-        assert result.resolution_eligible
+    def test_missing_probes_never_fabricate_a_passing_live_result(self):
+        result = self.agent.verify(self.incident, self.contract, dry_run=False)
+        assert result.verdict != "resolved"
+        assert not result.resolution_eligible
+        assert not result.health_passed
+        assert not result.communication_contract_passed
+        assert result.allowed_probes == []
+        assert result.stability_observations == []
+
+    def test_explicit_dry_run_fixtures_are_always_marked_simulated(self):
+        result = self.agent.verify(self.incident, self.contract, dry_run=True)
+        assert result.simulated is True
+        assert all(probe.simulated for probe in result.allowed_probes)
+
+    def test_dry_run_must_be_explicit(self):
+        with pytest.raises(TypeError):
+            self.agent.verify(self.incident, self.contract)
+        with pytest.raises(ValueError, match="explicit boolean"):
+            self.agent.verify(self.incident, self.contract, dry_run=None)
+
+    def test_verification_ids_are_unique_per_run(self):
+        ids = {
+            self.agent.verify(self.incident, self.contract, dry_run=True).verification_id
+            for _ in range(3)
+        }
+        assert len(ids) == 3
 
     def test_health_fail_not_resolved(self):
         probes = [
@@ -59,7 +86,7 @@ class TestVerificationAgent:
             DryRunProbe("internet_to_postgresql", "forbidden", passes=True),
             DryRunProbe("prometheus_scrape", "related", passes=True),
         ]
-        result = self.agent.verify(self.incident, self.contract, probes=probes)
+        result = self.agent.verify(self.incident, self.contract, dry_run=True, probes=probes, stability_observations=_stab())
         assert result.verdict == "not_resolved"
         assert not result.health_passed
 
@@ -76,7 +103,7 @@ class TestVerificationAgent:
             ),
             DryRunProbe("prometheus_scrape", "related", passes=True),
         ]
-        result = self.agent.verify(self.incident, self.contract, probes=probes)
+        result = self.agent.verify(self.incident, self.contract, dry_run=True, probes=probes)
         assert result.verdict == "false_recovery"
         assert result.health_passed
         assert not result.communication_contract_passed
@@ -92,7 +119,7 @@ class TestVerificationAgent:
                 details="Prometheus scrape target down after remediation",
             ),
         ]
-        result = self.agent.verify(self.incident, self.contract, probes=probes)
+        result = self.agent.verify(self.incident, self.contract, dry_run=True, probes=probes)
         assert result.verdict == "collateral_damage"
         assert result.health_passed
         assert not result.communication_contract_passed
@@ -258,7 +285,7 @@ class TestVerificationAgent:
                 DryRunProbe("internet_to_postgresql", "forbidden", passes=False),
                 DryRunProbe("prometheus_scrape", "related", passes=True),
             ]
-            result = self.agent.verify(self.incident, self.contract, probes=probes)
+            result = self.agent.verify(self.incident, self.contract, dry_run=True, probes=probes)
             detected += result.verdict == "false_recovery"
         assert detected / 10 >= 0.90
 
@@ -268,7 +295,7 @@ class TestVerificationAgent:
             DryRunProbe("internet_to_postgresql", "forbidden"),
             DryRunProbe("prometheus_scrape", "related"),
         ]
-        result = self.agent.verify(self.incident, self.contract, probes=probes)
+        result = self.agent.verify(self.incident, self.contract, dry_run=True, probes=probes, stability_observations=_stab())
         assert result.verdict == "not_resolved"
         assert not result.resolution_eligible
 
@@ -278,7 +305,7 @@ class TestVerificationAgent:
             "forbidden": ["internet_to_postgresql"],
             "related": ["prometheus_scrape"],
         }
-        contract_result = self.agent.verify(self.incident, malformed_contract)
+        contract_result = self.agent.verify(self.incident, malformed_contract, dry_run=True)
         assert contract_result.verdict == "not_resolved"
         assert not contract_result.communication_contract_passed
         assert not contract_result.resolution_eligible
@@ -295,7 +322,7 @@ class TestVerificationAgent:
             DryRunProbe("internet_to_postgresql", "forbidden"),
             DryRunProbe("prometheus_scrape", "related"),
         ]
-        probe_result = self.agent.verify(self.incident, self.contract, probes=probes)
+        probe_result = self.agent.verify(self.incident, self.contract, dry_run=True, probes=probes, stability_observations=_stab())
         assert probe_result.verdict == "not_resolved"
         assert not probe_result.communication_contract_passed
         assert not probe_result.resolution_eligible
@@ -306,7 +333,13 @@ class TestVerificationAgent:
             "forbidden": [],
             "related": [],
         }
-        result = self.agent.verify(self.incident, incomplete_contract)
+        result = self.agent.verify(
+            self.incident,
+            incomplete_contract,
+            dry_run=True,
+            probes=[DryRunProbe("client_to_moodle", "allowed")],
+            stability_observations=_stab(),
+        )
         assert result.health_passed
         assert not result.communication_contract_passed
         assert result.verdict == "not_resolved"
@@ -326,7 +359,7 @@ class TestVerificationAgent:
             DryRunProbe("prometheus_scrape", "related"),
         ]
 
-        result = self.agent.verify(self.incident, self.contract, probes=probes)
+        result = self.agent.verify(self.incident, self.contract, dry_run=True, probes=probes)
 
         assert result.verdict == "not_resolved"
         assert not result.health_passed
@@ -350,6 +383,7 @@ class TestVerificationAgent:
                 DryRunProbe("internet_to_postgresql", "forbidden"),
                 DryRunProbe("prometheus_scrape", "related"),
             ],
+            dry_run=True,
         )
 
         assert result.verdict == "not_resolved"
@@ -396,7 +430,7 @@ class TestVerificationAgent:
             DryRunProbe("prometheus_scrape", "related"),
         ]
 
-        result = self.agent.verify(self.incident, self.contract, probes=probes)
+        result = self.agent.verify(self.incident, self.contract, dry_run=True, probes=probes)
 
         assert result.verdict == "not_resolved"
         assert not result.health_passed

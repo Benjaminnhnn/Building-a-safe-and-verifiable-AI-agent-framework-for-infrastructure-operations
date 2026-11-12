@@ -17,6 +17,8 @@ Verifies the complete lifecycle across three critical branches:
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import base64
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -303,6 +305,12 @@ def test_one_operator_signature_rejects_tampering(tmp_path: Path, monkeypatch: A
     assert result["status"] != "awaiting_verification" and not called
 
 
+
+class _PastClock(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return datetime.now(tz) - timedelta(seconds=200)
+
 def _build_signed_attestation(
     *,
     incident_id: str,
@@ -450,23 +458,25 @@ def test_e2e_happy_path_alert_to_verified_resolved_with_intact_audit_chain(
     exec_priv, _, _ = _generate_ed25519_pair()
     executor_approval = _sign_executor_approval(prepared["executor_action_sha256"], exec_priv)
 
-    exec_result = execute_moodle_live_handoff(
-        evidence_db=evidence_db,
-        candidate_id=candidate_id,
-        request_data=prepared["request"],
-        gate_approval=gate_approval,
-        executor_approval=executor_approval,
-        gate_public_key=gate_pub_pem,
-        gate_actors={"safety-officer"},
-        audit_db=audit_db,
-        kill_switch_enabled=False,
-        executor=lambda **kwargs: {
-            "status": "executed",
-            "scenario_id": kwargs["scenario_id"],
-            "completed_nodes": ["b"],
-            "mutated": True,
-        },
-    )
+    # The executor receipt precedes the verifier's probe window, as on a real run.
+    with patch("core.safety.safe_action_audit.datetime", _PastClock):
+        exec_result = execute_moodle_live_handoff(
+            evidence_db=evidence_db,
+            candidate_id=candidate_id,
+            request_data=prepared["request"],
+            gate_approval=gate_approval,
+            executor_approval=executor_approval,
+            gate_public_key=gate_pub_pem,
+            gate_actors={"safety-officer"},
+            audit_db=audit_db,
+            kill_switch_enabled=False,
+            executor=lambda **kwargs: {
+                "status": "executed",
+                "scenario_id": kwargs["scenario_id"],
+                "completed_nodes": ["b"],
+                "mutated": True,
+            },
+        )
     assert exec_result["status"] == "awaiting_verification"
     assert exec_result["execution_permitted"] is True
     assert exec_result["mutated"] is True
@@ -509,7 +519,8 @@ def test_e2e_happy_path_alert_to_verified_resolved_with_intact_audit_chain(
     assert verified["idempotent"] is False
 
     status_after = get_runtime_verification_status(
-        audit_db=audit_db, incident_id=incident_id, request_id=request_id
+        audit_db=audit_db, incident_id=incident_id, request_id=request_id,
+        public_key_path=verifier_pub_path,
     )
     assert status_after["status"] == "resolved"
 

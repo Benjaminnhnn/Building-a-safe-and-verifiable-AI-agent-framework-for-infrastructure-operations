@@ -7,6 +7,7 @@ probe verdicts to the agent/audit pipeline.
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -15,6 +16,19 @@ from typing import Callable
 from urllib.parse import urljoin, urlparse
 
 import requests
+
+from core.environment_profile import get_environment_profile
+
+# A session cookie plus "not the login page" is not proof of a login. Moodle
+# renders the user menu and a sesskey only for an authenticated session.
+_AUTH_MARKER = re.compile(
+    r'data-region="usermenu"|id="user-menu-toggle"|logout\.php\?sesskey=|'
+    r'"sesskey"\s*:\s*"[A-Za-z0-9]{6,}"|name="sesskey"\s+value="[A-Za-z0-9]{6,}"'
+)
+
+
+def has_authenticated_marker(page_text: str) -> bool:
+    return bool(_AUTH_MARKER.search(page_text or ""))
 
 
 @dataclass(frozen=True)
@@ -131,6 +145,7 @@ class MoodleLoginProbe:
                 self._same_origin(final_url)
                 and not final.path.rstrip("/").endswith("/login/index.php")
                 and session.cookies.get("MoodleSession") is not None
+                and has_authenticated_marker(getattr(response, "text", ""))
             )
             outcome = "authenticated" if authenticated else (
                 "denied" if final.path.rstrip("/").endswith("/login/index.php") else "error"
@@ -176,16 +191,21 @@ class MoodleAuthVerifier:
         valid_password: str,
         denied_username: str,
         denied_password: str,
-        stability_seconds: int = 120,
+        stability_seconds: int | None = None,
         sample_interval_seconds: int = 15,
         on_observation: Callable[[dict], None] | None = None,
     ) -> dict:
+        required_stability = get_environment_profile().verification.stability_window_seconds
+        if stability_seconds is None:
+            stability_seconds = required_stability
         if (
             isinstance(stability_seconds, bool)
             or not isinstance(stability_seconds, int)
-            or stability_seconds < 120
+            or stability_seconds < required_stability
         ):
-            raise ValueError("authentication recovery requires at least 120 seconds of stability")
+            raise ValueError(
+                f"authentication recovery requires at least {required_stability} seconds of stability"
+            )
         if (
             isinstance(sample_interval_seconds, bool)
             or not isinstance(sample_interval_seconds, int)

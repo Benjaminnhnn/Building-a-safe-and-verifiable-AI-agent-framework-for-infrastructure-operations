@@ -1,10 +1,12 @@
-"""Safety Policy Engine — deterministic gate with YAML-configurable rules.
+"""Safety Policy Engine — deterministic gate with code-defined, reviewed rules.
 
 Decisions: ALLOW, REQUIRE_APPROVAL, DENY, HUMAN_ONLY
 RBac roles: observer, diagnosis, planner, safety, executor, verifier, approver
 """
 
 from __future__ import annotations
+
+import math
 
 import hashlib
 import json
@@ -20,6 +22,10 @@ from pydantic import BaseModel, ConfigDict
 # Enums
 # ---------------------------------------------------------------------------
 
+
+
+_KNOWN_ENVIRONMENTS = frozenset({"staging", "production"})
+_MIN_CONFIDENCE = 0.65
 
 class BlastRadius(str, Enum):
     LOW = "LOW"
@@ -199,6 +205,20 @@ class SafetyPolicyEngine:
                 f"Action '{action}' matches a forbidden-action pattern (IAM/security group/drop/truncate/delete-volume/unrestricted-shell).",
             )
 
+        # Hard input checks run before any rule, so no rule ordering can turn
+        # an invalid or low-confidence request into ALLOW/REQUIRE_APPROVAL.
+        if (
+            isinstance(confidence, bool)
+            or not isinstance(confidence, (int, float))
+            or not math.isfinite(confidence)
+            or not 0.0 <= confidence <= 1.0
+        ):
+            return PolicyDecision.DENY, "Confidence must be a finite value from 0 to 1 — denied."
+        if environment not in _KNOWN_ENVIRONMENTS:
+            return PolicyDecision.DENY, f"Unknown environment '{environment}' — denied by fail-closed policy."
+        if confidence < _MIN_CONFIDENCE:
+            return PolicyDecision.DENY, f"Confidence below {_MIN_CONFIDENCE} — denied in every environment."
+
         # RBAC gate: executor role required for non-observer stages
         rbac_policy = self._rbac.get(actor_role)
         if rbac_policy is None:
@@ -337,8 +357,11 @@ class SafetyPolicyEngine:
                 rule_id="R01",
                 description="Read-only probe on allowlisted target with read-only credential → ALLOW",
                 conditions={
+                    # A name prefix alone is not proof of read-only behaviour:
+                    # only LOW blast radius probes qualify for automatic ALLOW.
                     "action_pattern": r"^(verify|probe|check|inspect|read)_",
                     "reversible": True,
+                    "blast_radius": "LOW",
                 },
                 decision=PolicyDecision.ALLOW,
             ),

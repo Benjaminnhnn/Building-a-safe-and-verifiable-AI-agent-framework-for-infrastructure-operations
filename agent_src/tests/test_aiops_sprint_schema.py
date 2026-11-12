@@ -175,6 +175,7 @@ def test_core_schema_accepts_valid_minimal_pipeline_objects() -> None:
         allowed_probes=[ProbeResult(name="moodle_to_database", passed=True, details="connection ok")],
         forbidden_probes=[ProbeResult(name="internet_to_postgresql", passed=True, details="blocked")],
         related_probes=[ProbeResult(name="alertmanager_to_agent", passed=True, details="delivery ok")],
+        resolution_eligible=True,
         verdict="resolved",
     )
 

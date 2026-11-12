@@ -1,7 +1,15 @@
 # Kết quả Independent Verifier
 
 from datetime import datetime, timezone
-from pydantic import BaseModel, Field, StrictBool, StrictInt, field_validator
+from typing import Literal
+
+from pydantic import BaseModel, Field, StrictBool, StrictInt, field_validator, model_validator
+
+from core.environment_profile import get_environment_profile
+
+VerificationVerdict = Literal[
+    "resolved", "not_resolved", "false_recovery", "collateral_damage", "not_stable"
+]
 
 
 class StabilityObservation(BaseModel):
@@ -50,6 +58,34 @@ class VerificationResult(BaseModel):
     related_probes: list[ProbeResult] = Field(default_factory=list)
 
     # PLACEHOLDER: Verdict thật của Verifier sau khi kiểm tra health, communication contract và stability.
-    verdict: str = Field(..., examples=["resolved", "not_resolved"])
+    verdict: VerificationVerdict = Field(..., examples=["resolved", "not_resolved"])
     simulated: StrictBool = True
     checked_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @model_validator(mode="after")
+    def _resolved_verdict_needs_proof(self) -> "VerificationResult":
+        """A "resolved" verdict is only representable with the evidence behind it."""
+        if self.verdict != "resolved":
+            if self.resolution_eligible:
+                raise ValueError("only a resolved verdict can be resolution_eligible")
+            return self
+        if not (
+            self.health_passed
+            and self.communication_contract_passed
+            and self.resolution_eligible
+        ):
+            raise ValueError(
+                "resolved verdict requires health, communication contract and resolution eligibility"
+            )
+        if not self.simulated:
+            required = get_environment_profile().verification.min_samples
+            groups = (self.allowed_probes, self.forbidden_probes, self.related_probes)
+            if (
+                len(self.stability_observations) < required
+                or any(item.simulated or not item.healthy for item in self.stability_observations)
+                or any(probe.simulated for group in groups for probe in group)
+            ):
+                raise ValueError(
+                    "a non-simulated resolved verdict requires enough healthy, non-simulated observations"
+                )
+        return self

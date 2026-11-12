@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import hashlib
 import math
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol, runtime_checkable
 
+from core.environment_profile import get_environment_profile
 from core.schema.incident import Incident
 from core.schema.verification import (
     ProbeResult,
@@ -59,8 +61,9 @@ class DryRunProbe:
         )
 
 
-def _stable_id(prefix: str, *parts: str) -> str:
-    digest = hashlib.sha256(":".join(parts).encode("utf-8")).hexdigest()[:16]
+def _run_id(prefix: str, *parts: str) -> str:
+    """Unique per verification run: a fresh nonce keeps two runs from colliding."""
+    digest = hashlib.sha256(":".join((*parts, uuid.uuid4().hex)).encode("utf-8")).hexdigest()[:16]
     return f"{prefix}-{digest}"
 
 
@@ -79,19 +82,31 @@ class VerificationAgent:
         incident: Incident,
         communication_contract: dict[str, Any],
         *,
-        stability_window_seconds: int = 120,
-        dry_run: bool = True,
+        dry_run: bool,
+        stability_window_seconds: int | None = None,
         probes: list[ContractProbe] | None = None,
         stability_observations: list[StabilityObservation] | None = None,
         max_stability_gap_seconds: int = 60,
     ) -> VerificationResult:
-        """Run verification probes and determine verdict."""
+        """Run verification probes and determine verdict.
+
+        ``dry_run`` must be passed explicitly. The verifier never invents
+        evidence: missing probes or stability observations leave the contract
+        uncovered and the verdict cannot be "resolved".
+        """
+        if not isinstance(dry_run, bool):
+            raise ValueError("dry_run must be an explicit boolean")
+        policy = get_environment_profile().verification
+        if stability_window_seconds is None:
+            stability_window_seconds = policy.stability_window_seconds
         if (
             isinstance(stability_window_seconds, bool)
             or not isinstance(stability_window_seconds, int)
-            or stability_window_seconds < 120
+            or stability_window_seconds < policy.stability_window_seconds
         ):
-            raise ValueError("stability_window_seconds must be an integer of at least 120")
+            raise ValueError(
+                f"stability_window_seconds must be an integer of at least {policy.stability_window_seconds}"
+            )
         if (
             isinstance(max_stability_gap_seconds, bool)
             or not isinstance(max_stability_gap_seconds, int)
@@ -119,24 +134,27 @@ class VerificationAgent:
                 contract_valid = False
             contract_specs[probe_type] = names
 
-        # Synthetic probes are allowed only for explicitly marked fixture replay.
+        # Fixture probes and observations are synthesised ONLY for an explicit
+        # dry_run=True replay; the result is marked simulated and can never
+        # resolve a live incident. A live run (dry_run=False) never invents
+        # evidence: missing probes leave the contract uncovered (fail closed).
         if probes is None:
             probes = self._build_dry_run_probes(contract_specs) if dry_run else []
-
+        else:
+            probes = list(probes)
         if stability_observations is None and dry_run:
             checked_at = datetime.now(timezone.utc)
-            intervals = max(1, math.ceil(stability_window_seconds / max_stability_gap_seconds))
+            intervals = max(policy.min_samples - 1, math.ceil(stability_window_seconds / max_stability_gap_seconds))
             stability_observations = [
                 StabilityObservation(
-                    observed_at=checked_at
-                    - timedelta(
-                        seconds=stability_window_seconds
-                        - (stability_window_seconds * index / intervals)
+                    observed_at=checked_at - timedelta(
+                        seconds=stability_window_seconds - (stability_window_seconds * index / intervals)
                     ),
                     healthy=True,
                 )
                 for index in range(intervals + 1)
             ]
+
         stability_valid = stability_observations is None or isinstance(
             stability_observations, list
         )
@@ -156,8 +174,14 @@ class VerificationAgent:
         stability_gaps_ok = _stability_gaps_ok(
             stability_observations, max_stability_gap_seconds
         )
-        stability_gaps_ok = stability_valid and stability_gaps_ok and (max_stability_gap_seconds <= 60 or len(stability_observations) == 3) and _stability_observations_fresh(
-            stability_observations, max_staleness_seconds=max_stability_gap_seconds
+        stability_gaps_ok = (
+            stability_valid
+            and stability_gaps_ok
+            and len(stability_observations) >= policy.min_samples
+            and (max_stability_gap_seconds <= 60 or len(stability_observations) == 3)
+            and _stability_observations_fresh(
+                stability_observations, max_staleness_seconds=policy.max_attestation_age_seconds
+            )
         )
 
         # Run all probes
@@ -259,7 +283,7 @@ class VerificationAgent:
         )
 
         return VerificationResult(
-            verification_id=_stable_id("verify", incident.incident_id),
+            verification_id=_run_id("verify", incident.incident_id),
             incident_id=incident.incident_id,
             health_passed=health_passed,
             communication_contract_passed=contract_passed,
@@ -310,23 +334,14 @@ class VerificationAgent:
 
         return "not_resolved"
 
-    def _build_dry_run_probes(
-        self,
-        contract: dict[str, Any],
-    ) -> list[ContractProbe]:
-        """Build dry-run probes from communication contract dict."""
+    def _build_dry_run_probes(self, contract: dict[str, Any]) -> list[ContractProbe]:
+        """Fixture probes for an explicit dry-run replay only (results are simulated)."""
         probes: list[ContractProbe] = []
         for name in contract.get("allowed", []):
             probes.append(DryRunProbe(name=name, probe_type="allowed", passes=True))
         for name in contract.get("forbidden", []):
-            probes.append(
-                DryRunProbe(
-                    name=name,
-                    probe_type="forbidden",
-                    passes=True,
-                    details=f"dry-run: {name} is still blocked (good)",
-                )
-            )
+            probes.append(DryRunProbe(name=name, probe_type="forbidden", passes=True,
+                                      details=f"dry-run: {name} is still blocked (good)"))
         for name in contract.get("related", []):
             probes.append(DryRunProbe(name=name, probe_type="related", passes=True))
         return probes
@@ -363,4 +378,4 @@ def _stability_observations_fresh(
         return False
     latest = max(item.observed_at for item in observations).astimezone(timezone.utc)
     age = (datetime.now(timezone.utc) - latest).total_seconds()
-    return -30 <= age <= max_staleness_seconds
+    return -get_environment_profile().verification.max_future_skew_seconds <= age <= max_staleness_seconds

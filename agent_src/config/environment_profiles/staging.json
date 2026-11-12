@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "environment": "staging",
+  "reviewed": true,
+  "reviewed_by": "thesis-maintainers",
+  "reviewed_at": "2026-11-12",
+  "description": "Moodle AIOps staging on AWS. Values mirror the constants that were hard-coded before profiles existed.",
+  "public_url_patterns": ["^https?://moodle-staging-[A-Za-z0-9.-]+(/.*)?$"],
+  "monitor_host": "monitor-ai-01",
+  "nodes": [
+    {"alias": "a", "host": "moodle-app-a", "roles": ["web", "cron"]},
+    {"alias": "b", "host": "moodle-app-b", "roles": ["web"]}
+  ],
+  "executor_scopes": {
+    "staging_moodle_nodes": ["a", "b"],
+    "moodle-app-b": ["b"],
+    "moodledata_synthetic_fixture_directory": ["a"],
+    "staging_moodle_app": ["a"]
+  },
+  "containers": {
+    "web": "release-moodle-web-1",
+    "cron": "release-moodle-cron-1"
+  },
+  "approval": {
+    "mode": "operator",
+    "approved_actors": ["operator", "human-approver"],
+    "ttl_max_seconds": 900
+  },
+  "gate": {
+    "min_confidence": 0.65,
+    "auto_confidence": 0.8,
+    "min_evidence_refs": 3
+  },
+  "verification": {
+    "stability_window_seconds": 120,
+    "min_samples": 3,
+    "max_attestation_age_seconds": 120,
+    "max_future_skew_seconds": 30
+  },
+  "evidence": {
+    "max_sample_age_seconds": 120
+  },
+  "executor": {
+    "allow_plain_http": true
+  }
+}

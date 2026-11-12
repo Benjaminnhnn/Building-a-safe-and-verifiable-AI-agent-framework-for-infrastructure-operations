@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import re
 import sqlite3
 import uuid
@@ -16,6 +17,8 @@ from core.evidence.adapters import ActionResult, SafeActionRequest, sanitize_ada
 from core.safety.sanitization import sanitize_log_excerpt
 from core.safety.safe_execution_gate import GateVerdict, SafeExecutionGate
 from pydantic import ValidationError
+
+VERIFIER_PUBLIC_KEY_ENV = "AIOPS_VERIFIER_PUBLIC_KEY_FILE"
 
 _SENSITIVE_KEY = re.compile(
     r"password|secret|token|private.?key|access.?key|api.?key|authorization|"
@@ -48,7 +51,17 @@ def redact_snapshot(value: dict[str, Any]) -> dict[str, Any]:
 class SafeActionAuditStore:
     """Per-incident hash-chained, append-only audit store."""
 
-    def __init__(self, path: str | Path, *, read_only: bool = False) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        read_only: bool = False,
+        verifier_public_key_path: str | Path | None = None,
+    ) -> None:
+        # Used only to re-verify the Independent Verifier's signature when a
+        # request's status is computed. Without a key no request can be
+        # reported as "resolved": the audit rows alone are never proof.
+        self._verifier_public_key_path = verifier_public_key_path
         if read_only:
             database_path = Path(path).resolve()
             if not database_path.is_file():
@@ -88,23 +101,30 @@ class SafeActionAuditStore:
         self.close()
 
     def append(self, *, incident_id: str, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
-        previous = self._connection.execute(
-            "SELECT event_hash FROM safe_action_audit WHERE incident_id = ? ORDER BY rowid DESC LIMIT 1",
-            (incident_id,),
-        ).fetchone()
-        event = {
-            "event_id": str(uuid.uuid4()), "incident_id": incident_id, "event_type": event_type,
-            "occurred_at": datetime.now(timezone.utc).isoformat(),
-            "previous_hash": previous["event_hash"] if previous else None,
-            "payload": redact_snapshot(payload),
-        }
-        event_hash = hashlib.sha256(_canonical(event).encode()).hexdigest()
-        event["event_hash"] = event_hash
-        self._connection.execute(
-            "INSERT INTO safe_action_audit VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (event["event_id"], incident_id, event_type, event["occurred_at"], event["previous_hash"], event_hash, _canonical(event)),
-        )
-        self._connection.commit()
+        # BEGIN IMMEDIATE takes the write lock before the previous hash is read,
+        # so two writers can never chain from the same predecessor.
+        self._connection.execute("BEGIN IMMEDIATE")
+        try:
+            previous = self._connection.execute(
+                "SELECT event_hash FROM safe_action_audit WHERE incident_id = ? ORDER BY rowid DESC LIMIT 1",
+                (incident_id,),
+            ).fetchone()
+            event = {
+                "event_id": str(uuid.uuid4()), "incident_id": incident_id, "event_type": event_type,
+                "occurred_at": datetime.now(timezone.utc).isoformat(),
+                "previous_hash": previous["event_hash"] if previous else None,
+                "payload": redact_snapshot(payload),
+            }
+            event_hash = hashlib.sha256(_canonical(event).encode()).hexdigest()
+            event["event_hash"] = event_hash
+            self._connection.execute(
+                "INSERT INTO safe_action_audit VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (event["event_id"], incident_id, event_type, event["occurred_at"], event["previous_hash"], event_hash, _canonical(event)),
+            )
+            self._connection.commit()
+        except Exception:
+            self._connection.rollback()
+            raise
         return event
 
     def append_verification_result(
@@ -166,27 +186,102 @@ class SafeActionAuditStore:
         return [json.loads(row["canonical_json"]) for row in rows]
 
     def verify_chain(self, incident_id: str) -> bool:
+        """Return whether the incident's chain is intact; malformed rows fail closed."""
         previous_hash: str | None = None
-        for event in self.list_for_incident(incident_id):
-            stored_hash = event.pop("event_hash")
-            if event["previous_hash"] != previous_hash or hashlib.sha256(_canonical(event).encode()).hexdigest() != stored_hash:
-                return False
-            previous_hash = stored_hash
+        try:
+            events = self.list_for_incident(incident_id)
+            for event in events:
+                if not isinstance(event, dict):
+                    return False
+                stored_hash = event.pop("event_hash", None)
+                if (
+                    not isinstance(stored_hash, str)
+                    or event.get("previous_hash") != previous_hash
+                    or event.get("incident_id") != incident_id
+                    or hashlib.sha256(_canonical(event).encode()).hexdigest() != stored_hash
+                ):
+                    return False
+                previous_hash = stored_hash
+        except (KeyError, TypeError, ValueError, AttributeError, sqlite3.Error):
+            return False
         return True
 
-    def get_live_incident_status(self, incident_id: str, request_id: str) -> str | None:
-        """Rebuild the request's live state from its verified append-only events."""
+    def _resolve_verifier_key(self, override: str | Path | None) -> Path | None:
+        candidate = override or self._verifier_public_key_path or os.environ.get(VERIFIER_PUBLIC_KEY_ENV)
+        return Path(candidate) if candidate else None
+
+    def _attestation_is_authentic(
+        self,
+        *,
+        incident_id: str,
+        request_id: str,
+        payload: dict[str, Any],
+        receipt_event: dict[str, Any],
+        key_path: Path | None,
+    ) -> bool:
+        """Re-verify the stored Independent Verifier attestation; fail closed on any doubt.
+
+        The audit database is writable by the Agent host, so a row that merely
+        *claims* resolution proves nothing. Resolution needs the verifier's
+        Ed25519 signature, re-checked against the configured public key and
+        bound to this incident, request and executor receipt.
+        """
+        if key_path is None:
+            return False
+        # Local import: verifier_attestation itself depends on this module.
+        from core.safety.verifier_attestation import (
+            InvalidVerifierSignature,
+            VerifierAttestation,
+            verify_attestation_signature,
+        )
+
+        try:
+            attestation = VerifierAttestation.model_validate(payload.get("verifier_attestation"))
+            digest = verify_attestation_signature(attestation, key_path)
+        except (InvalidVerifierSignature, ValidationError, ValueError, TypeError, OSError):
+            return False
+        signed = attestation.payload
+        stored_verification = payload.get("verification")
+        return (
+            hmac.compare_digest(digest, str(payload.get("attestation_sha256", "")))
+            and signed.version == 1
+            and signed.incident_id == incident_id
+            and signed.request_id == request_id
+            and signed.scenario_id == payload.get("scenario_id")
+            and signed.receipt_event_hash == receipt_event.get("event_hash")
+            and signed.verification.incident_id == incident_id
+            and signed.verification.verdict == "resolved"
+            and signed.verification.resolution_eligible is True
+            and signed.verification.simulated is False
+            and stored_verification == signed.verification.model_dump(mode="json")
+        )
+
+    def get_live_incident_status(
+        self,
+        incident_id: str,
+        request_id: str,
+        *,
+        verifier_public_key_path: str | Path | None = None,
+    ) -> str | None:
+        """Rebuild the request's live state from its verified append-only events.
+
+        ``"resolved"`` is reported only when a stored, signed Independent
+        Verifier attestation re-verifies against the verifier public key.
+        Missing key, missing or invalid attestation yields ``"verifying"``.
+        """
         if not self.verify_chain(incident_id):
             raise ValueError("safe-action audit chain is invalid")
         events = self.list_for_incident(incident_id)
-        execution = next((
-            event["payload"] for event in reversed(events)
+        receipt_event = next((
+            event for event in reversed(events)
             if event["event_type"] == "live_executor_result"
             and event["payload"].get("request_id") == request_id
         ), None)
+        execution = receipt_event["payload"] if receipt_event else None
         if not isinstance(execution, dict) or execution.get("status") != "executed" or execution.get("mutated") is not True:
             return None
 
+        key_path = self._resolve_verifier_key(verifier_public_key_path)
         status = "executed"
         for event in events:
             payload = event["payload"]
@@ -209,6 +304,13 @@ class SafeActionAuditStore:
                     and transition.get("actor") == "independent_verifier"
                     and transition.get("old_state") == "verifying"
                     and transition.get("new_state") == "resolved"
+                    and self._attestation_is_authentic(
+                        incident_id=incident_id,
+                        request_id=request_id,
+                        payload=payload,
+                        receipt_event=receipt_event,
+                        key_path=key_path,
+                    )
                 ):
                     status = "resolved"
                 else:
