@@ -50,6 +50,9 @@ load_moodle_environment_read_only() {
   region="$(jq -r '.alb_arn | split(":")[3]' <<<"$application_json")"
   moodledata_path="$(jq -r '.host_mount_path' <<<"$filesystem_json")"
   external_rds_health_check_id="$(jq -r '.external_tcp_health_check_id // empty' <<<"$database_json")"
+  # Expected ALB targets come from the same Terraform state as the target group,
+  # so the check follows the topology instead of assuming two nodes.
+  expected_target_ids="$(jq -c '[(.nodes // {})[] | .id] | unique' <<<"$application_json")"
   [[ "$public_url" == http://moodle-staging-* || "$public_url" == https://moodle-staging-* ]] || {
     echo "Refusing verification outside the Moodle staging URL: $public_url" >&2
     exit 77
@@ -104,13 +107,18 @@ check_scenario_alert_resolved() {
   "
 }
 
-check_two_healthy_alb_targets() {
-  local healthy
-  healthy="$(aws elbv2 describe-target-health \
-    --profile "${AWS_PROFILE:-target-account}" --region "$region" \
-    --target-group-arn "$target_group_arn" \
-    --query 'length(TargetHealthDescriptions[?TargetHealth.State==`healthy`])' --output text)"
-  [[ "$healthy" == 2 ]]
+# Passes only when the registered targets are exactly the expected Terraform
+# nodes and every one is healthy. A fixed count (the old "== 2") passed with a
+# third node down and failed forever with three healthy nodes; an empty
+# expectation or an unregistered/extra target now fails closed.
+check_all_expected_alb_targets_healthy() {
+  local health
+  health="$(aws elbv2 describe-target-health     --profile "${AWS_PROFILE:-target-account}" --region "$region"     --target-group-arn "$target_group_arn" --output json)" || return 1
+  jq -e --argjson expected "${expected_target_ids:-[]}" '
+    ($expected | length) > 0
+    and ([.TargetHealthDescriptions[].Target.Id] | unique) == ($expected | unique)
+    and all(.TargetHealthDescriptions[]; .TargetHealth.State == "healthy")
+  ' <<<"$health" >/dev/null
 }
 
 check_internet_to_postgresql_blocked() {
@@ -157,7 +165,7 @@ case "$scenario" in
         remote "$host" 'sudo docker exec release-moodle-web-1 php -r '\''define("CLI_SCRIPT", true); require "/var/www/html/config.php"; $ssl = $DB->get_field_sql("SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()"); exit(in_array($ssl, [true, 1, "1", "t"], true) ? 0 : 1);'\'''
     done
     run_check both_alb_targets_healthy \
-      'Both Moodle ALB targets are healthy' check_two_healthy_alb_targets
+      'Every expected Moodle ALB target (from Terraform nodes) is registered and healthy' check_all_expected_alb_targets_healthy
     ;;
   DB-02)
     run_check app_role_quota_and_tagged_sessions_restored \
@@ -167,7 +175,7 @@ case "$scenario" in
       'The independent monitor-to-RDS TCP probe remains healthy' \
       remote monitor-ai-01 'curl --fail --silent --get --data-urlencode '\''query=probe_success{job="blackbox_moodle_rds"} == 1'\'' http://127.0.0.1:9090/api/v1/query | jq -e '\''.data.result | length > 0'\'' >/dev/null'
     run_check both_alb_targets_healthy \
-      'Both Moodle ALB targets are healthy' check_two_healthy_alb_targets
+      'Every expected Moodle ALB target (from Terraform nodes) is registered and healthy' check_all_expected_alb_targets_healthy
     ;;
   DB-03)
     run_check db03_backup_removed \
@@ -180,7 +188,7 @@ case "$scenario" in
       'The app-b Moodle application connects to PostgreSQL using TLS' \
       remote moodle-app-b 'sudo docker exec release-moodle-web-1 php -r '\''define("CLI_SCRIPT", true); require "/var/www/html/config.php"; $ssl = $DB->get_field_sql("SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()"); exit(in_array($ssl, [true, 1, "1", "t"], true) ? 0 : 1);'\'''
     run_check both_alb_targets_healthy \
-      'Both Moodle ALB targets are healthy' check_two_healthy_alb_targets
+      'Every expected Moodle ALB target (from Terraform nodes) is registered and healthy' check_all_expected_alb_targets_healthy
     ;;
   RES-01)
     run_check named_cpu_fixture_absent \
@@ -198,7 +206,7 @@ case "$scenario" in
       'The app-b Moodle web container remained running and healthy' \
       remote moodle-app-b 'test "$(sudo docker inspect --format "{{.State.Running}} {{.State.Health.Status}}" release-moodle-web-1)" = "true healthy"'
     run_check both_alb_targets_healthy \
-      'Both Moodle ALB targets are healthy' check_two_healthy_alb_targets
+      'Every expected Moodle ALB target (from Terraform nodes) is registered and healthy' check_all_expected_alb_targets_healthy
     ;;
   RES-03)
     run_check scratch_mount_absent \
@@ -211,7 +219,7 @@ case "$scenario" in
       'The Moodle EFS mount remains available on moodle-app-b' \
       remote moodle-app-b 'test "$(findmnt --noheadings --output FSTYPE --target /mnt/efs/moodledata)" = nfs4'
     run_check both_alb_targets_healthy \
-      'Both Moodle ALB targets are healthy' check_two_healthy_alb_targets
+      'Every expected Moodle ALB target (from Terraform nodes) is registered and healthy' check_all_expected_alb_targets_healthy
     ;;
   NET-01)
     for host in moodle-app-a moodle-app-b; do
@@ -220,7 +228,7 @@ case "$scenario" in
         remote "$host" "sudo docker exec release-moodle-web-1 getent ahostsv4 '$database_endpoint' | awk '\$1 !~ /^127\\./ && \$1 != \"0.0.0.0\" { found=1 } END { exit !found }'"
     done
     run_check both_alb_targets_healthy \
-      'Both Moodle ALB targets are healthy' check_two_healthy_alb_targets
+      'Every expected Moodle ALB target (from Terraform nodes) is registered and healthy' check_all_expected_alb_targets_healthy
     ;;
   NET-02)
     run_check tagged_port_block_absent \
@@ -235,7 +243,7 @@ case "$scenario" in
       'The independent monitor-to-RDS TCP probe remains healthy' \
       remote monitor-ai-01 'curl --fail --silent --get --data-urlencode '\''query=probe_success{job="blackbox_moodle_rds"} == 1'\'' http://127.0.0.1:9090/api/v1/query | jq -e '\''.data.result | length > 0'\'' >/dev/null'
     run_check both_alb_targets_healthy \
-      'Both Moodle ALB targets are healthy' check_two_healthy_alb_targets
+      'Every expected Moodle ALB target (from Terraform nodes) is registered and healthy' check_all_expected_alb_targets_healthy
     ;;
   NET-03)
     run_check net03_fixture_removed \
@@ -250,14 +258,14 @@ case "$scenario" in
         remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=moodle_node_rds_tcp_success{job=\"moodle_node\",instance=\"$host\"} == 1 and on() (moodle_node_rds_tcp_duration_seconds{job=\"moodle_node\",instance=\"$host\"} < 0.2)' http://127.0.0.1:9090/api/v1/query | jq -e '.data.result | length > 0' >/dev/null"
     done
     run_check both_alb_targets_healthy \
-      'Both Moodle ALB targets are healthy' check_two_healthy_alb_targets
+      'Every expected Moodle ALB target (from Terraform nodes) is registered and healthy' check_all_expected_alb_targets_healthy
     ;;
   CON-01)
     run_check moodle_app_b_container_healthy \
       'release-moodle-web-1 is running and healthy on moodle-app-b' \
       remote moodle-app-b 'test "$(sudo docker inspect --format "{{.State.Running}} {{.State.Health.Status}}" release-moodle-web-1)" = "true healthy"'
     run_check both_alb_targets_healthy \
-      'Both Moodle ALB targets are healthy' check_two_healthy_alb_targets
+      'Every expected Moodle ALB target (from Terraform nodes) is registered and healthy' check_all_expected_alb_targets_healthy
     ;;
   CON-02)
     run_check moodle_app_b_router_enabled \
@@ -267,7 +275,7 @@ case "$scenario" in
       'Node Exporter reports the app-b Moodle router fallback healthy' \
       remote monitor-ai-01 'curl --fail --silent --get --data-urlencode '\''query=moodle_node_router_fallback_success{job="moodle_node",instance="moodle-app-b"} == 1'\'' http://127.0.0.1:9090/api/v1/query | jq -e '\''.data.result | length > 0'\'' >/dev/null'
     run_check both_alb_targets_healthy \
-      'Both Moodle ALB targets are healthy' check_two_healthy_alb_targets
+      'Every expected Moodle ALB target (from Terraform nodes) is registered and healthy' check_all_expected_alb_targets_healthy
     ;;
   CON-03)
     run_check con03_backup_removed \
@@ -280,7 +288,7 @@ case "$scenario" in
       'The app-b Moodle web container is running and healthy after recreation' \
       remote moodle-app-b 'test "$(sudo docker inspect --format "{{.State.Running}} {{.State.Health.Status}}" release-moodle-web-1)" = "true healthy"'
     run_check both_alb_targets_healthy \
-      'Both Moodle ALB targets are healthy' check_two_healthy_alb_targets
+      'Every expected Moodle ALB target (from Terraform nodes) is registered and healthy' check_all_expected_alb_targets_healthy
     ;;
   SEC-02)
     run_check fixture_directory_mode_restored \
@@ -301,7 +309,7 @@ case "$scenario" in
       'Node Exporter reports the app-b reverse-proxy trust setting approved' \
       remote monitor-ai-01 'curl --fail --silent --get --data-urlencode '\''query=moodle_node_reverse_proxy_enabled{job="moodle_node",instance="moodle-app-b"} == 0'\'' http://127.0.0.1:9090/api/v1/query | jq -e '\''.data.result | length > 0'\'' >/dev/null'
     run_check both_alb_targets_healthy \
-      'Both Moodle ALB targets are healthy' check_two_healthy_alb_targets
+      'Every expected Moodle ALB target (from Terraform nodes) is registered and healthy' check_all_expected_alb_targets_healthy
     ;;
   BIZ-01)
     run_check moodle_cli_maintenance_disabled \

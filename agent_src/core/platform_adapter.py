@@ -99,6 +99,31 @@ class PlatformAdapter(Protocol):
         """Return verification probe sets (allowed, forbidden, related)."""
         ...
 
+UNMEASURED_PROBE_DETAIL = (
+    "NOT MEASURED: the platform adapter runs no live probe; only a signed "
+    "Independent Verifier attestation can establish recovery."
+)
+
+
+def unmeasured_verification_probes(*, allowed: str, forbidden: str, related: str) -> dict[str, list[Any]]:
+    """Name an adapter's probe set without claiming any result.
+
+    Adapters used to return hard-coded ``passed=True`` results; wiring them
+    into a verifier would have produced a vacuous VERIFIED. Every probe here
+    is ``passed=False`` and ``simulated=True`` so any consumer fails closed.
+    """
+    from core.schema.verification import ProbeResult
+
+    def probe(name: str) -> Any:
+        return ProbeResult(name=name, passed=False, simulated=True, details=UNMEASURED_PROBE_DETAIL)
+
+    return {
+        "allowed_probes": [probe(allowed)],
+        "forbidden_probes": [probe(forbidden)],
+        "related_probes": [probe(related)],
+    }
+
+
 class PlatformAdapterRegistry:
     """Registry of platform adapters allowing dynamic discovery and decoupling."""
 

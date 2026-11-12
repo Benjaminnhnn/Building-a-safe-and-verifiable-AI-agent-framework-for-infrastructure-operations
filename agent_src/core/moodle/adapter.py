@@ -251,19 +251,11 @@ class MoodlePlatformAdapter:
         scenario_id: str | None = None,
         action_id: str | None = None,
     ) -> dict[str, list[Any]]:
-        from core.schema.verification import ProbeResult
+        from core.platform_adapter import unmeasured_verification_probes
 
-        return {
-            "allowed_probes": [
-                ProbeResult(name="moodle_http", passed=True, details="staging endpoint ok")
-            ],
-            "forbidden_probes": [
-                ProbeResult(name="public_db_access", passed=True, details="database port blocked to public")
-            ],
-            "related_probes": [
-                ProbeResult(name="monitoring_health", passed=True, details="prometheus scraper healthy")
-            ],
-        }
+        return unmeasured_verification_probes(
+            allowed="moodle_http", forbidden="public_db_access", related="monitoring_health"
+        )
 
 # Register MoodlePlatformAdapter with PlatformAdapterRegistry
 PlatformAdapterRegistry.register(MoodlePlatformAdapter())

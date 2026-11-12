@@ -302,6 +302,12 @@ class SafeExecutionGate:
         verdict = self.evaluate(request, actor_role=actor_role, confidence=confidence)
         summary = {"decision": verdict.decision, "reason": verdict.reason, "checks": [], "approval_reasons": []}
         if verdict.decision == "DENY":
+            # Advisory only: lists every failing rule so the operator can fix
+            # them in one round. ``evaluate`` above stays the sole authority.
+            summary["failed_rules"] = [
+                item for item in self.diagnose(request, actor_role=actor_role, confidence=confidence)
+                if item["status"] == "fail"
+            ]
             return summary
         entry = self._catalog.lookup(request.catalog_action_id)
         action = request.action
@@ -324,6 +330,118 @@ class SafeExecutionGate:
             reasons.append(f"blast radius is {entry.blast_radius}")
         summary["approval_reasons"] = reasons
         return summary
+
+    def diagnose(
+        self,
+        request: SafeActionRequest | SafeLiveActionRequest,
+        *,
+        actor_role: str,
+        confidence: float,
+    ) -> list[dict]:
+        """Run every pre-approval rule without stopping and without side effects.
+
+        This is an explanation aid for a denied request, never an authorization
+        path: it does not reserve idempotency keys, check approvals or return a
+        decision. Rules are listed in ``evaluate`` order and reuse its reasons,
+        so the first ``fail`` always names the rule ``evaluate`` denied on.
+        ``HARD`` failures need a reviewed catalog/policy change or a different
+        catalog action; ``REMEDIABLE`` ones can pass with fresh evidence or a
+        freshly prepared request. Checks that depend on an unknown catalog
+        action are reported as ``not_evaluated`` rather than guessed.
+        """
+        results: list[dict] = []
+
+        def record(rule_id: str, rule_class: str, passed: bool | None, reason: str, observed: str, required: str) -> None:
+            status = "not_evaluated" if passed is None else ("pass" if passed else "fail")
+            results.append({
+                "rule_id": rule_id, "class": rule_class, "status": status,
+                "reason": reason, "observed": observed, "required": required,
+            })
+
+        request_model = SafeLiveActionRequest if isinstance(request, SafeLiveActionRequest) else SafeActionRequest
+        try:
+            request = request_model.model_validate(request.model_dump(mode="python", warnings=False))
+        except (AttributeError, TypeError, ValueError, ValidationError):
+            record("G00", "REMEDIABLE", False, "request or approval failed schema validation",
+                   "request is malformed", "a request rebuilt from a fresh candidate")
+            return results
+        record("G00", "REMEDIABLE", True, "request or approval failed schema validation", "valid", "valid schema")
+
+        action = request.action
+        record("G01", "HARD", not self._kill_switch_enabled, "kill switch is enabled",
+               "on" if self._kill_switch_enabled else "off", "off")
+        confidence_valid = (
+            not isinstance(confidence, bool) and isinstance(confidence, (int, float))
+            and math.isfinite(confidence) and 0.0 <= confidence <= 1.0
+        )
+        record("G02", "REMEDIABLE", confidence_valid, "confidence must be a finite value from 0 to 1",
+               repr(confidence), "finite value in [0, 1]")
+        with self._idempotency_lock:
+            reused = request.idempotency_key in self._seen_idempotency_keys
+        record("G03", "REMEDIABLE", not reused, "idempotency key has already passed the gate",
+               "already used" if reused else "unused", "a new idempotency key")
+        evidence_count = len(set(action.evidence_refs))
+        record("G04", "REMEDIABLE", evidence_count >= 3,
+               "at least three distinct evidence references are required", str(evidence_count), ">= 3")
+        record("G05", "HARD", not action.parameters,
+               "caller parameters are not supported by the fixed staging executor",
+               ", ".join(sorted(action.parameters)) or "none", "none")
+
+        entry = self._catalog.lookup(request.catalog_action_id)
+        known = entry is not None and request.timeout_seconds <= entry.timeout_seconds
+        record("G06", "HARD", known, "catalog action is unknown or requested timeout exceeds its limit",
+               f"{request.catalog_action_id}, timeout {request.timeout_seconds}s"
+               + ("" if entry else " (not in catalog)"),
+               f"catalogued action, timeout <= {entry.timeout_seconds}s" if entry else "a catalogued action")
+
+        def entry_check(rule_id: str, reason: str, required: str, check, observed) -> None:
+            if entry is None:
+                record(rule_id, "HARD", None, reason, "catalog action unknown", required)
+            else:
+                record(rule_id, "HARD", bool(check()), reason, str(observed()), required)
+
+        entry_check("G07", "catalog rollback action is missing or not a reciprocal staging mutation",
+                    "reviewed reciprocal rollback in staging",
+                    lambda: not entry.rollback_action or self._has_reviewed_inverse(entry),
+                    lambda: entry.rollback_action or "none")
+        entry_check("G08", "typed action reversibility does not match the reviewed catalog",
+                    "reversible matches catalog",
+                    lambda: action.reversible == entry.is_reversible,
+                    lambda: f"request {action.reversible}, catalog {entry.is_reversible}")
+        entry_check("G09", "mutating action lacks a catalogued reversible rollback plan",
+                    "read-only, or rollback plan naming the catalog rollback",
+                    lambda: entry.permission.read_only or (
+                        entry.is_reversible and entry.rollback_action
+                        and action.rollback_plan.rollback_action_id == entry.rollback_action
+                        and action.rollback_plan.available
+                        and bool(action.rollback_plan.method and action.rollback_plan.method.strip())
+                    ),
+                    lambda: f"plan {action.rollback_plan.rollback_action_id or 'none'}, "
+                            f"available {action.rollback_plan.available}")
+        entry_check("G10", "typed action does not match the reviewed catalog action",
+                    "action type from catalog",
+                    lambda: entry.action_type is not None and action.action_type == entry.action_type,
+                    lambda: action.action_type.value)
+        entry_check("G11", "request is outside the catalog, scope, environment, or RBAC boundary",
+                    "reviewed scenario/scope/environment/role",
+                    lambda: self._catalog.is_safe_execution_allowed(
+                        request.catalog_action_id, scenario_id=request.scenario_id,
+                        target_scope=request.target_scope, environment=action.environment.value, role=actor_role,
+                    ),
+                    lambda: f"{request.scenario_id}/{request.target_scope}/{action.environment.value}/{actor_role}")
+        in_scope = action.target_resource_id in self._scope_resources.get(request.target_scope, set())
+        record("G12", "HARD", in_scope, "target resource is outside the reviewed target scope",
+               f"{action.target_resource_id} in {request.target_scope}", "target inside the reviewed scope")
+        target_type = self._resource_types.get(action.target_resource_id)
+        entry_check("G13", "target resource class is not allowed by the catalog",
+                    "resource class allowed by catalog",
+                    lambda: target_type is not None and any(
+                        item.value == target_type for item in entry.valid_target_resource_types
+                    ),
+                    lambda: target_type or "unknown")
+        record("G14", "REMEDIABLE", confidence_valid and confidence >= 0.65, "diagnosis confidence is below 0.65",
+               f"{confidence:.2f}" if confidence_valid else repr(confidence), ">= 0.65")
+        return results
 
     def release_before_execution(
         self,

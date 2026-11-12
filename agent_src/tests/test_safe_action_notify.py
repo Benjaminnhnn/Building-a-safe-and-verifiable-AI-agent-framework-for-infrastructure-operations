@@ -265,3 +265,60 @@ def test_execute_endpoint_sends_step_five(tmp_path, monkeypatch) -> None:
 
     assert response.status_code == 200
     assert len(sent) == 1 and "đã thực thi" in sent[0] and SIGNATURE not in sent[0]
+
+
+def test_deny_card_lists_all_failed_rules_with_hints() -> None:
+    preview = {
+        "decision": "DENY",
+        "reason": "at least three distinct evidence references are required",
+        "failed_rules": [
+            {"rule_id": "G04", "class": "REMEDIABLE", "status": "fail", "observed": "2", "required": ">= 3"},
+            {"rule_id": "G14", "class": "REMEDIABLE", "status": "fail", "observed": "0.50", "required": ">= 0.65"},
+        ],
+    }
+    text = notify_mod.format_prepare("ev-cand", {**PREPARED, "gate_preview": preview})
+    assert "Luật không đạt (2)" in text
+    assert "G04 [KHẮC PHỤC ĐƯỢC]" in text and "probe read-only" in text
+    assert "G14 [KHẮC PHỤC ĐƯỢC]" in text and "/prepare lại" in text
+    assert "CỨNG" not in text and "không mở phê duyệt" in text
+
+
+def test_deny_card_flags_hard_rules() -> None:
+    preview = {
+        "decision": "DENY", "reason": "kill switch is enabled",
+        "failed_rules": [{"rule_id": "G01", "class": "HARD", "status": "fail", "observed": "on", "required": "off"}],
+    }
+    text = notify_mod.format_prepare("ev-cand", {**PREPARED, "gate_preview": preview})
+    assert "G01 [CỨNG]" in text and "ngoài thẩm quyền Operator" in text
+    assert "không thể đạt bằng bằng chứng mới" in text
+
+
+def test_prepare_endpoint_notifies_when_candidate_is_unavailable(tmp_path, monkeypatch) -> None:
+    _token_env(tmp_path, monkeypatch)
+    sent: list[str] = []
+
+    def stale(**_kw):
+        raise ValueError("stale")
+
+    monkeypatch.setattr(main, "prepare_moodle_live_handoff", stale)
+    monkeypatch.setattr(notify_mod, "notify", lambda message: sent.append(message) or True)
+    response = TestClient(main.app).post(
+        "/api/moodle/remediation/ev-cand/prepare", headers={"Authorization": f"Bearer {TOKEN}"}
+    )
+    assert response.status_code == 404
+    assert len(sent) == 1 and "không có candidate hợp lệ" in sent[0] and TOKEN not in sent[0]
+
+
+def test_alert_report_shows_admin_steps_only_without_candidate() -> None:
+    report = {
+        "incident_id": "inc-3", "status": "investigation_hypothesis",
+        "diagnosis": {"hypothesis": "upgrade running", "cause_code": "upgrade_in_progress_human_escalation"},
+        "remediation_disposition": {"disposition": "escalated_awaiting_operator_isolation"},
+        "remediation_candidate": None,
+    }
+    steps = ["Không tắt chế độ bảo trì khi upgrade còn chạy.", "Kiểm tra log upgrade.", "Chờ metric về 0.", "Bước 4"]
+    text = notify_mod.format_alert_report({"labels": {"alertname": "MoodleMaintenanceModeEnabled"}}, report, steps)
+    assert "Admin cần làm:" in text and "1. Không tắt chế độ bảo trì" in text and "Bước 4" not in text
+    with_candidate = {**report, "remediation_candidate": {"catalog_action_id": "x", "action": {}}}
+    text = notify_mod.format_alert_report({"labels": {}}, with_candidate, steps)
+    assert "Admin cần làm:" not in text

@@ -422,46 +422,112 @@ def test_core_dry_run_precondition_failure() -> None:
     assert result["incident"].state == IncidentState.FAILED
 
 
-def test_core_modules_do_not_import_moodle_directly() -> None:
-    """Verify that none of the core modules directly import moodle_* modules."""
-    core_dir = Path(__file__).resolve().parents[1] / "core"
-    core_files = [
-        core_dir / "unified_core.py",
-        core_dir / "platform_adapter.py",
-        core_dir / "shadow_pipeline.py",
-        core_dir / "evidence_collectors.py",
-        core_dir / "safe_execution_gate.py",
-    ]
-    # Add all domain files
-    domain_dir = core_dir / "domain"
-    if domain_dir.exists():
-        core_files.extend(domain_dir.glob("*.py"))
+# Composition roots that legitimately wire the Moodle lane into the service.
+# Every other module under core/ (outside core/moodle and core/erpnext) must stay
+# platform-neutral. The list is exact: a new edge fails, and so does an entry
+# that no longer exists, so the allowance can only shrink deliberately.
+_PLATFORM_WIRING_ALLOWED: dict[str, set[str]] = {
+    "core/main.py": {
+        "core.moodle", "core.moodle.ai_shadow_proposal", "core.moodle.live_handoff", "core.moodle.safety_shadow",
+    },
+    "core/tasks.py": {
+        "core.moodle", "core.moodle.alert_correlation", "core.moodle.alert_integration",
+        "core.moodle.notification_receipt", "core.moodle.operator_report",
+    },
+    "core/okta_sso_monitor.py": {"core.moodle.safe_action_notify"},
+}
+_PLATFORM_PACKAGES = ("core/moodle/", "core/erpnext/")
 
-    forbidden_imports: list[str] = []
 
-    for file_path in core_files:
-        if not file_path.exists():
-            continue
-        tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    if (
-                        "moodle_" in alias.name
-                        or alias.name.startswith("core.moodle")
-                        or alias.name.startswith("core.erpnext")
-                    ):
-                        forbidden_imports.append(f"{file_path.name}: import {alias.name}")
-            elif isinstance(node, ast.ImportFrom):
-                module = node.module or ""
-                if (
-                    "moodle_" in module
-                    or module.startswith("core.moodle")
-                    or module.startswith("core.erpnext")
-                ):
-                    forbidden_imports.append(f"{file_path.name}: from {module} import ...")
-
-    assert forbidden_imports == [], (
-        f"Core modules violate architectural boundary by importing platform adapters directly:\n"
-        + "\n".join(forbidden_imports)
+def _is_platform_module(name: str) -> bool:
+    return bool(name) and (
+        name in {"core.moodle", "core.erpnext"}
+        or name.startswith(("core.moodle.", "core.erpnext."))
+        or name.split(".")[-1].startswith(("moodle_", "erpnext_"))
     )
+
+
+def _platform_imports(source: str) -> set[str]:
+    """Static, string-based and ``from core import moodle`` imports of platform code."""
+    found: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            found |= {alias.name for alias in node.names if _is_platform_module(alias.name)}
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if _is_platform_module(module):
+                found.add(module)
+            elif module == "core":
+                found |= {f"core.{alias.name}" for alias in node.names if alias.name in {"moodle", "erpnext"}}
+        elif isinstance(node, ast.Call):
+            func = node.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+            if (
+                name in {"import_module", "__import__"} and node.args
+                and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
+                and _is_platform_module(node.args[0].value)
+            ):
+                found.add(node.args[0].value)
+    return found
+
+
+def test_platform_import_detector_catches_every_form() -> None:
+    source = "\n".join([
+        "import core.moodle.adapter",
+        "from core.erpnext.adapter import X",
+        "from core import moodle",
+        "import importlib",
+        "importlib.import_module('core.moodle.planner')",
+        "__import__('core.erpnext.inventory')",
+        "from core.safety.action_catalog import ActionCatalog",
+    ])
+    assert _platform_imports(source) == {
+        "core.moodle.adapter", "core.erpnext.adapter", "core.moodle",
+        "core.moodle.planner", "core.erpnext.inventory",
+    }
+
+
+def test_core_modules_do_not_import_platform_code_outside_composition_roots() -> None:
+    agent_root = Path(__file__).resolve().parents[1]
+    core_files = sorted(
+        path for path in (agent_root / "core").rglob("*.py")
+        if not path.relative_to(agent_root).as_posix().startswith(_PLATFORM_PACKAGES)
+    )
+    # Guard against the old failure mode: scanning paths that do not exist.
+    assert len(core_files) >= 20, f"suspiciously few core modules scanned: {len(core_files)}"
+    for allowed in _PLATFORM_WIRING_ALLOWED:
+        assert (agent_root / allowed).is_file(), f"stale allowance for missing file {allowed}"
+
+    observed: dict[str, set[str]] = {}
+    for path in core_files:
+        imports = _platform_imports(path.read_text(encoding="utf-8"))
+        if imports:
+            observed[path.relative_to(agent_root).as_posix()] = imports
+
+    unexpected = {
+        name: sorted(imports - _PLATFORM_WIRING_ALLOWED.get(name, set()))
+        for name, imports in observed.items()
+        if imports - _PLATFORM_WIRING_ALLOWED.get(name, set())
+    }
+    stale = {
+        name: sorted(allowed - observed.get(name, set()))
+        for name, allowed in _PLATFORM_WIRING_ALLOWED.items()
+        if allowed - observed.get(name, set())
+    }
+    assert unexpected == {}, f"platform-neutral core modules import platform code: {unexpected}"
+    assert stale == {}, f"remove allowances that are no longer used: {stale}"
+
+
+def test_registered_adapters_never_report_unmeasured_probes_as_passed() -> None:
+    import core.erpnext.adapter  # noqa: F401 - registers the adapter
+    import core.moodle.adapter  # noqa: F401 - registers the adapter
+    from core.platform_adapter import PlatformAdapterRegistry, UNMEASURED_PROBE_DETAIL
+
+    for name in ("moodle", "erpnext"):
+        adapter = PlatformAdapterRegistry.get(name)
+        assert adapter is not None, name
+        probes = adapter.get_verification_probes("inc-1", scenario_id="DB-01", action_id="x")
+        results = [probe for group in probes.values() for probe in group]
+        assert results, name
+        assert all(probe.passed is False and probe.simulated is True for probe in results), name
+        assert all(probe.details == UNMEASURED_PROBE_DETAIL for probe in results), name

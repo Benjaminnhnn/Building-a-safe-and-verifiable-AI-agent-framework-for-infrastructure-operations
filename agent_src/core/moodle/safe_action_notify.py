@@ -46,6 +46,53 @@ _HUMAN_TEXT = {
 }
 
 
+# Reviewed, static next-step hints per Safety Gate rule (see SafeExecutionGate.diagnose).
+# They describe what would have to change; they never relax the rule.
+_RULE_HINTS = {
+    "G00": "Yêu cầu sai cấu trúc: chuẩn bị lại từ candidate mới, không sửa tay request.",
+    "G01": "Kill switch đang bật: ngoài thẩm quyền Operator, liên hệ chủ hệ thống.",
+    "G02": "Độ tin cậy không hợp lệ: chạy lại chẩn đoán với bằng chứng mới.",
+    "G03": "Yêu cầu này đã từng qua Gate: chờ alert mới hoặc gọi lại /prepare cho candidate mới.",
+    "G04": "Thiếu bằng chứng: chạy probe read-only của kịch bản để bổ sung, rồi /prepare lại.",
+    "G05": "Executor không nhận tham số tự do: chọn đúng hành động trong catalog.",
+    "G06": "Hành động không có trong catalog hoặc timeout vượt giới hạn: cần review catalog, không tự thêm.",
+    "G07": "Rollback trong catalog không đối ứng: cần review cặp hành động/rollback.",
+    "G08": "Khả năng hoàn tác khác catalog: tạo lại request từ planner.",
+    "G09": "Thiếu kế hoạch rollback đúng catalog: tạo lại request từ planner.",
+    "G10": "Loại hành động khác catalog: tạo lại request từ planner.",
+    "G11": "Ngoài kịch bản/phạm vi/môi trường/vai trò đã duyệt: xử lý tay theo runbook hoặc review catalog.",
+    "G12": "Đích nằm ngoài phạm vi đã duyệt: kiểm tra lại node bị ảnh hưởng; không mở rộng phạm vi để vượt Gate.",
+    "G13": "Loại tài nguyên không hợp lệ cho hành động: chọn hành động khác trong catalog.",
+    "G14": "Chẩn đoán chưa chắc (< 0.65): thu thêm bằng chứng phân biệt rồi /prepare lại.",
+}
+_MAX_DENY_RULES = 5
+
+
+def _deny_card(preview: dict[str, Any]) -> list[str]:
+    """List every failing Gate rule, split into hard and remediable blocks."""
+    rules = [
+        item for item in (preview.get("failed_rules") or [])
+        if isinstance(item, dict) and item.get("status") == "fail"
+    ]
+    if not rules:
+        return []
+    lines = [f"Luật không đạt ({len(rules)}):"]
+    for item in rules[:_MAX_DENY_RULES]:
+        rule_id = str(item.get("rule_id") or "?")
+        kind = "CỨNG" if item.get("class") == "HARD" else "KHẮC PHỤC ĐƯỢC"
+        observed = _short(item.get("observed"), 60)
+        required = _short(item.get("required"), 60)
+        lines.append(f"• {rule_id} [{kind}] thấy {observed}, cần {required}")
+        lines.append(f"  → {_RULE_HINTS.get(rule_id, 'Kiểm tra theo runbook.')}")
+    if len(rules) > _MAX_DENY_RULES:
+        lines.append(f"… và {len(rules) - _MAX_DENY_RULES} luật khác (xem gate_preview).")
+    if any(item.get("class") == "HARD" for item in rules):
+        lines.append("Có luật CỨNG: yêu cầu này không thể đạt bằng bằng chứng mới; cần hành động khác hoặc xử lý tay.")
+    else:
+        lines.append("Chỉ có luật KHẮC PHỤC ĐƯỢC: bổ sung đúng các điều kiện trên rồi /prepare lại.")
+    return lines
+
+
 def _short(value: Any, length: int = 12) -> str:
     text = str(value or "")
     return f"{text[:length]}…" if len(text) > length else (text or "none")
@@ -64,8 +111,15 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return {}
 
 
-def format_alert_report(alert: dict[str, Any], report: dict[str, Any]) -> str:
-    """Short operator-facing alert; the detailed audit remains in evidence."""
+def format_alert_report(
+    alert: dict[str, Any], report: dict[str, Any], admin_steps: list[str] | None = None
+) -> str:
+    """Short operator-facing alert; the detailed audit remains in evidence.
+
+    ``admin_steps`` (from operator_report) are shown only when there is no
+    candidate, so a blocked or human-only incident still tells the operator
+    what to do next instead of only a generic line.
+    """
     labels = alert.get("labels") or {}
     annotations = alert.get("annotations") or {}
     diagnosis = _as_dict(report.get("diagnosis"))
@@ -87,6 +141,10 @@ def format_alert_report(alert: dict[str, Any], report: dict[str, Any]) -> str:
         lines += [f"Chỉ người xử lý: {advice}", "Không mở luồng approve/Executor cho sự cố này."]
     else:
         lines.append("Chưa có đề xuất an toàn; người vận hành kiểm tra telemetry và runbook.")
+    steps = [str(step) for step in (admin_steps or []) if str(step).strip()]
+    if not candidate and steps:
+        lines.append("Admin cần làm:")
+        lines += [f"{index}. {_short(step, 200)}" for index, step in enumerate(steps[:3], 1)]
     lines.append(f"Mã sự cố: {_short(report.get('incident_id', 'unassigned'), 18)}")
     return "\n".join(lines)
 
@@ -147,6 +205,7 @@ def format_prepare(candidate_id: str, prepared: dict[str, Any]) -> str:
             f"Hành động: {_short(request.get('catalog_action_id'), 90)}",
             f"Phạm vi: {_short(request.get('target_scope'), 90)} · Đích: {_short(action.get('target_resource_id'), 90)}",
             f"Sự cố: {_short(prepared.get('incident_id'), 32)} · Candidate: {_short(candidate_id, 32)}",
+            *_deny_card(preview),
             "Không thực thi; không mở phê duyệt cho yêu cầu này.",
             "Admin: kiểm tra bằng chứng mới, phạm vi, catalog và rollback; không nới chính sách chỉ để vượt Gate.",
         ]
@@ -170,6 +229,16 @@ def format_prepare(candidate_id: str, prepared: dict[str, Any]) -> str:
         "Gửi `approve` trong nhóm khi bot gửi yêu cầu duyệt.",
     ]
     return "\n".join(lines)
+
+
+def format_prepare_unavailable(candidate_id: str) -> str:
+    """Step 4 when no fresh candidate exists; previously the operator saw nothing."""
+    return "\n".join([
+        "🛡 ④ SAFETY GATE · không có candidate hợp lệ",
+        f"Candidate: {_short(candidate_id, 32)} đã cũ, không khớp bằng chứng mới nhất hoặc không tồn tại.",
+        "Không thực thi; không mở phê duyệt.",
+        "Tiếp theo: chờ alert/chẩn đoán mới rồi /prepare với candidate mới; không dùng lại request cũ.",
+    ])
 
 
 def format_execute(candidate_id: str, outcome: dict[str, Any]) -> str:

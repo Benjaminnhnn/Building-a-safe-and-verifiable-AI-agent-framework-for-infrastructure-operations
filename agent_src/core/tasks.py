@@ -661,7 +661,10 @@ async def process_single_alert(alert: dict) -> None:
         _record_moodle_pipeline_event(report)
         ALERTS_PROCESSED_TOTAL.labels(status="success").inc()
         admin_report = build_admin_action_report(alert_name, report)
-        send_telegram_message(safe_action_notify.format_alert_report(alert, report), parse_mode=None)
+        send_telegram_message(
+            safe_action_notify.format_alert_report(alert, report, admin_report.get("admin_steps")),
+            parse_mode=None,
+        )
         logger.info("Moodle evidence pipeline result: %s", json.dumps(report, sort_keys=True))
         logger.info(
             "Moodle administrator action report: %s",

@@ -342,3 +342,73 @@ def test_approval_factory_rejects_invalid_ttl(ttl_seconds: int) -> None:
             signing_key="test-key",
             ttl_seconds=ttl_seconds,
         )
+
+
+# --- Actionable deny card: diagnose() is advisory and must agree with evaluate() ---
+
+def _deny_cases():
+    base = _request()
+    return [
+        ("kill switch", _gate(kill_switch_enabled=True), _request(), 0.9),
+        ("bad confidence", _gate(), _request(), float("nan")),
+        ("few evidence", _gate(), _request(action=base.action.model_copy(update={"evidence_refs": ["ev-1"]})), 0.9),
+        ("params", _gate(), _request(action=base.action.model_copy(update={"parameters": {"x": "y"}})), 0.9),
+        ("unknown action", _gate(), _request(catalog_action_id="flush_all_iptables_rules"), 0.9),
+        ("reversibility", _gate(), _request(action=base.action.model_copy(update={"reversible": False})), 0.9),
+        ("no rollback plan", _gate(), _request(action=base.action.model_copy(
+            update={"rollback_plan": RollbackPlan(available=False)})), 0.9),
+        ("type mismatch", _gate(), _request(action=base.action.model_copy(
+            update={"action_type": ActionType.START_CONTAINER})), 0.9),
+        ("role", _gate(), _request(), 0.9, "unknown-role"),
+        ("production", _gate(), _request(action=base.action.model_copy(
+            update={"environment": Environment.PRODUCTION})), 0.9),
+        ("target", _gate(), _request(action=base.action.model_copy(
+            update={"target_resource_id": "prometheus-monitor"})), 0.9),
+        ("low confidence", _gate(), _request(), 0.5),
+    ]
+
+
+@pytest.mark.parametrize("case", _deny_cases(), ids=lambda case: case[0])
+def test_diagnose_first_failure_matches_evaluate_reason(case) -> None:
+    _name, gate, request, confidence, *role = case
+    role = role[0] if role else "executor"
+    failures = [item for item in gate.diagnose(request, actor_role=role, confidence=confidence)
+                if item["status"] == "fail"]
+    verdict = gate.evaluate(request, actor_role=role, confidence=confidence)
+    assert verdict.decision == "DENY"
+    assert failures and failures[0]["reason"] == verdict.reason
+
+
+def test_diagnose_reports_every_failing_rule_and_classifies_them() -> None:
+    request = _request(action=_request().action.model_copy(update={"evidence_refs": ["ev-1", "ev-2"]}))
+    summary = _gate().explain(request, actor_role="executor", confidence=0.5)
+    assert summary["decision"] == "DENY" and summary["checks"] == []
+    rules = {item["rule_id"]: item["class"] for item in summary["failed_rules"]}
+    assert rules == {"G04": "REMEDIABLE", "G14": "REMEDIABLE"}
+
+
+def test_diagnose_marks_catalog_dependent_rules_not_evaluated_for_unknown_action() -> None:
+    results = _gate().diagnose(_request(catalog_action_id="drop_database"), actor_role="executor", confidence=0.9)
+    by_id = {item["rule_id"]: item for item in results}
+    assert by_id["G06"]["status"] == "fail" and by_id["G06"]["class"] == "HARD"
+    assert all(by_id[rule]["status"] == "not_evaluated" for rule in ("G07", "G08", "G09", "G10", "G11", "G13"))
+
+
+def test_diagnose_has_no_side_effects_and_grants_nothing() -> None:
+    gate = _gate()
+    request = _request()
+    for _ in range(3):
+        results = gate.diagnose(request, actor_role="executor", confidence=0.9)
+        assert all(item["status"] == "pass" for item in results)
+        assert all("decision" not in item for item in results)
+    # diagnose must not reserve the idempotency key: the real gate still allows once.
+    assert gate.evaluate(request, actor_role="executor", confidence=0.9).decision == "ALLOW"
+    assert gate.evaluate(request, actor_role="executor", confidence=0.9).decision == "DENY"
+    reused = [item for item in gate.diagnose(request, actor_role="executor", confidence=0.9)
+              if item["status"] == "fail"]
+    assert [item["rule_id"] for item in reused] == ["G03"]
+
+
+def test_explain_for_allowed_request_has_no_failed_rules_key() -> None:
+    summary = _gate().explain(_request(), actor_role="executor", confidence=0.9)
+    assert summary["decision"] != "DENY" and "failed_rules" not in summary

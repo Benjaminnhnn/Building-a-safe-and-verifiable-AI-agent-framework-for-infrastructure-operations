@@ -368,17 +368,11 @@ class ERPNextPlatformAdapter:
         scenario_id: str | None = None,
         action_id: str | None = None,
     ) -> dict[str, list[Any]]:
-        return {
-            "allowed_probes": [
-                ProbeResult(name="erpnext_http", passed=True, details="ERPNext HTTP health check passed")
-            ],
-            "forbidden_probes": [
-                ProbeResult(name="erpnext_public_mariadb_blocked", passed=True, details="MariaDB 3306 not publicly exposed")
-            ],
-            "related_probes": [
-                ProbeResult(name="erpnext_redis_queue_ping", passed=True, details="Redis queue broker responsive")
-            ],
-        }
+        from core.platform_adapter import unmeasured_verification_probes
+
+        return unmeasured_verification_probes(
+            allowed="erpnext_http", forbidden="erpnext_public_mariadb_blocked", related="erpnext_redis_queue_ping"
+        )
 
     def get_read_only_client(self) -> Any:
         return None

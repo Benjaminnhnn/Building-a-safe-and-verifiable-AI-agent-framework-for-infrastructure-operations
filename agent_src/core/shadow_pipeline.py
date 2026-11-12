@@ -505,15 +505,3 @@ def run_shadow_if_enabled(
         collection["status"],
     )
     return result
-
-
-def __getattr__(name: str) -> Any:
-    if name in {"MOODLE_ALERT_RESOURCE_MAP", "RESOURCE_ALIASES"}:
-        import importlib
-
-        try:
-            mod = importlib.import_module("core.moodle.adapter")
-        except (ImportError, ModuleNotFoundError):
-            mod = importlib.import_module("core.moodle_adapter")
-        return getattr(mod, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

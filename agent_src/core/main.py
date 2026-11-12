@@ -185,6 +185,7 @@ def prepare_moodle_remediation(
             gate_actors=actors,
         )
     except (ValueError, OSError) as exc:
+        safe_action_notify.notify(safe_action_notify.format_prepare_unavailable(candidate_id))
         raise HTTPException(status_code=404, detail="fresh remediation candidate is unavailable") from exc
     preview = prepared.get("gate_preview") or {}
     checks = preview.get("checks")
