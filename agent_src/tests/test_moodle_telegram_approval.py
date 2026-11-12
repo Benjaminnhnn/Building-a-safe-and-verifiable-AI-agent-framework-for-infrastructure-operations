@@ -73,6 +73,13 @@ def test_plain_operator_message_approves(tmp_path, capsys) -> None:
     assert "Gửi approve trong nhóm" in client.texts[0]
 
 
+def test_isolated_lab_prompt_cannot_be_mistaken_for_live_moodle():
+    text = bridge._request_text({**PREPARED, "isolated_lab": True})
+    assert "LAB CÔ LẬP" in text
+    assert "không sửa Moodle/AWS" in text
+    assert "Khởi động lại Moodle web" not in text
+
+
 def test_old_plain_message_is_ignored(tmp_path, capsys) -> None:
     prepared = tmp_path / "prepared.json"
     prepared.write_text(json.dumps(PREPARED), encoding="utf-8")

@@ -58,11 +58,12 @@ def _request_text(prepared: dict, timeout_seconds: int = 0) -> str:
     action = request.get("action") or {}
     scenario = request.get("scenario_id")
     checks = (prepared.get("gate_preview") or {}).get("checks") or []
+    lab = prepared.get("isolated_lab") is True
     return "\n".join([
-        "🛡 SAFETY GATE: ĐẠT 8/8, CHỜ OPERATOR",
+        "🧪 LAB CÔ LẬP · SAFETY GATE: ĐẠT 8/8, CHỜ OPERATOR" if lab else "🛡 SAFETY GATE: ĐẠT 8/8, CHỜ OPERATOR",
         f"Kịch bản: {scenario}",
-        f"Hành động: {REMEDIATION_TEXT.get(scenario, request.get('catalog_action_id'))}",
-        f"Phạm vi: {request.get('target_scope') or 'chưa xác định'} · Tài nguyên: {action.get('target_resource_id') or 'chưa xác định'}",
+        "Hành động: sửa dịch vụ lab và cố ý dừng một phụ thuộc lab để kiểm thử; không sửa Moodle/AWS." if lab else f"Hành động: {REMEDIATION_TEXT.get(scenario, request.get('catalog_action_id'))}",
+        "Phạm vi: lab cô lập; catalog dùng để đánh giá chính sách." if lab else f"Phạm vi: {request.get('target_scope') or 'chưa xác định'} · Tài nguyên: {action.get('target_resource_id') or 'chưa xác định'}",
         *[f"{index}. ✓ {label}" for index, label in enumerate(GATE_CHECKS, 1) if index <= len(checks)],
         f"Request: {request.get('request_id')}",
         "Gửi approve trong nhóm để duyệt; gửi reject để dừng. Bạn cũng có thể Reply tin này.",

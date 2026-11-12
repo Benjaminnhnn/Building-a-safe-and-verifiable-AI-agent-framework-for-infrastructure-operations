@@ -25,6 +25,16 @@ esac
   echo "Set MOODLE_SAFE_EXECUTOR_CONFIRM=staging to authorize one staging drill." >&2
   exit 77
 }
+if [[ "${MOODLE_COLLATERAL_PROBE_TEST:-false}" == true ]]; then
+  [[ "$scenario" == NET-01 && "${MOODLE_COLLATERAL_TEST_CONFIRM:-}" == staging ]] || {
+    echo 'Collateral probe test requires NET-01 and MOODLE_COLLATERAL_TEST_CONFIRM=staging.' >&2
+    exit 64
+  }
+fi
+if [[ "${MOODLE_SAFETY_CHALLENGES:-false}" == true && "$scenario" != NET-01 ]]; then
+  echo 'Safety challenges currently require NET-01.' >&2
+  exit 64
+fi
 load_moodle_environment
 secrets_dir="$artifacts_dir/safe-executor"
 evidence_dir="${MOODLE_DRILL_EVIDENCE_DIR:-$artifacts_dir/moodle-safe-executor}"
@@ -33,10 +43,13 @@ run_id="$scenario-$(date -u +%Y%m%dT%H%M%SZ)"
 drill_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 evidence_file="$evidence_dir/$run_id.json"
 prepared_file="$evidence_dir/$run_id-prepared.json"
+challenge_file="$evidence_dir/$run_id-safety-challenges.json"
+ai_shadow_file="$evidence_dir/$run_id-ai-shadow-proposal.json"
 executor_approval_file="$evidence_dir/$run_id-executor-approval.json"
 execute_body_file="$evidence_dir/$run_id-execute-body.json"
 execute_result_file="$evidence_dir/$run_id-execute-result.json"
 verifier_file="$evidence_dir/$run_id-verifier.json"
+collateral_file="$evidence_dir/$run_id-verifier-collateral.json"
 verifier_attestation_file="$evidence_dir/$run_id-verifier-attestation.json"
 runtime_verification_file="$evidence_dir/$run_id-runtime-verification.json"
 audit_file="$evidence_dir/$run_id-audit.sqlite3"
@@ -101,10 +114,15 @@ rm -f "$operator_public_key"
 agent_live_enabled=false
 executor_live_enabled=false
 fault_injected=false
+related_fault_injected=false
 agent_tunnel_pid=""
 stage=preflight
 cleanup() {
   local cleanup_status=$?
+  if [[ "$related_fault_injected" == true ]]; then
+    "$script_dir/moodle-fault-reset.sh" CON-01 >/dev/null 2>&1 || cleanup_status=1
+    remove_scenario_marker CON-01 >/dev/null 2>&1 || cleanup_status=1
+  fi
   if [[ "$fault_injected" == true ]]; then
     "$script_dir/moodle-fault-reset.sh" "$scenario" >/dev/null 2>&1 || cleanup_status=1
     remove_scenario_marker "$scenario" >/dev/null 2>&1 || cleanup_status=1
@@ -139,13 +157,29 @@ remote moodle-app-b \
   "sudo -n test -r /opt/moodle/release/moodle-runtime.env && sudo -n docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml config --quiet"
 
 stage=preflight-kill-switches
-ssh -F "$ssh_config" -N -L 127.0.0.1:18000:127.0.0.1:8000 monitor-ai-01 &
-agent_tunnel_pid=$!
-for _ in {1..30}; do
-  if curl --fail --silent http://127.0.0.1:18000/health >/dev/null; then break; fi
-  sleep 1
-done
-curl --fail --silent http://127.0.0.1:18000/health \
+ensure_agent_tunnel() {
+  if [[ -n "$agent_tunnel_pid" ]] && kill -0 "$agent_tunnel_pid" 2>/dev/null && \
+      curl --fail --silent --max-time 5 http://127.0.0.1:18000/health >/dev/null; then
+    return 0
+  fi
+  if [[ -n "$agent_tunnel_pid" ]]; then
+    kill "$agent_tunnel_pid" >/dev/null 2>&1 || true
+    wait "$agent_tunnel_pid" 2>/dev/null || true
+  fi
+  ssh -F "$ssh_config" -o BatchMode=yes -o ExitOnForwardFailure=yes \
+    -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+    -N -L 127.0.0.1:18000:127.0.0.1:8000 monitor-ai-01 &
+  agent_tunnel_pid=$!
+  for _ in {1..30}; do
+    kill -0 "$agent_tunnel_pid" 2>/dev/null || break
+    if curl --fail --silent --max-time 5 http://127.0.0.1:18000/health >/dev/null; then return 0; fi
+    sleep 1
+  done
+  echo 'Cannot establish the Agent tunnel; stopping before execution.' >&2
+  return 1
+}
+ensure_agent_tunnel
+curl --fail --silent --max-time 5 http://127.0.0.1:18000/health \
   | jq -e '.safe_action_live_enabled == false and .approval_mode == "operator"' >/dev/null
 for key_name in approval-ed25519.pub verifier-ed25519.pub; do
   if [[ "$key_name" == approval-ed25519.pub ]]; then
@@ -170,6 +204,7 @@ SAFE_EXECUTOR_LIVE_ENABLED=true SAFE_EXECUTOR_LIVE_CONFIRM=staging \
 stage=enable-agent-switch
 agent_live_enabled=true
 MOODLE_SAFE_ACTION_LIVE_ENABLED=true MOODLE_SAFE_ACTION_LIVE_CONFIRM=staging \
+  MOODLE_AI_SHADOW_PROPOSALS_ENABLED="${MOODLE_AI_SHADOW_PROPOSAL:-false}" \
   bash "$script_dir/configure-moodle-monitoring.sh" >/dev/null
 
 curl --fail --silent http://127.0.0.1:18000/health >/dev/null
@@ -216,6 +251,28 @@ request_id="$(jq -r '.request.request_id' "$prepared_file")"
 idempotency_key="$(jq -r '.request.idempotency_key' "$prepared_file")"
 catalog_action_id="$(jq -r '.request.catalog_action_id' "$prepared_file")"
 
+if [[ "${MOODLE_SAFETY_CHALLENGES:-false}" == true ]]; then
+  stage=safety-challenges
+  curl --fail --silent --show-error \
+    -H "Authorization: Bearer $agent_token" \
+    -X POST "http://127.0.0.1:18000/api/moodle/remediation/$candidate_id/safety-challenges" \
+    > "$challenge_file"
+  jq -e --arg candidate "$candidate_id" \
+    '.candidate_id == $candidate and .execution_permitted == false and .telegram_delivered == true and .dangerous.decision == "DENY" and .policy_fault.decision == "DENY" and .reviewed.decision == "REQUIRE_APPROVAL" and .dangerous.dispatched == false and .policy_fault.dispatched == false' \
+    "$challenge_file" >/dev/null
+fi
+
+if [[ "${MOODLE_AI_SHADOW_PROPOSAL:-false}" == true ]]; then
+  stage=ai-shadow-proposal
+  curl --fail --silent --show-error \
+    -H "Authorization: Bearer $agent_token" \
+    -X POST "http://127.0.0.1:18000/api/moodle/remediation/$candidate_id/ai-shadow-proposal" \
+    > "$ai_shadow_file"
+  jq -e --arg candidate "$candidate_id" \
+    '.candidate_id == $candidate and .source == "model_generated" and .execution_permitted == false and .dispatched == false and .telegram_delivered == true and (.audit_event_hash | length) == 64' \
+    "$ai_shadow_file" >/dev/null
+fi
+
 stage=human-approval-telegram
 human_approval_file="$evidence_dir/$run_id-human-approval.json"
 if ! python3 "$script_dir/moodle-telegram-approval.py" approve \
@@ -228,6 +285,7 @@ jq -e --arg request "$request_id" '.decision == "approved" and .request_id == $r
 
 stage=wait-for-aws-session
 wait_for_aws_session
+ensure_agent_tunnel
 
 stage=operator-signature
 python3 "$script_dir/moodle-safe-approval.py" "$scenario" \
@@ -283,6 +341,66 @@ stage=export-audit-and-independent-verification
 wait_for_aws_session
 python3 "$script_dir/export-moodle-safe-action-audit.py" \
   --ssh-config "$ssh_config" --output "$audit_file" >/dev/null
+if [[ "${MOODLE_COLLATERAL_PROBE_TEST:-false}" == true ]]; then
+  stage=controlled-related-fault
+  # Use the reviewed CON-01 fixture after NET-01 recovery: one web node is
+  # deliberately stopped while the other serves traffic. This is independent
+  # fault injection, never a claim that the Executor caused the damage.
+  related_fault_injected=true
+  MOODLE_FAULT_CONFIRM=staging "$script_dir/moodle-fault-inject.sh" CON-01 >/dev/null
+  wait_for_aws_session
+  wait_for_alb_healthy 1
+  run_synthetic_once >/dev/null
+  wait_for_prometheus_query 'moodle_synthetic_success{job="moodle_synthetic",instance="monitor-ai-01"} == 1' 180
+  active_alert=active
+  for _ in {1..36}; do
+    active_alert="$(remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=ALERTS{alertname=\"$alert_name\",alertstate=\"firing\"}' http://127.0.0.1:9090/api/v1/query | jq -r 'if (.data.result | length) > 0 then \"active\" else \"clear\" end'")"
+    [[ "$active_alert" == clear ]] && break
+    sleep 5
+  done
+  [[ "$active_alert" == clear ]] || { echo 'Synthetic alert did not clear while one target remained healthy.' >&2; exit 1; }
+  collateral_health="$(curl --silent --output /dev/null --max-time 10 --write-out '%{http_code}' "$public_url/healthz.php" || true)"
+  PYTHONPATH="$script_dir/lib" python3 -c 'from telegram_client import notify; notify("🧪 STAGING NET-01: sau Executor đã chủ động dừng riêng web node B bằng fixture CON-01 để thử Verifier. Đây là lỗi có chủ đích, không phải bằng chứng Executor gây ra. Chưa RESOLVED.")' || true
+  set +e
+  AWS_PROFILE="${AWS_PROFILE:-target-account}" python3 "$script_dir/moodle-independent-verifier.py" \
+    --audit-db "$audit_file" --signing-key "$verifier_signing_key" \
+    --incident-id "$incident_id" --request-id "$request_id" \
+    --scenario-id "$scenario" --window-seconds 120 --interval-seconds 60 \
+    --telegram-progress > "$collateral_file"
+  collateral_rc=$?
+  set -e
+  # Never accept or submit the negative attestation as a successful recovery.
+  [[ "$collateral_rc" -eq 1 && "$collateral_health" == 200 ]] || {
+    echo 'Controlled collateral verifier did not return a valid negative result or health check was not 200.' >&2
+    exit 1
+  }
+  jq -e '.verdict == "not_resolved" and .resolution_eligible == false and
+    (.probe_samples | length == 3) and
+    all(.probe_samples[]; .checks["common_synthetic_transaction"] == true and .checks["both_alb_targets_healthy"] == false)' "$collateral_file" >/dev/null
+  curl --fail --silent --show-error -H "Authorization: Bearer $agent_token" \
+    "http://127.0.0.1:18000/api/moodle/incidents/$incident_id/requests/$request_id/status" \
+    > "$collateral_file.runtime-status.json"
+  jq -e --arg incident "$incident_id" --arg request "$request_id" \
+    '.status == "verifying" and .incident_id == $incident and .request_id == $request and .verification_event_id == null' \
+    "$collateral_file.runtime-status.json" >/dev/null
+  collateral_verdict="$(jq -r '.verification.verdict' "$collateral_file")"
+  PYTHONPATH="$script_dir/lib" python3 -c 'import sys; from telegram_client import notify; notify(f"🔎 NET-01 thử lỗi phụ có chủ đích: health HTTP 200; giao dịch chính đạt; một target không khỏe; Verifier {sys.argv[1]}, chưa RESOLVED. Đang reset fixture và kiểm tra lại.")' "$collateral_verdict" || true
+  stage=reset-controlled-related-fault
+  "$script_dir/moodle-fault-reset.sh" CON-01 >/dev/null
+  remove_scenario_marker CON-01
+  related_fault_injected=false
+  wait_for_aws_session
+  wait_for_alb_healthy 2
+  run_synthetic_once >/dev/null
+  "$script_dir/moodle-environment-baseline.sh" verify >/dev/null
+  active_alert=active
+  for _ in {1..20}; do
+    active_alert="$(remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=ALERTS{alertname=\"$alert_name\",alertstate=\"firing\"}' http://127.0.0.1:9090/api/v1/query | jq -r 'if (.data.result | length) > 0 then \"active\" else \"clear\" end'")"
+    [[ "$active_alert" == clear ]] && break
+    sleep 5
+  done
+  [[ "$active_alert" == clear ]] || { echo 'Alert did not clear after resetting the controlled related fault.' >&2; exit 1; }
+fi
 AWS_PROFILE="${AWS_PROFILE:-target-account}" python3 "$script_dir/moodle-independent-verifier.py" \
   --audit-db "$audit_file" --signing-key "$verifier_signing_key" \
   --incident-id "$incident_id" --request-id "$request_id" \
@@ -321,6 +439,19 @@ remote monitor-ai-01 \
 curl --fail --silent http://127.0.0.1:18000/health \
   | jq -e '.safe_action_live_enabled == false' >/dev/null
 
+safety_comparison='null'
+if [[ "${MOODLE_SAFETY_CHALLENGES:-false}" == true ]]; then
+  safety_comparison="$(jq -c '{mode,incident_id,candidate_id,dangerous,policy_fault,reviewed}' "$challenge_file")"
+fi
+ai_shadow_proposal='null'
+if [[ "${MOODLE_AI_SHADOW_PROPOSAL:-false}" == true ]]; then
+  ai_shadow_proposal="$(jq -c '{mode,source,model,incident_id,candidate_id,proposal,gate_decision,gate_reason,prompt_sha256,response_sha256,audit_event_id,audit_event_hash,dispatched,risk_adjudication}' "$ai_shadow_file")"
+fi
+controlled_related_fault='null'
+if [[ "${MOODLE_COLLATERAL_PROBE_TEST:-false}" == true ]]; then
+  controlled_related_fault="$(jq -c --arg health "$collateral_health" \
+    '{fault_source:"operator_injected_after_executor",health_only_http_status:$health,verdict:.verification.verdict,resolution_eligible,probe_samples,collateral_damage_demonstrated:(.verification.verdict == "collateral_damage")}' "$collateral_file")"
+fi
 jq -n \
   --arg run_id "$run_id" --arg scenario "$scenario" --arg alert "$alert_name" \
   --arg candidate_id "$candidate_id" --arg incident_id "$incident_id" \
@@ -331,7 +462,8 @@ jq -n \
   --slurpfile runtime "$runtime_verification_file" --slurpfile runtime_status "$runtime_verification_file.status.json" \
   --argjson stage_times "$stage_times" --arg health_only_http_status "$health_only_http_status" \
   --argjson contract_at_execute_end "$contract_at_execute_end" \
-  '{run_id:$run_id,stage_times:$stage_times,health_only_http_status:$health_only_http_status,contract_at_execute_end:$contract_at_execute_end,scenario_id:$scenario,status:"passed",evidence_class:"operator_approved_staging_drill",method:"agent_prepare_one_operator_approval_execute_signed_independent_verify",observed_alert:$alert,candidate_id:$candidate_id,incident_id:$incident_id,prepared_request:$prepared[0],human_approval:$human_approval[0],executor_approval:$executor_approval[0].approval,execution_receipt:$execution[0].result,verifier:$verifier[0],verifier_attestation:$verifier[0].attestation,runtime_persistence:$runtime[0],runtime_status:$runtime_status[0],probe_samples:$verifier[0].probe_samples,alert_resolved:"passed",reset:"safe_executor_receipt",baseline_after_reset:"passed",live_switch:"disabled_after_drill",completed_at:$completed_at}' \
+  --argjson safety_comparison "$safety_comparison" --argjson ai_shadow_proposal "$ai_shadow_proposal" --argjson controlled_related_fault "$controlled_related_fault" \
+  '{run_id:$run_id,stage_times:$stage_times,health_only_http_status:$health_only_http_status,contract_at_execute_end:$contract_at_execute_end,safety_comparison:$safety_comparison,ai_shadow_proposal:$ai_shadow_proposal,controlled_related_fault:$controlled_related_fault,scenario_id:$scenario,status:"passed",evidence_class:"operator_approved_staging_drill",method:"agent_prepare_one_operator_approval_execute_signed_independent_verify",observed_alert:$alert,candidate_id:$candidate_id,incident_id:$incident_id,prepared_request:$prepared[0],human_approval:$human_approval[0],executor_approval:$executor_approval[0].approval,execution_receipt:$execution[0].result,verifier:$verifier[0],verifier_attestation:$verifier[0].attestation,runtime_persistence:$runtime[0],runtime_status:$runtime_status[0],probe_samples:$verifier[0].probe_samples,alert_resolved:"passed",reset:"safe_executor_receipt",baseline_after_reset:"passed",live_switch:"disabled_after_drill",completed_at:$completed_at}' \
   > "$evidence_file"
 chmod 0600 "$evidence_file"
 python3 "$script_dir/moodle-drill-summary.py" "$evidence_file" || {

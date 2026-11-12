@@ -1,0 +1,107 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="app.diagrams.net" modified="2026-11-10T16:22:01.186016+00:00" agent="Codex" version="24.7.17" type="device">
+  <diagram id="monitor-alert-flow" name="Monitor alert flow">
+    <mxGraphModel dx="1680" dy="1030" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1680" pageHeight="1030" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="LUỒNG ALERT VÀ XÁC MINH KHÔI PHỤC • MOODLE STAGING" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#17365c;strokeColor=#17365c;strokeWidth=2;fontColor=#ffffff;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="120" y="20" width="1440" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="probes" value="Blackbox / synthetic&lt;br&gt;node probes A, B&lt;br&gt;RDS, ALB, SSO" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf3ff;strokeColor=#3568a5;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="60" y="130" width="230" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="prom" value="Prometheus&lt;br&gt;scrape + alert rules" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf3ff;strokeColor=#3568a5;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="370" y="130" width="220" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="am" value="Alertmanager&lt;br&gt;firing / resolved" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf3ff;strokeColor=#3568a5;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="670" y="130" width="220" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="webhook" value="Agent /webhook&lt;br&gt;Bearer auth + dedup" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf3ff;strokeColor=#3568a5;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="970" y="130" width="220" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="worker" value="Redis + Celery worker&lt;br&gt;process_alerts_task" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf3ff;strokeColor=#3568a5;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1270" y="130" width="260" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="investigate" value="Evidence investigation&lt;br&gt;rule + catalog candidate&lt;br&gt;không gọi AI để sửa" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf3ff;strokeColor=#3568a5;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1270" y="340" width="260" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="telegram_alert" value="Telegram: lỗi, nguyên nhân,&lt;br&gt;phương án ngắn gọn" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2d9;strokeColor=#bf861a;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="950" y="340" width="230" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="gate" value="Safety Gate&lt;br&gt;evidence, phạm vi,&lt;br&gt;allowlist, rollback" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8edff;strokeColor=#6255a9;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="650" y="340" width="230" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="operator" value="Telegram: Operator&lt;br&gt;chat approve + ký&lt;br&gt;đúng action/request" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2d9;strokeColor=#bf861a;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="350" y="340" width="230" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="deny" value="DENY / HUMAN_ONLY&lt;br&gt;Telegram báo lý do;&lt;br&gt;không dispatch" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe7e7;strokeColor=#b84d4d;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="70" y="340" width="230" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="executor" value="Safe Executor&lt;br&gt;kiểm chữ ký + forced command&lt;br&gt;ghi execution receipt" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e7f7eb;strokeColor=#388050;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="350" y="610" width="230" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="verifier" value="Independent Verifier&lt;br&gt;3 mẫu / ≥120 giây&lt;br&gt;allowed + forbidden + related" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e7f7eb;strokeColor=#388050;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="670" y="610" width="250" height="125" as="geometry" />
+        </mxCell>
+        <mxCell id="runtime" value="Agent nhận attestation ký&lt;br&gt;chỉ lúc đạt mới RESOLVED" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e7f7eb;strokeColor=#388050;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="610" width="250" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="telegram_final" value="Telegram: kết quả cuối&lt;br&gt;RTO / RPO, ảnh hưởng phụ" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2d9;strokeColor=#bf861a;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1350" y="610" width="230" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="side" value="Alertmanager hết firing có thể đến trước Verifier.&lt;br&gt;Đây chưa phải RESOLVED; alert độc lập vẫn được gửi." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4f5f7;strokeColor=#8a94a6;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="70" y="840" width="900" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="health" value="HTTP 200 vẫn có thể che node B hỏng.&lt;br&gt;Verifier cần cả target A/B và probe liên quan." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4f5f7;strokeColor=#8a94a6;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="840" width="550" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" value="metrics" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#426b9b;strokeWidth=2;fontSize=12;fontColor=#26344a;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="probes" target="prom">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="rule firing" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#426b9b;strokeWidth=2;fontSize=12;fontColor=#26344a;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="prom" target="am">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="POST alert" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#426b9b;strokeWidth=2;fontSize=12;fontColor=#26344a;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="am" target="webhook">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="enqueue" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#426b9b;strokeWidth=2;fontSize=12;fontColor=#26344a;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="webhook" target="worker">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#426b9b;strokeWidth=2;fontSize=12;fontColor=#26344a;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="worker" target="investigate">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="thông báo" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#426b9b;strokeWidth=2;fontSize=12;fontColor=#26344a;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="investigate" target="telegram_alert">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="prepare" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#426b9b;strokeWidth=2;fontSize=12;fontColor=#26344a;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="telegram_alert" target="gate">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" value="REQUIRE_APPROVAL" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#426b9b;strokeWidth=2;fontSize=12;fontColor=#26344a;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="gate" target="operator">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" value="DENY / HUMAN_ONLY" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#b84d4d;strokeWidth=2;fontSize=12;fontColor=#26344a;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="gate" target="deny">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" value="chữ ký hợp lệ" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#426b9b;strokeWidth=2;fontSize=12;fontColor=#26344a;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="operator" target="executor">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" value="receipt" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#426b9b;strokeWidth=2;fontSize=12;fontColor=#26344a;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="executor" target="verifier">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" value="attestation đạt" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#426b9b;strokeWidth=2;fontSize=12;fontColor=#26344a;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="verifier" target="runtime">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" value="tổng kết" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#426b9b;strokeWidth=2;fontSize=12;fontColor=#26344a;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="runtime" target="telegram_final">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" value="resolved event" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#8a94a6;strokeWidth=2;fontSize=12;fontColor=#26344a;labelBackgroundColor=#ffffff;dashed=1;dashPattern=5 5;" edge="1" parent="1" source="am" target="side">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" value="related probe fail" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#8a94a6;strokeWidth=2;fontSize=12;fontColor=#26344a;labelBackgroundColor=#ffffff;dashed=1;dashPattern=5 5;" edge="1" parent="1" source="verifier" target="health">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

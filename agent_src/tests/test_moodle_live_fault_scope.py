@@ -124,6 +124,44 @@ def test_safe_executor_drill_uses_agent_handoff_and_independent_verification() -
     assert '"resolved"' in source
 
 
+def test_controlled_collateral_test_requires_both_scope_and_explicit_confirmation() -> None:
+    result = _run_script(EXECUTOR_DRILL, 'NET-01', {
+        'MOODLE_SAFE_EXECUTOR_CONFIRM': 'staging', 'MOODLE_COLLATERAL_PROBE_TEST': 'true',
+        'MOODLE_COLLATERAL_TEST_CONFIRM': '',
+    })
+    assert result.returncode == 64 and 'MOODLE_COLLATERAL_TEST_CONFIRM=staging' in result.stderr
+    result = _run_script(EXECUTOR_DRILL, 'DB-01', {
+        'MOODLE_SAFE_EXECUTOR_CONFIRM': 'staging', 'MOODLE_COLLATERAL_PROBE_TEST': 'true',
+        'MOODLE_COLLATERAL_TEST_CONFIRM': 'staging',
+    })
+    assert result.returncode == 64
+
+
+def test_controlled_safety_comparison_rejects_other_scenarios_before_access() -> None:
+    result = _run_script(EXECUTOR_DRILL, 'DB-01', {
+        'MOODLE_SAFE_EXECUTOR_CONFIRM': 'staging', 'MOODLE_SAFETY_CHALLENGES': 'true',
+    })
+    assert result.returncode == 64 and 'require NET-01' in result.stderr
+
+
+def test_controlled_related_outage_is_owned_reset_and_never_submitted_as_recovery() -> None:
+    source = EXECUTOR_DRILL.read_text(encoding='utf-8')
+    assert 'MOODLE_FAULT_CONFIRM=staging "$script_dir/moodle-fault-inject.sh" CON-01' in source
+    assert source.index('related_fault_injected=true') < source.index('moodle-fault-inject.sh" CON-01')
+    assert '"$script_dir/moodle-fault-reset.sh" CON-01' in source
+    assert 'remove_scenario_marker CON-01' in source
+    assert '.checks["common_synthetic_transaction"] == true' in source
+    assert '.checks["both_alb_targets_healthy"] == false' in source
+    assert '--data-binary "@$collateral_file"' not in source
+
+
+def test_agent_tunnel_is_rechecked_after_unbounded_operator_approval():
+    source = EXECUTOR_DRILL.read_text(encoding='utf-8')
+    assert '-o ExitOnForwardFailure=yes' in source and '-o ServerAliveInterval=30' in source
+    wait_stage = source.split('stage=wait-for-aws-session', 1)[1].split('stage=operator-signature', 1)[0]
+    assert wait_stage.index('wait_for_aws_session') < wait_stage.index('ensure_agent_tunnel')
+
+
 def test_obsolete_unsafe_fault_implementations_are_absent() -> None:
     source = INJECTOR.read_text(encoding="utf-8") + RESET.read_text(encoding="utf-8")
     for obsolete in (

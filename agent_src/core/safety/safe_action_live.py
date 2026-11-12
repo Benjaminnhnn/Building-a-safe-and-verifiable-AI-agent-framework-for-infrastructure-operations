@@ -144,7 +144,17 @@ class SafeActionLiveWorkflow:
         self._audit.append(
             incident_id=incident_id,
             event_type="live_gate",
-            payload={**verdict.model_dump(), "request_id": request.request_id},
+            payload={
+                **verdict.model_dump(),
+                "request_id": request.request_id,
+                "scenario_id": request.scenario_id,
+                "catalog_action_id": request.catalog_action_id,
+                "target_scope": request.target_scope,
+                "target_resource_id": request.action.target_resource_id,
+                "environment": request.action.environment.value,
+                "evidence_refs": list(request.action.evidence_refs),
+                "diagnosis_confidence": confidence,
+            },
         )
         if verdict.decision != "ALLOW":
             return self._not_executed(

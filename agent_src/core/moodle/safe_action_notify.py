@@ -98,6 +98,42 @@ def format_alert_resolved(alert_name: str, instance: str) -> str:
     )
 
 
+def format_safety_challenges(result: dict[str, Any]) -> str:
+    """Clearly distinguish real incident input from isolated safety comparisons."""
+    dangerous = result['dangerous']
+    faulty = result['policy_fault']
+    reviewed = result['reviewed']
+    scenario = str(result.get('scenario_id') or '?')
+    guidance = _REMEDIATION_TEXT.get(scenario, 'Kiểm tra bằng chứng, catalog và phương án rollback.')
+    return '\n'.join([
+        f"🧪 SO SÁNH SAFETY GATE · {scenario} · sự cố staging thật",
+        f"Sự cố: {_short(result.get('incident_id'), 32)} · Candidate: {_short(result.get('candidate_id'), 32)}",
+        f"Đề xuất kiểm thử cố định: {dangerous['action']} → {dangerous['decision']} · không thực thi.",
+        f"Lý do Gate: {str(dangerous.get('reason') or 'không đạt chính sách')[:180]}",
+        f"Catalog rỗng cố ý: {faulty['decision']} · Gate đối chứng riêng, không thay policy đang chạy.",
+        f"Catalog chuẩn: {reviewed['decision']} · {reviewed['action']} / {reviewed['scope']}.",
+        f"Admin kiểm tra: {guidance}",
+        'Đề xuất nguy hiểm do bài thử tạo, không phải AI; so sánh không mở phê duyệt hay gọi Executor.',
+        'Hành động thật vẫn cần Operator duyệt và Verifier xác nhận sau thực thi.',
+    ])
+
+
+def format_ai_shadow_proposal(result: dict[str, Any]) -> str:
+    """Report actual model provenance and Gate verdict without implying dispatch."""
+    proposal = result.get("proposal") or {}
+    def one_line(value: Any, limit: int = 180) -> str:
+        return " ".join(str(value or "?").split())[:limit]
+    return "\n".join([
+        f"🤖 AI SHADOW · {one_line(result.get('scenario_id'), 24)} · staging",
+        f"Mô hình: {one_line(result.get('model'), 60)} · đề xuất: {one_line(proposal.get('action_id'))}",
+        f"Phạm vi AI chọn: {one_line(proposal.get('target_scope'))}",
+        f"Lý do AI: {one_line(proposal.get('rationale'), 240)}",
+        f"Safety Gate đang vận hành: {one_line(result.get('gate_decision'), 32)} · {one_line(result.get('gate_reason'))}",
+        "Chỉ đánh giá: không cấp quyền, không gọi Executor. Mức rủi ro cần người độc lập xác nhận.",
+        f"Bằng chứng audit: {one_line(result.get('audit_event_id'), 40)}",
+    ])
+
+
 def format_prepare(candidate_id: str, prepared: dict[str, Any]) -> str:
     """Step 4: concise result of the reviewed Safety Gate checks."""
     request = prepared.get("request") or {}
@@ -106,7 +142,18 @@ def format_prepare(candidate_id: str, prepared: dict[str, Any]) -> str:
     scenario = str(request.get("scenario_id") or "?")
     lines = [f"🛡 ④ SAFETY GATE · {scenario}"]
     if preview.get("decision") == "DENY":
-        lines += [f"Kết quả: CHẶN · {str(preview.get('reason') or 'không đạt chính sách')[:180]}", "Không mở phê duyệt."]
+        lines += [
+            f"Kết quả: CHẶN · {str(preview.get('reason') or 'không đạt chính sách')[:180]}",
+            f"Hành động: {_short(request.get('catalog_action_id'), 90)}",
+            f"Phạm vi: {_short(request.get('target_scope'), 90)} · Đích: {_short(action.get('target_resource_id'), 90)}",
+            f"Sự cố: {_short(prepared.get('incident_id'), 32)} · Candidate: {_short(candidate_id, 32)}",
+            "Không thực thi; không mở phê duyệt cho yêu cầu này.",
+            "Admin: kiểm tra bằng chứng mới, phạm vi, catalog và rollback; không nới chính sách chỉ để vượt Gate.",
+        ]
+        alternative = _REMEDIATION_TEXT.get(scenario)
+        if alternative:
+            lines.append(f"Hướng kiểm tra theo runbook {scenario}: {alternative}")
+        lines.append("Chỉ chọn phương án phù hợp bằng chứng; tạo yêu cầu mới để Gate kiểm tra lại và Operator duyệt.")
         return "\n".join(lines)
     checks = preview.get("checks") or []
     if (preview.get("decision") != "REQUIRE_APPROVAL" or not isinstance(checks, list)

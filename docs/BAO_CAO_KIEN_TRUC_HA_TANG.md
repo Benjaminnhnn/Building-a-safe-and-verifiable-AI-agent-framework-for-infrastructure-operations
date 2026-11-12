@@ -55,8 +55,8 @@ tài nguyên cloud, Ansible chỉ lo cấu hình host.
 
 ## 2. Kiến trúc tổng thể
 
-Sơ đồ chuẩn: [`diagram/moodle-aiops-alb-rds-efs-redis.drawio`](../diagram/moodle-aiops-alb-rds-efs-redis.drawio).
-Tên file giữ "redis" vì lý do lịch sử; Redis **không** nằm trên đường dữ liệu của Moodle.
+Sơ đồ hạ tầng: [`diagram/aws-moodle-current-topology.drawio`](../diagram/aws-moodle-current-topology.drawio).
+Redis trên máy monitoring phục vụ AI Agent, **không** nằm trên đường dữ liệu của Moodle.
 
 ```text
 Internet (người dùng)

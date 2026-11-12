@@ -922,6 +922,7 @@
                 AIOPS_SAFE_ACTION_AUDIT_DB: /app/data/safe_action_audit.sqlite3
                 AIOPS_VERIFIER_PUBLIC_KEY_FILE: /run/secrets/verifier_public_key
                 AIOPS_SAFE_ACTION_LIVE_ENABLED: "{{ moodle_safe_action_live_enabled | default(false) | bool | lower }}"
+                AIOPS_AI_SHADOW_PROPOSALS_ENABLED: "{{ moodle_ai_shadow_proposals_enabled | default(false) | bool | lower }}"
                 SAFE_EXECUTOR_URL: http://host.docker.internal:8765
                 SAFE_EXECUTOR_HMAC_KEY_FILE: /run/secrets/safe_executor_hmac_key
                 PYTHONUNBUFFERED: "1"

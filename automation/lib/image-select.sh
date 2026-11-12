@@ -7,17 +7,19 @@
 # image may not have passed CI. Ask the registry instead of guessing from git.
 
 # pick_image <package> <source dir>
-#   Print the newest tag that exists on GHCR, is an ancestor of origin/develop,
-#   and has the same <source dir> tree as origin/develop. Prints nothing if none.
+#   Print the newest tag that exists on GHCR, is an ancestor of develop's
+#   upstream branch, and has the same <source dir> tree as that branch.
 #   ${t} is braced because zsh treats "$t:a..." as a path modifier.
 pick_image() {
-  local pkg="$1" dir="$2" token want t best=""
-  git fetch -q origin
+  local pkg="$1" dir="$2" token want t best="" upstream remote
+  upstream="$(git rev-parse --abbrev-ref 'develop@{upstream}' 2>/dev/null)" || return 2
+  remote="${upstream%%/*}"
+  git fetch -q "$remote" || return 2
   token="$(curl -s "https://ghcr.io/token?scope=repository:benjaminnhnn/${pkg}:pull" | jq -r .token)"
-  want="$(git rev-parse "origin/develop:${dir}")"
+  want="$(git rev-parse "${upstream}:${dir}")" || return 2
   for t in $(curl -s -H "Authorization: Bearer $token" "https://ghcr.io/v2/benjaminnhnn/${pkg}/tags/list" | jq -r '.tags[]'); do
     git cat-file -e "${t}^{commit}" 2>/dev/null || continue
-    git merge-base --is-ancestor "${t}" origin/develop || continue
+    git merge-base --is-ancestor "${t}" "$upstream" || continue
     [ "$(git rev-parse "${t}:${dir}")" = "$want" ] || continue
     if [ -z "$best" ] || git merge-base --is-ancestor "$best" "${t}"; then best="${t}"; fi
   done

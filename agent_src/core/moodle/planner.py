@@ -303,6 +303,16 @@ def plan_moodle_s3_3_remediation(
         evidence_ids.update(sample[1] for sample in samples.values())
         return True
 
+    def matches_one_healthy(query_id: str) -> bool:
+        # Blackbox exporter instance names depend on deployment. The reviewed
+        # Prometheus query scopes the job/probe; accept exactly one healthy
+        # sample and retain its original instance and evidence identity.
+        samples = rows.get(query_id, {})
+        if len(samples) != 1 or next(iter(samples.values()))[0] != 1.0:
+            return False
+        evidence_ids.update(sample[1] for sample in samples.values())
+        return True
+
     candidates: list[str] = []
     if alert_name == _S3_3_REMEDIATIONS["DB-01"][0] and (
         matches("moodle_node_rds_tcp_success", {"moodle-app-a": 0.0, "moodle-app-b": 0.0})
@@ -326,8 +336,8 @@ def plan_moodle_s3_3_remediation(
     if alert_name == _S3_3_REMEDIATIONS["NET-01"][0]:
         deps_healthy = (
             matches("moodle_synthetic_success", {"monitor-ai-01": 0.0})
-            and matches("moodle_rds_tcp_probe", {"monitor-ai-01": 1.0})
-            and matches("moodle_public_probe", {"monitor-ai-01": 1.0})
+            and matches_one_healthy("moodle_rds_tcp_probe")
+            and matches_one_healthy("moodle_public_probe")
             and matches("moodle_efs_mount", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
         )
         if deps_healthy and matches("moodle_fault_net01_hosts_override", {"moodle-app-a": 1.0, "moodle-app-b": 1.0}):
