@@ -11,6 +11,23 @@ ssh_config="$artifacts_dir/moodle-ssh.config"
 fault_artifacts="$artifacts_dir/moodle-faults"
 hosts=(moodle-app-a moodle-app-b)
 
+# Trust the Terraform staging resource identity, not the public URL prefix:
+# HTTPS staging may use a reviewed custom hostname instead of the ALB DNS name.
+validate_staging_application() {
+  local application_json="$1"
+  jq -e '
+    (.alb_arn | test("^arn:aws:elasticloadbalancing:[a-z0-9-]+:[0-9]{12}:loadbalancer/app/moodle-staging-alb/[0-9a-f]+$")) and
+    (.target_group_arn | test("^arn:aws:elasticloadbalancing:[a-z0-9-]+:[0-9]{12}:targetgroup/moodle-staging-tg/[0-9a-f]+$")) and
+    (.url | test("^https?://[^/]+/?$")) and
+    (.legacy_demo_enabled == false) and
+    (.nodes.a.id | test("^i-[0-9a-f]+$")) and
+    (.nodes.b.id | test("^i-[0-9a-f]+$"))
+  ' <<<"$application_json" >/dev/null || {
+    echo "Refusing operation: Terraform output is not the expected Moodle staging application." >&2
+    return 77
+  }
+}
+
 require_commands() {
   local command_name
   for command_name in aws curl jq ssh terraform; do
@@ -35,14 +52,7 @@ load_moodle_environment() {
   target_group_arn="$(jq -r '.target_group_arn' <<<"$application_json")"
   region="$(jq -r '.alb_arn | split(":")[3]' <<<"$application_json")"
   moodledata_path="$(jq -r '.host_mount_path' <<<"$filesystem_json")"
-  [[ "$public_url" == http://moodle-staging-* || "$public_url" == https://moodle-staging-* ]] || {
-    echo "Refusing fault operation outside the Moodle staging URL: $public_url" >&2
-    exit 77
-  }
-  [[ "$(jq -r '.legacy_demo_enabled' <<<"$application_json")" == false ]] || {
-    echo "Refusing fault operation while the legacy demo is enabled." >&2
-    exit 77
-  }
+  validate_staging_application "$application_json" || exit 77
   umask 077
   mkdir -p "$fault_artifacts"
 }

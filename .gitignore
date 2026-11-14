@@ -60,6 +60,7 @@ env/
 # Runtime vector database (recreated at startup)
 agent_src/vector_db/
 /vector_db/
+evaluation/aihs/.artifacts/
 agent_src/data/*.db*
 
 # VS Code & IDE

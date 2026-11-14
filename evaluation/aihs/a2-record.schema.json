@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AIHS A2 redacted incident/action audit record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["record_id", "incident_group_id", "session_group_id", "scenario_code", "provenance", "timeline", "pre_decision", "proposal", "post_decision", "outcome", "training_eligible", "exclusion_reasons"],
+  "properties": {
+    "record_id": {"type": "string", "pattern": "^a2-[0-9]{4}$"},
+    "incident_group_id": {"type": "string", "pattern": "^g[0-9]{4}$"},
+    "session_group_id": {"type": "string", "pattern": "^s[0-9]{4}$"},
+    "scenario_code": {"type": "string", "pattern": "^[A-Z]{2,3}-[0-9]{2}$", "description": "Audit metadata only; forbidden as a model feature."},
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["evidence_mode", "source_sha256", "historical_code_version"],
+      "properties": {
+        "evidence_mode": {"enum": ["historical_live_staging", "lab", "offline_replay", "synthetic"]},
+        "source_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "historical_code_version": {"type": "string"}
+      }
+    },
+    "timeline": {
+      "type": "object", "additionalProperties": false,
+      "required": ["detected_at", "decision_at", "executed_at", "verified_at"],
+      "properties": {
+        "detected_at": {"type": ["string", "null"], "format": "date-time"},
+        "decision_at": {"type": ["string", "null"], "format": "date-time"},
+        "executed_at": {"type": ["string", "null"], "format": "date-time"},
+        "verified_at": {"type": ["string", "null"], "format": "date-time"}
+      }
+    },
+    "pre_decision": {
+      "type": "object", "additionalProperties": false,
+      "required": ["snapshot_at", "feature_status", "evidence_ref_hashes", "features"],
+      "properties": {
+        "snapshot_at": {"type": ["string", "null"], "format": "date-time"},
+        "feature_status": {"enum": ["verified_predecision", "missing_predecision_snapshot", "invalid_or_late_snapshot"]},
+        "evidence_ref_hashes": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "uniqueItems": true},
+        "features": {"type": "object", "additionalProperties": {"type": ["number", "boolean", "null"]}}
+      }
+    },
+    "proposal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source", "action_id", "model_version"],
+      "properties": {
+        "source": {"enum": ["reviewed_catalog_plan", "gemini_shadow", "aihs", "other"]},
+        "action_id": {"type": ["string", "null"], "pattern": "^[A-Za-z_]{1,64}$"},
+        "model_version": {"type": ["string", "null"]}
+      }
+    },
+    "post_decision": {
+      "type": "object", "additionalProperties": false,
+      "required": ["gate_decision", "operator_approved", "executed_action_id", "receipt_status", "verifier_verdict", "runtime_status"],
+      "properties": {
+        "gate_decision": {"type": ["string", "null"], "enum": ["ALLOW", "DENY", "REQUIRE_APPROVAL", null]},
+        "operator_approved": {"type": "boolean"},
+        "executed_action_id": {"type": ["string", "null"], "pattern": "^[A-Za-z_]{1,64}$"},
+        "receipt_status": {"type": ["string", "null"]},
+        "verifier_verdict": {"type": ["string", "null"]},
+        "runtime_status": {"type": ["string", "null"]}
+      }
+    },
+    "outcome": {"enum": ["success", "failure", "not_executed", "denied", "timeout", "missing_evidence"]},
+    "training_eligible": {"type": "boolean"},
+    "exclusion_reasons": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "mapping_version": "aihs-moodle-unreviewed-v1",
+  "environment": "staging",
+  "review_status": "no_approved_action_mapping",
+  "actions": [
+    {
+      "aihs_action": "NOP",
+      "status": "unmapped",
+      "catalog_action_id": null,
+      "reason": "Waiting and observing a server is not equivalent to a Moodle repair action. A read-only probe needs a separate reviewed observation contract."
+    },
+    {
+      "aihs_action": "MSR",
+      "status": "unmapped",
+      "catalog_action_id": null,
+      "reason": "Restarting an Alibaba server management service does not identify which Moodle service or node should be restarted."
+    },
+    {
+      "aihs_action": "ER",
+      "status": "unmapped",
+      "catalog_action_id": null,
+      "reason": "Runtime environment reinstallation has no reviewed Moodle staging equivalent or rollback."
+    },
+    {
+      "aihs_action": "RB",
+      "status": "unmapped",
+      "catalog_action_id": null,
+      "reason": "Server reboot with service migration is not represented by the Moodle catalog."
+    },
+    {
+      "aihs_action": "RI",
+      "status": "unmapped",
+      "catalog_action_id": null,
+      "reason": "Server re-imaging with migration has no approved Moodle target, scope, rollback, or verifier contract."
+    },
+    {
+      "aihs_action": "RMA",
+      "status": "human_only",
+      "catalog_action_id": null,
+      "reason": "Hardware repair ticket requires an operator; no automated Moodle executor action is appropriate."
+    }
+  ]
+}

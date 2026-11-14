@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "stage": "A1.2_prototype_reproduction",
+  "run_id": "20261114T095639Z",
+  "source_commit": "07314287ca0858b9a7d8dba951c96394487e2be2",
+  "environment": {
+    "python": "3.12.3",
+    "requirements_file": "evaluation/aihs/requirements-a1.txt",
+    "platform": "Linux x86_64"
+  },
+  "inputs": {
+    "bundled_dataset_rows": 500,
+    "bundled_dataset_sha256": "5b4c69b35de32a1890b2eb5ac9bca039c2f6bd60d0cf27683c6cd9f91a1eccb1",
+    "generator_seed_python_random": 2020,
+    "lda_random_state": null,
+    "lightgbm_random_state": 2020
+  },
+  "runs": {
+    "pretrained_api": {
+      "command": "/home/hoang_viet/multi-agent/evaluation/aihs/.artifacts/venv/bin/python AIHS_api.py",
+      "working_copy": "pretrained",
+      "exit_code": 0,
+      "elapsed_seconds": 4.53,
+      "max_rss_kb": 198568,
+      "stdout_sha256": "50c0ffe2cc404f106aebdb74cba040f9853ccba33bcf6cb4cdf4755da1db5f14",
+      "stderr_sha256": "bb066570b721093838d3ed09988d544c1b9b21e5e8999767374b9f57f08c05c0",
+      "stdout_path_local": "evaluation/aihs/.artifacts/runs/20261114T095639Z/pretrained.stdout",
+      "stderr_path_local": "evaluation/aihs/.artifacts/runs/20261114T095639Z/pretrained.stderr",
+      "sample_stdout": "{'hostname': '12x8dj02', 'timestamp': 12345, 'action': ['RI']}"
+    },
+    "generator": {
+      "command": "/home/hoang_viet/multi-agent/evaluation/aihs/.artifacts/venv/bin/python DataGenerator.py",
+      "working_copy": "generated",
+      "exit_code": 0,
+      "elapsed_seconds": 0.44,
+      "max_rss_kb": 72168,
+      "stdout_sha256": "3b932f3fa6a65f8e472129fca6a904cd9a42021e8ac9e5104316102616778fc6",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path_local": "evaluation/aihs/.artifacts/runs/20261114T095639Z/generator.stdout",
+      "stderr_path_local": "evaluation/aihs/.artifacts/runs/20261114T095639Z/generator.stderr"
+    },
+    "training": {
+      "command": "/home/hoang_viet/multi-agent/evaluation/aihs/.artifacts/venv/bin/python AIHS_Training.py",
+      "working_copy": "generated",
+      "exit_code": 0,
+      "elapsed_seconds": 38.06,
+      "max_rss_kb": 1208904,
+      "stdout_sha256": "b5bf38d4e3bf41c42f6b40b0209808831b1eeaade3cb768b1e8f4570f904acd7",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path_local": "evaluation/aihs/.artifacts/runs/20261114T095639Z/training.stdout",
+      "stderr_path_local": "evaluation/aihs/.artifacts/runs/20261114T095639Z/training.stderr",
+      "lightgbm_no_positive_split_warnings": 24000
+    },
+    "retrained_api": {
+      "command": "/home/hoang_viet/multi-agent/evaluation/aihs/.artifacts/venv/bin/python AIHS_api.py",
+      "working_copy": "generated",
+      "exit_code": 0,
+      "elapsed_seconds": 8.3,
+      "max_rss_kb": 195112,
+      "stdout_sha256": "50c0ffe2cc404f106aebdb74cba040f9853ccba33bcf6cb4cdf4755da1db5f14",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path_local": "evaluation/aihs/.artifacts/runs/20261114T095639Z/retrained_api.stdout",
+      "stderr_path_local": "evaluation/aihs/.artifacts/runs/20261114T095639Z/retrained_api.stderr",
+      "sample_stdout": "{'hostname': '12x8dj02', 'timestamp': 12345, 'action': ['RI']}"
+    },
+    "training_repeat": {
+      "command": "/home/hoang_viet/multi-agent/evaluation/aihs/.artifacts/venv/bin/python AIHS_Training.py",
+      "working_copy": "original",
+      "exit_code": 0,
+      "elapsed_seconds": 41.67,
+      "max_rss_kb": 1208504,
+      "stdout_sha256": "a7ba63228be04e3cd8b8412606900ec19fe9fb3055ab1cbc4d071b20664974b0",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path_local": "evaluation/aihs/.artifacts/runs/20261114T095639Z/training_repeat.stdout",
+      "stderr_path_local": "evaluation/aihs/.artifacts/runs/20261114T095639Z/training_repeat.stderr",
+      "lightgbm_no_positive_split_warnings": 24000
+    },
+    "repeat_api": {
+      "command": "/home/hoang_viet/multi-agent/evaluation/aihs/.artifacts/venv/bin/python AIHS_api.py",
+      "working_copy": "original",
+      "exit_code": 0,
+      "elapsed_seconds": 4.76,
+      "max_rss_kb": 195228,
+      "stdout_sha256": "50c0ffe2cc404f106aebdb74cba040f9853ccba33bcf6cb4cdf4755da1db5f14",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path_local": "evaluation/aihs/.artifacts/runs/20261114T095639Z/repeat_api.stdout",
+      "stderr_path_local": "evaluation/aihs/.artifacts/runs/20261114T095639Z/repeat_api.stderr",
+      "sample_stdout": "{'hostname': '12x8dj02', 'timestamp': 12345, 'action': ['RI']}"
+    },
+    "inference_compare": {
+      "command": "batch inference on 500 bundled rows; script recorded in report",
+      "working_copy": "generated + original",
+      "exit_code": 0,
+      "elapsed_seconds": 10.55,
+      "max_rss_kb": 212768,
+      "stdout_sha256": "2d992ff6362b50f1b4f1afae04b1246213ac03a32b82ec3e92933ee29140f2de",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path_local": "evaluation/aihs/.artifacts/runs/20261114T095639Z/inference_compare.stdout",
+      "stderr_path_local": "evaluation/aihs/.artifacts/runs/20261114T095639Z/inference_compare.stderr"
+    }
+  },
+  "observations": {
+    "generator_output_sha256": "5b4c69b35de32a1890b2eb5ac9bca039c2f6bd60d0cf27683c6cd9f91a1eccb1",
+    "generator_matches_bundled_csv": true,
+    "sample_action_matches_readme": true,
+    "pretrained_pickle_sklearn_version_warning": {
+      "serialized": "0.24.1",
+      "runtime": "1.5.2"
+    },
+    "batch_rows": 500,
+    "predictor_agreement_rows": 500,
+    "controller_agreement_rows": 500,
+    "batch_final_action_counts": {
+      "RI": 51,
+      "MSR": 37,
+      "RMA": 47,
+      "RB": 50,
+      "ER": 45,
+      "NOP": 30,
+      "call human": 240
+    },
+    "lda_components_identical_across_training_runs": false,
+    "model_files_identical_across_training_runs": false,
+    "model_hashes": {
+      "generated": {
+        "controller.pkl": "7ef9d03af6f96c40233f30e43ab07eaeda7cf2e54165713cfb42547c65a264c2",
+        "mapper.pkl": "4261655356ccc43ebaf00cf55b49621f34318155850eccc0ece2d1cf13528ebb",
+        "predictor.pkl": "e7df2bba7148e28091696c4a9efaa3e98dea500f220c33943c5042cf85b28d13"
+      },
+      "original": {
+        "controller.pkl": "dbcd56b40c7065dc193e781fb4e7292783f1a6e17c0a3e6c0deaa4bf003270aa",
+        "mapper.pkl": "5a0ccdaf9ff5466ff4cba68b5a39f3d4256bdf673578b78ebbff40f6de8eb067",
+        "predictor.pkl": "f42d491e9e12612a5ed496259c8c986bdd4f2ec324f7f2e201b8624473c175f1"
+      }
+    },
+    "validation_scope": "in-sample synthetic rows, not held-out recovery efficacy",
+    "reproduction_conclusion": "README workflow and sample output reproduced locally; trained model bytes not reproduced; production AIHS results not reproduced"
+  }
+}

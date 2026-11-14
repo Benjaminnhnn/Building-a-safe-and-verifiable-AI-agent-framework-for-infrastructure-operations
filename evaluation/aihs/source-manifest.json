@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "stage": "A1.1_source_inventory",
+  "retrieved_on": "2026-11-14",
+  "source": {
+    "repository": "https://github.com/alibaba-edu/dcbrain",
+    "subdirectory": "AIHS_prototype",
+    "commit": "07314287ca0858b9a7d8dba951c96394487e2be2",
+    "branch_at_inventory": "master",
+    "commit_timestamp_utc": "2022-06-21T05:12:17Z",
+    "archive_url": "https://codeload.github.com/alibaba-edu/dcbrain/tar.gz/07314287ca0858b9a7d8dba951c96394487e2be2",
+    "archive": {
+      "path": "evaluation/aihs/.artifacts/dcbrain-07314287.tar.gz",
+      "bytes": 35327362,
+      "sha256": "6a90744d617b81484dc977e05fc612de00b8375a05070c3dfa18fbb9e4edc6ff"
+    },
+    "license": "Apache-2.0",
+    "license_file": "LICENSE",
+    "files": [
+      {
+        "path": "LICENSE",
+        "bytes": 11357,
+        "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+      },
+      {
+        "path": "AIHS_prototype/AIHS_Training.py",
+        "bytes": 9700,
+        "sha256": "cae712cbc807faf275e089a903bca2f21ec15a2e63b83eb03f0068452faf6a53"
+      },
+      {
+        "path": "AIHS_prototype/AIHS_api.py",
+        "bytes": 4755,
+        "sha256": "cc1e052e3c013472f46c5a3f529e591346175bfcbed24c6a1cdb396982b0c528"
+      },
+      {
+        "path": "AIHS_prototype/DataGenerator.py",
+        "bytes": 1388,
+        "sha256": "dc01d75d453b9f22d01f5fe81084d54faf5f1096e410d64b2b5dbf1c664bea56"
+      },
+      {
+        "path": "AIHS_prototype/README.md",
+        "bytes": 3078,
+        "sha256": "da110bd1f49a014e9ca962d456ad7d918c8f70d4cda03a0153ee462a16b8be6e"
+      },
+      {
+        "path": "AIHS_prototype/dataset/train.csv",
+        "bytes": 1728898,
+        "sha256": "5b4c69b35de32a1890b2eb5ac9bca039c2f6bd60d0cf27683c6cd9f91a1eccb1"
+      },
+      {
+        "path": "AIHS_prototype/model/controller.pkl",
+        "bytes": 5424740,
+        "sha256": "b389be99dc924a988dc57f0e89885d1039839b00277087515c5d45ff60bf3d31"
+      },
+      {
+        "path": "AIHS_prototype/model/mapper.pkl",
+        "bytes": 33656,
+        "sha256": "27c413829cc98e890b39cb1d9baf1be5dc8e998d1ab56bd4cfdb3909bb8c44cf"
+      },
+      {
+        "path": "AIHS_prototype/model/predictor.pkl",
+        "bytes": 6220885,
+        "sha256": "edf755b1eb47faa57ef1c218b71a0e3f68ffeaf729481a33014e25a5c9ca92a8"
+      }
+    ]
+  },
+  "paper": {
+    "title": "Automated Intelligent Healing in Cloud-Scale Data Centers",
+    "venue": "SRDS 2021",
+    "url": "https://www.cse.cuhk.edu.hk/~pclee/www/pubs/srds21aihs.pdf",
+    "file": {
+      "path": "evaluation/aihs/.artifacts/srds21aihs.pdf",
+      "bytes": 377128,
+      "sha256": "3021c7b0dd3505abee96a68f73b728dca1e1c21578c3142bc5fcdaf5972dceae"
+    }
+  },
+  "prototype_dataset": {
+    "path": "AIHS_prototype/dataset/train.csv",
+    "kind": "synthetic",
+    "rows": 500,
+    "columns": [
+      "",
+      "attributes",
+      "action",
+      "final_state"
+    ],
+    "action_values": [
+      "ER",
+      "MSR",
+      "NOP",
+      "RB",
+      "RI",
+      "RMA"
+    ],
+    "final_state_values": [
+      "successful",
+      "unsuccessful"
+    ]
+  },
+  "declared_requirements": {
+    "python": "Python 3 (version unspecified)",
+    "packages": [
+      "numpy",
+      "pandas",
+      "sklearn (README pip command; pip distribution is scikit-learn)",
+      "lightgbm"
+    ],
+    "versions_pinned": false,
+    "dependency_lockfile_present": false
+  },
+  "execution_status": "not_run_stage_1_only",
+  "production_provenance": "The public prototype and bundled synthetic CSV are not Alibaba production source code or production traces."
+}

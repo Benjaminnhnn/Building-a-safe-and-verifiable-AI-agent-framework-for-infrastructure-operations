@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "stage": "B2.2_model_and_safety_gate_measurement_attempt",
+  "measured_at_utc": "2026-11-14T13:42:15.779089+00:00",
+  "status": "NOT_MEASURABLE",
+  "input_sha256": {
+    "freeze_manifest": "914a3924ee1b15f02b51ca951077aae94f53dd91c614ac312f8f48c965a251b7",
+    "a2_audit": "808d06b6d0f9511062f1f6f0c56c5552acc6978d725603349b7e52716a23ef55",
+    "a2_manifest": "74a70ce9c7ad9a93a5ac6ac8a5dfce786c26774eed0b9b2216dd505e003ec119",
+    "mapping": "5013c9cc227e0c052c7130e5f9b8cb85ef30264948900f36fe49e10f30f8783c",
+    "shadow_replay": "478a07ea2110f6998a372e32575792f5b57402b408cdded8ac2ffc17b20b8328"
+  },
+  "independent_test_records": 0,
+  "aihs_moodle_proposals": 0,
+  "reviewed_action_mappings": 0,
+  "model_metrics": {
+    "status": "NOT_COMPUTED",
+    "top1_all": null,
+    "topk": null,
+    "macro_f1": null,
+    "abstention_rate": null,
+    "hit_rate": null,
+    "reverse_rate": null,
+    "overall_rate": null,
+    "scored_test_records": 0
+  },
+  "safety_gate_metrics": {
+    "status": "NOT_COMPUTED",
+    "unsafe_denied": null,
+    "unsafe_labeled": 0,
+    "safe_denied": null,
+    "safe_labeled": 0,
+    "unsafe_block_rate": null,
+    "false_block_rate": null,
+    "require_approval_is_separate_from_deny": true,
+    "counterfactual_no_gate_dispatched": false
+  },
+  "descriptive_only": {
+    "historical_non_aihs_audit": {
+      "gemini_shadow": {
+        "records": 2,
+        "gate_decisions": {
+          "DENY": 2
+        },
+        "outcomes": {
+          "denied": 2
+        }
+      },
+      "reviewed_catalog_plan": {
+        "records": 8,
+        "gate_decisions": {
+          "REQUIRE_APPROVAL": 8
+        },
+        "outcomes": {
+          "success": 8
+        }
+      }
+    },
+    "prototype_on_bundled_synthetic_cases": 1,
+    "synthetic_shadow_fixture_cases": 3,
+    "synthetic_fixture_gate_decisions": {
+      "ALLOW": 1,
+      "NOT_EVALUATED": 2
+    },
+    "shadow_executor_calls": 0
+  },
+  "reasons": [
+    "no_frozen_independent_test_set",
+    "no_reviewed_aihs_to_moodle_action_mapping",
+    "no_moodle_aihs_proposals",
+    "no_independent_acceptable_action_labels",
+    "no_blind_predecision_proposal_safety_labels"
+  ],
+  "required_for_model_scoring": [
+    "frozen_test_with_verified_predecision_features_and_model_predictions",
+    "blind_independent_acceptable_action_labels_for_each_test_incident",
+    "reviewed_aihs_action_mapping_and_fixed_metric_definitions"
+  ],
+  "required_for_gate_scoring": [
+    "same_frozen_proposals_replayed_through_actual_gate_without_dispatch",
+    "blind_predecision_safe_or_unsafe_adjudication_for_each_proposal",
+    "proposal_matched_gate_audit_with_allow_deny_require_approval_kept_separate"
+  ]
+}

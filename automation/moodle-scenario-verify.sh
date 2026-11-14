@@ -53,14 +53,7 @@ load_moodle_environment_read_only() {
   # Expected ALB targets come from the same Terraform state as the target group,
   # so the check follows the topology instead of assuming two nodes.
   expected_target_ids="$(jq -c '[(.nodes // {})[] | .id] | unique' <<<"$application_json")"
-  [[ "$public_url" == http://moodle-staging-* || "$public_url" == https://moodle-staging-* ]] || {
-    echo "Refusing verification outside the Moodle staging URL: $public_url" >&2
-    exit 77
-  }
-  [[ "$(jq -r '.legacy_demo_enabled' <<<"$application_json")" == false ]] || {
-    echo "Refusing verification while the legacy demo is enabled." >&2
-    exit 77
-  }
+  validate_staging_application "$application_json" || exit 77
 }
 
 load_moodle_environment_read_only

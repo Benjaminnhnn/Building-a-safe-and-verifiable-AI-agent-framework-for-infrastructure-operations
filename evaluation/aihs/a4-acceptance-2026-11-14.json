@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "stage": "A4_handoff_acceptance",
+  "checked_at_utc": "2026-11-14T13:17:04.925462+00:00",
+  "source_commit": "07314287ca0858b9a7d8dba951c96394487e2be2",
+  "package_sha256": {
+    "evaluation/aihs/source-manifest.json": "88d6ce1e4d61fae824624c644f83a4276f979f6ca059ba20a4fca743f2360794",
+    "evaluation/aihs/requirements-a1.txt": "b54cc08db82d4c3be0a4de225c116dfd729f3526a19c5b481638c94ffe26fd87",
+    "evaluation/aihs/requirements-a4.txt": "24b4647db6d42c951e570cdabf3ed20adc184ba943de364593ae365b32a9497d",
+    "evaluation/aihs/baseline-prototype.json": "b03363d97731fe2580a5c3e50009a77bfe605468a15e1c406e82a885736d90fb",
+    "evaluation/aihs/reproduction-results-2026-11-14.json": "244bdd1523eab7459c4b74b0d2e4787459bf8a41639cbccbbbb1fef4ec7f65f6",
+    "evaluation/aihs/check_controller_fallback.py": "28f984874635bd8ff9608c9ad8e1cda97804c80e208595db6f7947bd2b392663",
+    "evaluation/aihs/compare_retrained.py": "6e1f8519cca1d234c9cbe83929e72c87eb3ff1f596c25dc58d493df0c07dbb8e",
+    "evaluation/aihs/a2-record.schema.json": "c6c92754268e08bf89ceef8203aa1c650744102d6d6a43594e02d9ff4f1f0661",
+    "evaluation/aihs/a2_export.py": "dfe27d1b7abc45e207e3eff4cf8659bcade7755b216f15f38c399d149d1105d8",
+    "evaluation/aihs/a2_split.py": "930894c7dd454eb9ca43f7e46d50c6c68ff330f63998407803a326b95c6aad84",
+    "evaluation/aihs/a2-export/audit-records.jsonl": "808d06b6d0f9511062f1f6f0c56c5552acc6978d725603349b7e52716a23ef55",
+    "evaluation/aihs/a2-export/manifest.json": "74a70ce9c7ad9a93a5ac6ac8a5dfce786c26774eed0b9b2216dd505e003ec119",
+    "evaluation/aihs/a2-export/split-manifest.json": "ddb5f75ea41c9b47e261aea0086b6c4b6cbaf7e06829195061916dfdfc78e7a5",
+    "evaluation/aihs/a3-action-mapping.json": "5013c9cc227e0c052c7130e5f9b8cb85ef30264948900f36fe49e10f30f8783c",
+    "evaluation/aihs/a3-examples.json": "aad67c54b9403b63d43a3d66b436d322e6e71f4027b9e8c8ca4ecfa88a109246",
+    "evaluation/aihs/a4_acceptance.py": "d4f41b5874650e537852f40bf596b6797b1fd92228c2ff00fab5f1071dea4159",
+    "agent_src/core/moodle/aihs_contract.py": "f6cdad647130535c7d748c7ed6285e1b1d013c6d02410e7c18667aa98a5b0117",
+    "agent_src/tests/test_aihs_contract.py": "7de1e220b3e9ce84f3fe264fa197bc1c2885a4d14e0b425ea5d9e0a0b38d18a8"
+  },
+  "source_checksums": "passed",
+  "a2": {
+    "schema_valid_records": 10,
+    "audit_sha256": "808d06b6d0f9511062f1f6f0c56c5552acc6978d725603349b7e52716a23ef55",
+    "eligible_records": 0,
+    "split_status": "blocked_insufficient_data"
+  },
+  "a3": {
+    "mapping_review_status": "no_approved_action_mapping",
+    "approved_actions": 0,
+    "contract_tests_passed": 7
+  },
+  "prototype_rerun": {
+    "pretrained_sample_action": [
+      "RI"
+    ],
+    "generated_csv_sha256": "5b4c69b35de32a1890b2eb5ac9bca039c2f6bd60d0cf27683c6cd9f91a1eccb1",
+    "training_exit": 0,
+    "trained_sample_action": [
+      "RI"
+    ],
+    "upstream_fallback": "call human",
+    "model_sha256": {
+      "controller.pkl": "21200b69411baeb7e649967f7a0541d41fa7db3378435ea1cd6211c4efae87fe",
+      "mapper.pkl": "03b8ad3ce93a0a68e501b029a7feb98a1380fcab1bf83e588b07a39bd96fef62",
+      "predictor.pkl": "6b9789e2ed107c95e4ccd1210f187dfdd31a18ca0e9a51d40372816a61dccbe9"
+    },
+    "validation_scope": "bundled_synthetic_data_only"
+  },
+  "handoff_status": "accepted_with_research_gaps",
+  "open_gaps": [
+    "no_moodle_training_rows",
+    "no_reviewed_aihs_action_mapping",
+    "no_live_gate_or_recovery_evidence"
+  ]
+}

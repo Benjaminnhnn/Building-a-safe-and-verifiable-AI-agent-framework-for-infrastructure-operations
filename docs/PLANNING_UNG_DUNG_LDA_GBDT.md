@@ -1,6 +1,6 @@
 # Kế hoạch ứng dụng LDA và GBDT (theo AIHS của Alibaba) cho Moodle AIOps
 
-**Cập nhật:** 12/11/2026 · **Trạng thái:** kế hoạch; chưa có mô hình LDA/GBDT nào được huấn luyện hay chạy trong hệ thống.
+**Cập nhật:** 14/11/2026 · **Trạng thái:** đã chạy prototype LDA/GBDT trên dữ liệu tổng hợp AIHS; chưa huấn luyện model Moodle hoặc đưa AIHS vào đường quyết định live.
 **Dành cho:** người thực hiện khoá luận và hội đồng đánh giá.
 
 Tài liệu này gộp phân tích ứng dụng LDA/GBDT, đối chiếu thời gian khôi phục DB-01 với AIHS, và các bằng chứng đo Safety
@@ -64,8 +64,8 @@ Mã production và trace production **không công bố**; chỉ có
 
 ### 2.1. LDA và GBDT hoạt động thế nào
 
-Hai kỹ thuật này làm hai việc khác nhau và nối tiếp nhau: **LDA nén bằng chứng thô thành vài con số có nghĩa**, sau đó
-**GBDT dùng các con số đó để quyết định**.
+Hai kỹ thuật này làm hai việc khác nhau và nối tiếp nhau: **LDA nén bằng chứng thành vector topic**, sau đó
+**GBDT dùng vector đó để chọn action**. Sơ đồ ngay dưới là **ví dụ thiết kế dự kiến cho Moodle**, không phải input/output của prototype AIHS; code prototype chỉ trả nhãn action, không trả ranking hay xác suất thành công đã hiệu chuẩn.
 
 ```text
 log + metric thô (hàng nghìn dòng)
@@ -103,8 +103,7 @@ chủ đề 1 + 0,40 chủ đề 2. Đó chính là thông tin bộ luật hiệ
 - **K** (số chủ đề): ít quá thì gộp các lỗi khác nhau vào một chủ đề; nhiều quá thì mỗi chủ đề chỉ còn nhiễu. Chọn bằng
   độ coherence trên tập validation, thử K = 5, 10, 20.
 - **α = 0,1**: mỗi incident chỉ gồm ít chủ đề. **β = 0,01**: mỗi chủ đề chỉ gồm ít từ. Giá trị lấy theo AIHS.
-- **Gibbs sampling**: cách ước lượng mà AIHS dùng (thư viện `tomotopy`). `sklearn` dùng variational Bayes; dùng được,
-  nhưng phải ghi là khác bài gốc.
+- **Gibbs sampling**: cách ước lượng mô tả trong bài báo. Prototype công khai dùng `sklearn.decomposition.LatentDirichletAllocation` với `learning_method='batch'`, không phải Gibbs; phải ghi khác biệt này khi tái hiện.
 
 **Vì sao AIHS chọn LDA** thay cho TF-IDF hay BERT: TF-IDF cho vector thưa, nhiều chiều, không gom được từ đồng nghĩa;
 BERT nặng, khó giải thích. LDA cho vector ngắn và đọc hiểu được. Trong bài, LDA + GBDT đạt F1 0,97, cao hơn TF-IDF và
@@ -167,6 +166,32 @@ Executor vẫn chỉ chạy allowlist, và chỉ Independent Verifier mới xác
 nhất là một gợi ý tồi bị Gate hoặc Operator chặn, chứ không phải một lệnh nguy hiểm được chạy.
 
 ---
+
+### 2.2. Hướng dẫn đọc code và đối chiếu bài báo AIHS
+
+Đọc [bài báo, mục II–III và IV-A](https://www.cse.cuhk.edu.hk/~pclee/www/pubs/srds21aihs.pdf) cùng ba file của [prototype công khai tại commit `07314287`](https://github.com/alibaba-edu/dcbrain/tree/07314287ca0858b9a7d8dba951c96394487e2be2/AIHS_prototype): `DataGenerator.py` (định dạng dữ liệu), `AIHS_Training.py` (Mapper, Predictor, Controller), `AIHS_api.py` (đường suy luận). Có thể xem bản nguồn đã tải và checksum trong [báo cáo A1](BAO_CAO_AIHS.md). Prototype chỉ minh họa pipeline bằng **500 bản ghi tổng hợp**, không chứa log, model hay trace production Alibaba.
+
+| Câu hỏi cần đối chiếu | Theo bài báo | Vị trí và hành vi trong prototype |
+| --- | --- | --- |
+| Log vào LDA thế nào? | Monitoring phát hiện server lỗi rồi gửi các thuộc tính trạng thái của server; Mapper coi bản ghi là một document, tên thuộc tính là word, mức nghiêm trọng ảnh hưởng phân bố topic. | `DataGenerator.gen_attributes()` tạo chuỗi `attributes_0=good$attributes_1=error$...` gồm 165 thuộc tính. `Mapper._attributes_deal()` tách theo `$` và `=`; ánh xạ `info→0`, `good→1`, `warning→2`, `error→3`, `critical→4`, `fatal→5`, rồi **lặp tên thuộc tính** đúng số lần tương ứng. `CountVectorizer.fit_transform()` tạo ma trận đếm; LDA `fit()` học 10 topic trên tập huấn luyện. `Mapper.Map()` dùng vectorizer đã fit và `lda.transform()` trả vector 10 chiều cho bản ghi mới. Đây là log đã được mã hóa thành thuộc tính, **không phải** parser nhận log thô tùy ý hay template log Moodle. |
+| Vector đi vào Predictor ra sao? | GBDT đa lớp nhận cùng vector topic và đề xuất một trong sáu action. Bài báo huấn luyện Predictor bằng **bản ghi sửa thành công**. | `Predictor.train_predictor()` gọi `mapper.Mapdf(df)`, mã hóa `df.action` bằng `LabelEncoder`, rồi `LGBMClassifier(objective='multiclass').fit(features, labels)`. Code đưa **toàn bộ `df`** vào `fit`, không lọc `final_state='successful'`; đây là sai khác với phương pháp trong bài. `predict()` trả **một nhãn action**, không trả ranking hay xác suất đã hiệu chuẩn. |
+| Controller nhận gì và chọn thế nào? | Sáu GBDT nhị phân, mỗi action một model; học success/failure của chính action đó. Đánh giá action Predictor đề xuất trước; nếu thất bại, thử các action khác theo chi phí tăng dần; hết cách thì gọi người. | `Controller.init_controller()` lọc `df.action==action`, `train_binary_classifier()` tạo nhãn `successful→1`, `unsuccessful→0` và fit một `LGBMClassifier(objective='binary')` cho mỗi action đủ hai lớp. `_control_process(feature, pre_action)` gọi classifier của action được đề xuất; nếu trả `1` thì giữ action. Nhánh fallback hiện **so sánh đối tượng classifier với số `1`**, thay vì gọi `.predict([feature])`; do đó không thực sự đánh giá tuần tự các action khác như bài báo mô tả và thường rơi về `call human`. |
+| Action cuối là gì? | Một action trong `NOP`, `MSR`, `ER`, `RB`, `RI`, `RMA`, hoặc chuyển người nếu không action nào được Controller đánh giá là khả thi. | `AIHS_api.healing_process()` gọi `Map → predict → control`, trả dictionary có `hostname`, `timestamp`, `action` (list một phần tử, có thể là `call human`). Ví dụ README/API trả `['RI']`. File API **không chạy action**, không tích hợp Moodle, Safety Gate, Operator, Executor hay Verifier. Sáu mã server này chưa có mapping Moodle được domain review. |
+| Dự đoán chốt lúc nào? | Model huấn luyện offline; khi monitoring **đã phát hiện lỗi**, bản ghi hiện tại đi qua Mapper → Predictor → Controller. Action cuối được chọn **trước khi** thi hành và trước khi biết kết quả sửa của lượt đó. | `healing_process(msg_dict)` chốt `result_dict['action']` sau `controller.control(...)` và trước `return`. `msg_dict['timestamp']` chỉ được chép sang output; API không sinh timestamp lúc suy luận, không lưu mốc chốt, không phát hiện lỗi, không lấy log live và không thi hành action. Muốn đo thời điểm chốt trên Moodle phải ghi `detected_at`, `evidence_cutoff_at`, `predicted_at`, model version và action vào audit **trước Gate/approval/Executor**. |
+
+Ví dụ đọc bước Mapper: với `DiskHang=error$Ping=good$Load=info`, document đưa vào vectorizer gồm `DiskHang` ba lần, `Ping` một lần và không có `Load`. Vectorizer đếm từ theo từ vựng học trên train; `lda.transform()` trả 10 trọng số topic. **Không** gán tên “lỗi DB” cho một topic nếu chưa xem phân bố từ của model đã huấn luyện. Ví dụ này minh họa phép biến đổi trong code, không phải mẫu trong dataset 165 thuộc tính.
+
+Để tự đối chiếu trên máy, chạy các lệnh chỉ đọc sau từ gốc repository; đường dẫn nguồn tải về được Git bỏ qua nhưng có hướng dẫn tái tạo ở [báo cáo A1](BAO_CAO_AIHS.md):
+
+```bash
+AIHS_SRC=evaluation/aihs/.artifacts/dcbrain-07314287ca0858b9a7d8dba951c96394487e2be2/AIHS_prototype
+rg -n 'gen_attributes|_attributes_deal|train_mapper_LDA|def Map\(|train_predictor|init_controller|train_binary_classifier|_control_process|healing_process' "$AIHS_SRC"/*.py
+sed -n '1,110p' "$AIHS_SRC/AIHS_Training.py"    # Mapper: thuộc tính → document → vector topic
+sed -n '111,225p' "$AIHS_SRC/AIHS_Training.py"  # Predictor và Controller: train/predict/fallback
+sed -n '1,35p' "$AIHS_SRC/AIHS_api.py"          # thời điểm chốt action trong suy luận
+```
+
+Khi áp dụng cho Moodle, phải định nghĩa **snapshot trước quyết định** và một adapter chuyển log/metric Moodle sang thuộc tính đã review; fit từ vựng và LDA **chỉ trên train**. Giữ nhãn action thực sự chạy và kết quả hậu quyết định ngoài feature. Cần quyết định công khai baseline nào được đo: **prototype as-is** (giữ cả hai sai khác nêu trên) hoặc **bản tái hiện theo bài báo** (lọc success cho Predictor và sửa fallback), với version và kết quả riêng. Không diễn giải xác suất topic hay nhãn GBDT là quyền thi hành; output AIHS vẫn đi qua mapping, Safety Gate, Operator, Executor và Independent Verifier. Hiện [báo cáo A2/B2](BAO_CAO_AIHS.md) ghi 0 mẫu Moodle đủ điều kiện train và 0 mapping action live được review.
 
 ## 3. Hiện trạng hệ thống Moodle (baseline)
 
@@ -334,31 +359,86 @@ hồi phục (nằm giữa hai mẫu liên tiếp), chờ duyệt, thực thi, x
 bảo đảm Operator phản hồi nhanh; phần có thể cải thiện là thời gian **chọn hành động và duyệt**.
 
 **Phạm vi hạ tầng (đã chốt):** làm trọn trên Moodle trước, sau đó chuyển sang ERPNext; AIOpsLab/Kubernetes chỉ
-cân nhắc nếu còn thời gian. Mỗi môi trường được báo cáo riêng, không gộp số liệu. Chi tiết ở mục 9.1.
+cân nhắc nếu còn thời gian. Mỗi môi trường được báo cáo riêng, không gộp số liệu. Chi tiết ở mục 9.3.
 
 ---
 
-## 9. Lộ trình
+## 9. Trạng thái thực hiện và bàn giao đo live staging
 
-| Giai đoạn | Thời lượng | Việc | Đầu ra | Điều kiện qua |
-|---|---|---|---|---|
-| 1 | 1–2 tuần | Lab Moodle cục bộ; kịch bản mơ hồ; bảng hành động theo chi phí; bộ thu log, metric, nhãn | Bộ dữ liệu có version, kiểm tra rò rỉ | Có ≥ 2 hành động khả dĩ cho mỗi nhóm triệu chứng; có ca thất bại thật |
-| 2 | 1 tuần | Tái hiện AIHS; chạy prototype công khai | Baseline "AIHS trên Moodle" và benchmark chung | Tái hiện được số liệu của prototype trên dữ liệu của nó |
-| 3 | 1–2 tuần | Mô hình khoá luận, calibration, từ chối dự đoán, ablation | Bảng HitRate/ReverseRate/OverallRate/F1 có khoảng tin cậy | Không thua AIHS tái hiện trên tập test |
-| 4 | 1 tuần | Gắn shadow vào Agent qua nhánh AI shadow | Gợi ý trên Telegram, audit đầy đủ | Không đổi quyền thực thi; test CI đạt |
-| 5 | 1–2 tuần | Chiến dịch AWS staging: thủ công, Agent, Agent + ML; tập đề xuất nguy hiểm; health-only so với Verifier | RTO, tỉ lệ hoàn tất, thực thi nguy hiểm, khôi phục giả | Đủ cỡ mẫu tính từ pilot |
+**Chốt trạng thái ngày 14/11/2026.** Bảng này phân biệt *đã xây và chạy công cụ* với *đã có đủ dữ liệu để kết luận*. Nguồn chi tiết, lệnh và artifact là [báo cáo AIHS](BAO_CAO_AIHS.md); kết quả này không thay thế một chiến dịch đo live mới.
 
-Tổng khoảng 6–8 tuần. AWS staging hiện đã gỡ (10/11/2026); cần dựng lại cho giai đoạn 5.
+| Giai đoạn | Đã thực hiện | Kết quả và việc còn thiếu |
+| --- | --- | --- |
+| **A1 — prototype AIHS** | Cố định commit nguồn, môi trường, checksum; chạy generator, training, API và chạy lặp trên 500 dòng tổng hợp. Định nghĩa baseline `aihs-public-prototype-as-is-v1`. | Pipeline chạy lại được và ví dụ API ra `RI`. Model LDA không tái lập từng byte; không phải baseline đã học hay đo trên Moodle. |
+| **A2 — dữ liệu/nhãn** | Kiểm kê artifact, tạo schema, exporter lọc nhạy cảm, manifest/checksum và công cụ chia tập. | 10 dòng audit hợp schema nhưng **0 dòng đủ train**, 0 split thật; thiếu snapshot trước quyết định, phiên bản lịch sử và nhãn độc lập. Cần thu thêm trong lab/staging. |
+| **A3 — hợp đồng AIHS** | Tạo adapter đề xuất và bảng mapping fail-closed; kiểm thử input lạ/cũ/sai phạm vi. | **0/6 action AIHS có mapping Moodle được domain review**; model chưa có quyền hành động live. |
+| **A4 — bàn giao** | Chạy lại gói, checksum và kiểm tra hợp đồng. | `accepted_with_research_gaps`: đủ để thử tích hợp offline, chưa đủ để huấn luyện/đánh giá Moodle hoặc recovery live. |
+| **B1.1–B1.3 — tích hợp** | Nghiệm thu đầu vào có điều kiện; bridge shadow/replay offline qua Gate; bridge chuẩn bị handoff staging với kiểm tra digest, scope và evidence. | Các test hợp đồng đạt. Nhánh staging **chưa được triển khai và chạy end-to-end live**; fixture `ALLOW` không phải mapping được duyệt. |
+| **B2.1–B2.2 — freeze, model và Gate** | Xây công cụ freeze và kiểm toán phép đo; đối chiếu checksum, lưu lý do loại mẫu. | Freeze `BLOCKED` (0 test record), đo model/Gate `NOT_MEASURABLE`. Không có HitRate, false-block rate hay cải thiện có mẫu số hợp lệ. |
+| **B2.3 — Verifier** | Đo lại một ca NET-01 lịch sử: HTTP 200 nhưng probe DNS database/ALB liên quan lỗi; Verifier trả `collateral_damage` và runtime sidecar không `RESOLVED`. | **1 ca cấy lỗi có kiểm soát** chứng minh khác biệt health-only/Verifier; chưa có tỷ lệ false recovery của quần thể hoặc Verifier live mới. |
+| **B3 — phục hồi live staging** | Kiểm toán 8 lượt staging lịch sử đã phân loại: detect→RESOLVED trung vị **521,5 giây** (232–9110 giây). Kiểm tra điều kiện chạy lượt mới. | Lượt mới `BLOCKED_NOT_RUN`: **0 drill mới**, 0 thay đổi AWS. Terraform state cục bộ rỗng, AWS chưa xác minh được qua CLI/MFA, AIHS mapping live và tập test đều rỗng. Số lịch sử gồm chờ duyệt/xác minh, không phải downtime hoặc đối chứng AIHS. |
 
-### 9.1. Mở rộng hạ tầng sau Moodle
+### 9.1. Phần teammate tiếp nhận: đo live staging mới
+
+**Mục đích:** tạo bằng chứng trên cùng môi trường Moodle staging để so sánh quyết định theo luật hiện tại với nhánh có gợi ý AIHS **thực sự được Operator nhìn thấy**, trong khi Gate, chữ ký, Executor và Verifier giữ cùng quy tắc. Shadow chỉ ghi dự đoán và không thể chứng minh thay đổi RTO. Người tiếp nhận thực hiện các bước theo thứ tự; nếu điều kiện đầu vào chưa đạt, ghi `BLOCKED` với bằng chứng thay vì tạo số liệu giả.
+
+| Bước | Việc phải thực hiện | Mục đích | Output/điều kiện đạt |
+| --- | --- | --- | --- |
+| **1. Khóa phiên bản và kiểm tra cloud** | Ghi Git SHA, version policy/catalog/Verifier/model và ngày; teammate dùng **IAM user/CLI profile riêng**, chạy `aws sts get-caller-identity --profile "$AWS_PROFILE"` và MFA trong terminal. Xác nhận account dự kiến, quyền Terraform/IAM cần thiết, rồi đối chiếu state với tài nguyên AWS thực, ALB, hai node, RDS, EFS, monitor và kinh phí. Không suy ra AWS đã xóa chỉ từ state cục bộ rỗng. | Biết chính xác môi trường và danh tính của lượt đo. | Manifest môi trường, account/role đã lọc, danh sách tài nguyên/phiên bản và biên bản `READY` hoặc `BLOCKED`; không lưu credentials, Terraform state hay private key vào Git. |
+| **2. Dựng/bật lại và chốt baseline** | Nếu staging không còn, dựng theo [guide triển khai](BAO_CAO_HUONG_DAN_TRIEN_KHAI.md); xác nhận ALB và từng target, synthetic transaction, kết nối DB, probe allowed/forbidden/related, monitoring/Telegram, khả năng reset lỗi và backup cần thiết. Đo baseline trước khi cấy lỗi. | Có môi trường sạch và quan sát được cả phụ thuộc mà health HTTP đơn lẻ bỏ sót. | Snapshot baseline có timestamp, các probe đạt, reset rehearsal và bằng chứng không có lỗi còn tồn từ lượt trước. Chưa đạt thì dừng fault drill. |
+| **3. Hoàn tất điều kiện nhánh AIHS** | Thu thêm incident/action có telemetry **trước** quyết định và nhãn độc lập **sau** action thực chạy; review rò rỉ, chia tập theo thời gian/nhóm, fit LDA trên train, đóng băng test và model. Domain owner review từng mapping AIHS→catalog Moodle, target/scope/precondition; test cả action không ánh xạ và Gate chặn sai. | Đảm bảo so sánh đúng AIHS trên Moodle, không dùng prototype tổng hợp hoặc Gemini shadow thay AIHS. | Freeze manifest/checksum, model/data version, nhãn review và mapping `live_reviewed` có người chịu trách nhiệm. Nếu chưa có, chỉ được chạy đối chứng theo luật và báo nhánh AIHS `NOT_READY`. |
+| **4. Chốt protocol trước pilot** | Chọn cùng kịch bản, tải nền, fault, probe, cửa sổ ổn định, người duyệt, thời hạn, quy tắc reset và thứ tự ngẫu nhiên các nhánh. Chốt định nghĩa detect→RESOLVED, downtime, chờ Operator, thi hành, xác minh, timeout/noncompletion và RPO (nếu có phép đo dữ liệu). Pilot để ước lượng cỡ mẫu; sau đó khóa protocol. | Tránh chọn lượt thuận lợi và đổi tiêu chí sau khi thấy kết quả. | Protocol có version, lịch pilot/cỡ mẫu, phân vai và tiêu chí dừng/rollback; không bỏ lượt timeout hoặc bị Gate từ chối. |
+| **5. Chạy từng lượt và reset** | Từ repo root chạy drill chỉ sau khi bước 1–4 `READY`, với xác nhận staging theo guide; lưu artifact gốc, alert, đề xuất AIHS, Gate/approval, receipt, Verifier và baseline sau cleanup. Operator duyệt theo luồng hiện có; không tự động cho AIHS ký hoặc chạy action. Kiểm tra reset đạt trước lượt kế tiếp. | Thu cùng chuỗi bằng chứng cho mọi nhánh và phát hiện collateral damage. | Một bộ artifact/checksum cho **mỗi lượt**, kể cả `DENY`, timeout, lỗi Executor/Verifier; kết quả `RESOLVED` chỉ khi Independent Verifier chấp nhận. Nếu reset thất bại, dừng chiến dịch và ghi rõ. |
+| **6. Chấm và bàn giao** | Chạy kiểm toán checksum/schema, phân nhóm theo scenario/nhánh; đối chiếu health-only với Verifier **trên cùng lượt** và nhãn collateral độc lập; tính metric có tử/mẫu số, trung vị và khoảng tin cậy khi đủ mẫu. Phân biệt detect→RESOLVED với downtime và báo thời gian chờ duyệt. | Rút kết luận trong phạm vi staging có thể kiểm chứng. | Báo cáo live mới gồm số lượt hoàn tất/không hoàn tất, Gate chặn đúng/chặn sai, false recovery, collateral, RTO/downtime, RPO nếu đo được, giới hạn và đường dẫn artifact đã lọc. Không so trực tiếp thời gian tuyệt đối với Alibaba. |
+
+**Bộ lệnh kiểm tra đầu vào và đo lại artifact lịch sử** (chạy từ repo root; không cấy lỗi):
+
+```bash
+export AWS_PROFILE="TEN_PROFILE_CUA_TEAMMATE"
+aws sts get-caller-identity --profile "$AWS_PROFILE"
+python3 evaluation/aihs/b2_freeze_dataset.py
+python3 evaluation/aihs/b2_measure_attempt.py
+python3 evaluation/aihs/b2b3_measure.py
+```
+
+Teammate thay `TEN_PROFILE_CUA_TEAMMATE` bằng tên CLI profile của IAM user/role **của họ**, được cấp quyền trên account staging dự kiến; MFA nhập tại terminal nếu profile yêu cầu. Khi Terraform cần credential phiên tạm, làm theo mục 5 và phụ lục A của [guide triển khai](BAO_CAO_HUONG_DAN_TRIEN_KHAI.md); không dùng profile hoặc secret của người vận hành cũ. Các lệnh Python **chỉ đo lại dữ liệu hiện có**, không tạo lượt live mới. Trước fault drill, teammate dùng mục NET-01/DB-01 trong [báo cáo kịch bản lỗi](BAO_CAO_KICH_BAN_LOI.md) và guide triển khai để kiểm tra chính xác script, target, cleanup và quyền. Tập A2 hiện tại chưa đủ; chạy lại lệnh đo khi dữ liệu chưa bổ sung vẫn cho `BLOCKED`/`NOT_MEASURABLE` là đúng. [Báo cáo AIHS](BAO_CAO_AIHS.md) giữ lệnh tái lập và biên bản chi tiết để đối chiếu khi nhận bàn giao.
+
+### 9.2. Kiểm tra tính đồng bộ khi chuyển sang máy teammate
+
+Đã rà mã Terraform/Ansible/Compose/automation và chạy kiểm tra **offline** ngày 14/11/2026: `terraform validate` đạt; `terraform test` **22/22**; `terraform fmt -check` đạt; cú pháp playbook chuẩn bị Moodle và cấu hình monitor đạt; `bash -n` các script automation và `docker compose config` đạt. Các kiểm tra này xác nhận cấu hình có thể phân tích/tạo plan giả lập, **không** xác nhận AWS đang chạy hay dịch vụ live khỏe.
+
+Sau thay đổi guard URL staging, 50 test phạm vi fault/probe/handoff đạt; lint critical đạt. Toàn bộ test Agent có một lượt **1/1269 thất bại** tại `test_three_samples_with_bounded_scheduling_jitter_are_accepted` khi đọc lại trạng thái audit Verifier; ca đó đạt khi chạy riêng, và lượt chạy lại toàn bộ đạt **1269/1269**. Chưa xác định nguyên nhân của thất bại không lặp lại; teammate nên giữ log nếu ca này tái diễn trong CI, không coi lần chạy lại đạt là chứng minh lỗi đã được sửa.
+
+| Giá trị gắn môi trường | Kết luận rà soát | Việc teammate phải làm |
+| --- | --- | --- |
+| `terraform/deployment.tfvars`: vùng AWS, CIDR quản trị, AMI, đường dẫn cặp khóa SSH | File cục bộ bị Git bỏ qua; ví dụ có placeholder cho CIDR và đường dẫn khóa. CIDR và khóa của máy này không dùng nguyên trên máy khác. | Tạo file riêng từ `.example`, cập nhật public `/32`, chọn AMI đúng vùng, trỏ tới khóa trên máy teammate, kiểm tra plan đã lưu. |
+| Network `10.10.0.0/16` và tên tài nguyên `moodle-staging-*` | Đây là các giá trị cố định trong Terraform và guard; phù hợp staging được thiết kế hiện tại, nhưng có thể xung đột với VPC/network đã tồn tại hoặc quy tắc đặt tên của account khác. | Trước apply trên account mới, kiểm tra CIDR/name trùng và các kết nối mạng hiện có. Nếu phải đổi, sửa Terraform và guard/test cùng một thay đổi được review; không chỉ thay một bên. |
+| Terraform state và output `moodle-ssh.config`/`moodle-inventory.yml` | State cục bộ máy này có **0 resource, 0 output**, nhưng hai file host đã sinh vẫn tồn tại. Inventory/SSH config chứa đường dẫn tuyệt đối của máy tạo, nên đang được đánh dấu **stale**. | Xác định state có thẩm quyền và đối chiếu AWS trước mọi `plan/apply/import`; sau khi xác minh hoặc dựng lại staging, **sinh lại** host files trên máy teammate theo guide. Không copy file sinh từ máy này để chạy SSH/Ansible. |
+| `release/.env`, image ref, HMAC/API token, khóa ký Operator/Verifier | Các file và khóa runtime bị Git bỏ qua. Script drill yêu cầu khóa riêng Operator/Verifier qua `MOODLE_OPERATOR_SIGNING_KEY_FILE` và `MOODLE_VERIFIER_SIGNING_KEY_FILE`, rồi so khóa công khai trước thực thi. | Provision bí mật qua kênh an toàn trên máy nhận; cấu hình Telegram/chat/Operator ID, image GHCR bất biến và mount public key; không commit hay gửi private key qua chat. |
+| AIHS archive, model pickle, artifact lịch sử | Archive/model và artifact live nằm trong `.artifacts/` bị bỏ qua. Script `b2b3_measure.py` ghim **8 source JSON lịch sử** theo manifest A2 và một ca collateral; clone Git đơn thuần không có chúng. Script này **không** tự đo chiến dịch live mới. | Tải lại prototype đúng commit và kiểm SHA-256 trong `source-manifest.json`. Nếu cần tái đo lịch sử, chuyển artifact qua kênh an toàn hoặc xuất lại rồi kiểm checksum; cho chiến dịch mới tạo manifest/runner đo riêng. Không lấy số lượng file làm số incident. |
+| `automation/moodle-db02-role-quota.sh` | Account `829162041762`, vùng `ap-southeast-1`, tên RDS/Secret được khóa cứng như **chốt an toàn** cho DB-02, không phải endpoint chung. | Giữ nguyên khi dùng cùng staging. Nếu đổi account/vùng, review lại policy, tài nguyên và guard trước khi sửa; không bỏ kiểm tra account để chạy cho tiện. |
+| URL staging trong fault/Verifier | Trước đây script chỉ nhận URL có host bắt đầu `moodle-staging-`, làm HTTPS với DNS riêng bị chặn dù ALB vẫn là staging. Đã đổi guard sang kiểm tra **ARN ALB và target group staging, hai node và cờ legacy** từ Terraform output; vẫn từ chối ARN ngoài staging. | Trên máy nhận kiểm tra URL trong Terraform output và chạy các test guard offline; sau đó đối chiếu ARN với AWS thật bằng profile có quyền. Không dùng URL tự nhập để bỏ qua guard. |
+| `agent_src/core/tasks.py` | Có đường dẫn `/home/ec2-user/aws-hybrid` trong nhánh bank demo đã nghỉ; nhánh này không nhận alert Moodle theo AGENTS.md. | Không dùng nhánh legacy để đánh giá AIHS; không coi đường dẫn đó là cấu hình Moodle cần sao chép. |
+| Git và CI/CD | Worktree máy này còn file AIHS/báo cáo **chưa commit**. CD Moodle dùng runner `self-hosted, linux, moodle-staging` và các GitHub Secrets cho SSH/GHCR/URL. | Chốt commit chứa thay đổi đã review trước khi teammate pull; trên repo/runner của teammate cấu hình lại secrets và runner. Clone/pull không mang theo file chưa commit, secrets hoặc runtime artifact. |
+
+Chạy [công cụ kiểm tra bàn giao chỉ đọc](../automation/check-moodle-handoff.py) trên **mỗi máy** trước khi dùng script triển khai:
+
+```bash
+export AWS_PROFILE="TEN_PROFILE_CUA_TEAMMATE"
+python3 automation/check-moodle-handoff.py
+```
+
+Kết quả trên máy này: `terraform_state=BLOCKED`, hai host files `STALE`, `aihs_live_mapping=BLOCKED`, khóa riêng chưa được khai báo trong shell hiện tại và `git_handoff=BLOCKED` vì worktree chưa sạch. `target-base` của người vận hành cũ xác nhận account `829162041762` nhưng **không có quyền** `ec2:DescribeInstances`, `elasticloadbalancing:DescribeLoadBalancers`, `rds:DescribeDBInstances`, `elasticfilesystem:DescribeFileSystems`; `target-account` cũ cần MFA nên lượt kiểm tra không tương tác chưa xác minh được tài nguyên AWS. Teammate dùng IAM user/profile **riêng**, không tái sử dụng credential cũ. Nếu vẫn dựng trong account `829162041762`, guard DB-02 giữ nguyên; nếu dùng account khác, phải review lại guard và IAM trước. Công cụ cố ý luôn ghi `aws_live_state_verified=false` và `ready_for_live_drill=false`: sau khi các mục cục bộ đạt, teammate vẫn phải kiểm tra cloud bằng profile có quyền, baseline/SSH/probe thật và Operator trước fault drill. Đến lúc đó trạng thái bàn giao là **chưa sẵn sàng chạy live đồng bộ**.
+
+### 9.3. Mở rộng hạ tầng sau Moodle
 
 Thứ tự: **Moodle (bắt buộc) → ERPNext (kế tiếp) → AIOpsLab/Kubernetes (cân nhắc)**. Chỉ chuyển môi trường khi
-môi trường trước đã qua giai đoạn 5.
+môi trường trước hoàn tất phép đo live staging có thể kiểm chứng ở mục 9.1.
 
 | Bước | Môi trường | Việc | Điều kiện qua |
 |---|---|---|---|
-| 6 | ERPNext | Hoàn thiện adapter, catalog, probe allowed/forbidden/related, Verifier; kịch bản mơ hồ riêng; chạy lại giai đoạn 1–5 rút gọn | Gate, Executor, Verifier chạy live trên ERPNext; có bảng chỉ số riêng |
-| 7 (tuỳ chọn) | AIOpsLab/Kubernetes | Adapter cho microservice; dùng bài toán có sẵn của AIOpsLab làm bộ test | Chỉ làm khi bước 6 xong và còn thời gian |
+| Tiếp theo | ERPNext | Hoàn thiện adapter, catalog, probe allowed/forbidden/related, Verifier; kịch bản mơ hồ riêng; lặp lại quy trình thu dữ liệu và đo live | Gate, Executor, Verifier chạy live trên ERPNext; có bảng chỉ số riêng |
+| Tuỳ chọn | AIOpsLab/Kubernetes | Adapter cho microservice; dùng bài toán có sẵn của AIOpsLab làm bộ test | Chỉ làm khi ERPNext xong và còn thời gian |
 
 **Đã có sẵn cho ERPNext (chưa xác minh live):** `ERPNextPlatformAdapter` ([adapter.py](../agent_src/core/erpnext/adapter.py)),
 `ActionCatalog.load_erpnext_catalog()` (MariaDB, Redis, Nginx), `terraform/erpnext.tf`,
@@ -396,7 +476,7 @@ không cải thiện RPO; RPO cần diễn tập phục hồi dữ liệu riêng
 
 ## 11. Quyết định còn mở
 
-Đã chốt: phạm vi hạ tầng Moodle → ERPNext → (cân nhắc) AIOpsLab/Kubernetes, xem mục 9.1.
+Đã chốt: phạm vi hạ tầng Moodle → ERPNext → (cân nhắc) AIOpsLab/Kubernetes, xem mục 9.3.
 
 1. Nguồn dữ liệu huấn luyện: lab cục bộ (đề xuất) hay chỉ AWS staging.
 2. Phạm vi so sánh: cả ba trục (an toàn, độ chính xác, thời gian) hay ưu tiên an toàn và độ chính xác.

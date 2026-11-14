@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "strategy": "chronological_70_15_15_by_connected_incident_session_groups",
+  "train_lda_fit_policy": "train_only_never_validation_or_test",
+  "total_audit_records": 10,
+  "eligible_records": 0,
+  "independent_groups": 0,
+  "observed_outcomes": {},
+  "status": "blocked_insufficient_data",
+  "reasons": [
+    "zero_rows_with_verified_predecision_features_and_observed_action_labels",
+    "fewer_than_10_independent_incident_session_groups"
+  ],
+  "splits": null
+}

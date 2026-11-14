@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "stage": "B1.1_input_acceptance",
+  "checked_at_utc": "2026-11-14T13:17:13.429333+00:00",
+  "a4_record_sha256": "cff4183322aab433c090f15dbf17511716dbfcefb59d97be760e8ad6ac67bef5",
+  "source_commit": "07314287ca0858b9a7d8dba951c96394487e2be2",
+  "checks": [
+    {
+      "step": "1_source_and_package",
+      "result": "PASS_LOCAL",
+      "detail": "18/18 package checksums match; pinned commit 07314287ca0858b9a7d8dba951c96394487e2be2"
+    },
+    {
+      "step": "2_prototype_rerun",
+      "result": "PASS_SYNTHETIC_ONLY",
+      "detail": "generated CSV checksum matches; training exit 0; pretrained and trained sample action RI"
+    },
+    {
+      "step": "3_schema_and_data",
+      "result": "PASS_SCHEMA_BLOCKED_TRAINING",
+      "detail": "10 schema-valid audit rows; 0 eligible rows; blocked_insufficient_data"
+    },
+    {
+      "step": "4_evidence_contract",
+      "result": "PASS_CONTRACT_ONLY",
+      "detail": "7 adapter contract tests pass; no live Moodle evidence in A2 features"
+    },
+    {
+      "step": "5_action_mapping",
+      "result": "BLOCKED",
+      "detail": "0 approved AIHS-to-Moodle mappings; no_approved_action_mapping"
+    },
+    {
+      "step": "6_shadow_entry",
+      "result": "LIMITED",
+      "detail": "negative/human-review contract cases can run offline; no approved AIHS candidate for meaningful Safety Gate shadow evaluation"
+    },
+    {
+      "step": "7_repository_handoff",
+      "result": "LOCAL_ONLY",
+      "detail": "0/18 package files tracked in git; no commit or push performed"
+    }
+  ],
+  "overall": "CONDITIONAL_INPUT_ACCEPTANCE",
+  "eligible_for": "offline contract and fail-closed shadow tests",
+  "blocked_for": [
+    "Moodle-trained AIHS quality claims",
+    "reviewed AIHS action Gate evaluation",
+    "Executor/Verifier staging recovery"
+  ],
+  "required_next": [
+    "collect verified predecision Moodle snapshots and independent labels",
+    "domain-review action mappings with scope/rollback/preconditions",
+    "make handoff package available in version control before cross-machine reproduction"
+  ]
+}

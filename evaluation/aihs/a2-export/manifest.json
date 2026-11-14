@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "source_policy": "only top-level main JSON with explicit operator_approved_staging_drill class",
+  "inventory": {
+    "moodle_safe_executor": {
+      "files": 189,
+      "distinct_run_prefixes": 39,
+      "top_level_run_json": 25,
+      "run_prefixes_without_top_level_json": 14,
+      "run_dates_utc": {
+        "20260929": 22,
+        "20260930": 1,
+        "20261107": 7,
+        "20261108": 5,
+        "20261109": 4
+      }
+    },
+    "offline_replay": {
+      "files": 22,
+      "top_level_run_directories": 11
+    },
+    "isolated_lab": {
+      "files": 1,
+      "top_level_run_directories": 0
+    },
+    "historical_sprint2_live": {
+      "files": 196,
+      "top_level_run_directories": 22
+    },
+    "ground_truth_fixtures": {
+      "moodle": 15,
+      "erpnext": 3,
+      "legacy_top_level": 15
+    }
+  },
+  "classifications": {
+    "explicit_staging_main": 8,
+    "unclassified_historical_main": 17
+  },
+  "source_files": [
+    {
+      "path": "terraform/.artifacts/moodle-safe-executor/CON-01-20261107T064355Z.json",
+      "sha256": "10c817d4774079fadc4b799eac40d96c9d6260bc64198a8880089e10698adcff",
+      "evidence_class": "operator_approved_staging_drill",
+      "historical_code_version": "unknown_not_in_artifact"
+    },
+    {
+      "path": "terraform/.artifacts/moodle-safe-executor/CON-01-20261107T075719Z.json",
+      "sha256": "3253b08c83df39f9bcecdc034f3a58b946c47f825c791fd99288c4ab5c61a30f",
+      "evidence_class": "operator_approved_staging_drill",
+      "historical_code_version": "unknown_not_in_artifact"
+    },
+    {
+      "path": "terraform/.artifacts/moodle-safe-executor/DB-01-20261107T093425Z.json",
+      "sha256": "3041442df83d05680b08a81751edc28deefc88dc108a543c9575b77509fed3ed",
+      "evidence_class": "operator_approved_staging_drill",
+      "historical_code_version": "unknown_not_in_artifact"
+    },
+    {
+      "path": "terraform/.artifacts/moodle-safe-executor/DB-01-20261107T150947Z.json",
+      "sha256": "a0eda9c2151ceb95dd639e75c3568cf3da4c527b4fe8dde7bbb9b136eb5886ad",
+      "evidence_class": "operator_approved_staging_drill",
+      "historical_code_version": "unknown_not_in_artifact"
+    },
+    {
+      "path": "terraform/.artifacts/moodle-safe-executor/DB-01-20261108T084511Z.json",
+      "sha256": "70fe9e5ce250eafe4e17fc8b1c064daa6e96c30881e450a9cb1681e3ed3249a8",
+      "evidence_class": "operator_approved_staging_drill",
+      "historical_code_version": "unknown_not_in_artifact"
+    },
+    {
+      "path": "terraform/.artifacts/moodle-safe-executor/NET-01-20261107T163222Z.json",
+      "sha256": "4c104a22c51408e4c300992b060a56cc2bd1ecbcf810b47d4c1d06fd15a2c0a8",
+      "evidence_class": "operator_approved_staging_drill",
+      "historical_code_version": "unknown_not_in_artifact"
+    },
+    {
+      "path": "terraform/.artifacts/moodle-safe-executor/NET-01-20261108T011025Z.json",
+      "sha256": "6ff36ef39534294b78e850c40fccdf79d8c2c88e7a4f7f32ea4f060d39c06356",
+      "evidence_class": "operator_approved_staging_drill",
+      "historical_code_version": "unknown_not_in_artifact"
+    },
+    {
+      "path": "terraform/.artifacts/moodle-safe-executor/NET-01-20261108T023254Z.json",
+      "sha256": "b2b945ae3fe67ca651fa0f0e0915ce016a3711cdc975602958ba743837be9f07",
+      "evidence_class": "operator_approved_staging_drill",
+      "historical_code_version": "unknown_not_in_artifact"
+    }
+  ],
+  "distinct_incidents": 8,
+  "candidate_records": 10,
+  "by_proposal_source": {
+    "gemini_shadow": 2,
+    "reviewed_catalog_plan": 8
+  },
+  "by_scenario": {
+    "CON-01": 2,
+    "DB-01": 4,
+    "NET-01": 4
+  },
+  "by_action": {
+    "RESTART_SERVICE": 1,
+    "recreate_moodle_web_from_reviewed_compose": 3,
+    "remove_scoped_db_reject": 3,
+    "restart": 1,
+    "start_reviewed_compose_service": 2
+  },
+  "by_outcome": {
+    "denied": 2,
+    "success": 8
+  },
+  "training_eligible": 0,
+  "leakage_scan": "passed_no_raw_identifiers_or_sensitive_patterns",
+  "audit_records_sha256": "808d06b6d0f9511062f1f6f0c56c5552acc6978d725603349b7e52716a23ef55"
+}

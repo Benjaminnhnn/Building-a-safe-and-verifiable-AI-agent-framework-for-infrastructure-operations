@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "measurement_date": "2026-11-14",
+  "source_manifest_sha256": "74a70ce9c7ad9a93a5ac6ac8a5dfce786c26774eed0b9b2216dd505e003ec119",
+  "historical_staging": {
+    "selection": "8 explicitly classified operator-approved staging drill main artifacts; 17 historical main artifacts unclassified",
+    "runs": [
+      {
+        "source": "terraform/.artifacts/moodle-safe-executor/CON-01-20261107T064355Z.json",
+        "scenario": "CON-01",
+        "detect_to_resolved_seconds": 525.0,
+        "approval_and_planning_seconds": 285.0,
+        "execution_seconds": 18.0,
+        "post_execution_to_resolved_seconds": 222.0
+      },
+      {
+        "source": "terraform/.artifacts/moodle-safe-executor/CON-01-20261107T075719Z.json",
+        "scenario": "CON-01",
+        "detect_to_resolved_seconds": 263.0,
+        "approval_and_planning_seconds": 56.0,
+        "execution_seconds": 17.0,
+        "post_execution_to_resolved_seconds": 190.0
+      },
+      {
+        "source": "terraform/.artifacts/moodle-safe-executor/DB-01-20261107T093425Z.json",
+        "scenario": "DB-01",
+        "detect_to_resolved_seconds": 232.0,
+        "approval_and_planning_seconds": 36.0,
+        "execution_seconds": 2.0,
+        "post_execution_to_resolved_seconds": 194.0
+      },
+      {
+        "source": "terraform/.artifacts/moodle-safe-executor/DB-01-20261107T150947Z.json",
+        "scenario": "DB-01",
+        "detect_to_resolved_seconds": 257.0,
+        "approval_and_planning_seconds": 55.0,
+        "execution_seconds": 1.0,
+        "post_execution_to_resolved_seconds": 201.0
+      },
+      {
+        "source": "terraform/.artifacts/moodle-safe-executor/DB-01-20261108T084511Z.json",
+        "scenario": "DB-01",
+        "detect_to_resolved_seconds": 695.0,
+        "approval_and_planning_seconds": 499.0,
+        "execution_seconds": 1.0,
+        "post_execution_to_resolved_seconds": 195.0
+      },
+      {
+        "source": "terraform/.artifacts/moodle-safe-executor/NET-01-20261107T163222Z.json",
+        "scenario": "NET-01",
+        "detect_to_resolved_seconds": 518.0,
+        "approval_and_planning_seconds": 74.0,
+        "execution_seconds": 11.0,
+        "post_execution_to_resolved_seconds": 433.0
+      },
+      {
+        "source": "terraform/.artifacts/moodle-safe-executor/NET-01-20261108T011025Z.json",
+        "scenario": "NET-01",
+        "detect_to_resolved_seconds": 564.0,
+        "approval_and_planning_seconds": 57.0,
+        "execution_seconds": 5.0,
+        "post_execution_to_resolved_seconds": 502.0
+      },
+      {
+        "source": "terraform/.artifacts/moodle-safe-executor/NET-01-20261108T023254Z.json",
+        "scenario": "NET-01",
+        "detect_to_resolved_seconds": 9110.0,
+        "approval_and_planning_seconds": 8914.0,
+        "execution_seconds": 6.0,
+        "post_execution_to_resolved_seconds": 190.0
+      }
+    ],
+    "observed_resolved_runs": 8,
+    "detect_to_resolved_seconds": {
+      "min": 232.0,
+      "median": 521.5,
+      "mean": 1520.5,
+      "max": 9110.0
+    },
+    "caveat": "Selected completed runs only; detect-to-RESOLVED includes approval and verification, not service downtime or a population success rate. No AIHS comparison arm."
+  },
+  "verifier_paired_case": {
+    "source": "terraform/.artifacts/moodle-safe-executor/NET-01-20261108T011025Z.json",
+    "companion_sha256": "5897bc8ec29c50c4e54bd72d7598b792ba66a5c7e5f20fe184798866da986c7f",
+    "runtime_sidecar_sha256": "240f2a00b2b5edf8bbeff2dce4ddba049fd5b5143ca64e4e08ada1b3aa4458cb",
+    "controlled_injection_after_executor": true,
+    "health_only_http_status": 200,
+    "verifier_verdict": "collateral_damage",
+    "verifier_resolution_eligible": false,
+    "runtime_status_after_collateral": "verifying",
+    "related_failed_probes": [
+      "moodle-app-b_database_dns",
+      "both_alb_targets_healthy"
+    ],
+    "sample_count": 3,
+    "paired_cases": 1,
+    "population_false_recovery_rate": null,
+    "caveat": "Main run RESOLVED records the normal recovery path; separate collateral sidecar stayed VERIFYING. Do not merge their statuses. Signature presence was not cryptographically verified here."
+  },
+  "new_live_staging": {
+    "status": "BLOCKED_NOT_RUN",
+    "new_runs": 0,
+    "local_terraform_resource_count": 0,
+    "aws_state_verified": false,
+    "aws_check": "target-account CLI requested MFA and could not complete noninteractively in this session",
+    "live_reviewed_action_mappings": 0,
+    "frozen_test_records": 0,
+    "comparative_rto_seconds": null,
+    "service_downtime_seconds": null,
+    "rpo_seconds": null,
+    "aws_mutations": 0
+  }
+}

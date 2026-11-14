@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "stage": "B2.1_evaluation_freeze",
+  "created_at_utc": "2026-11-14T13:37:34.266116+00:00",
+  "status": "BLOCKED",
+  "freeze_id": "919eb9f4e215862dd42a",
+  "identity": {
+    "audit_sha256": "808d06b6d0f9511062f1f6f0c56c5552acc6978d725603349b7e52716a23ef55",
+    "schema_sha256": "c6c92754268e08bf89ceef8203aa1c650744102d6d6a43594e02d9ff4f1f0661",
+    "source_manifest_sha256": "74a70ce9c7ad9a93a5ac6ac8a5dfce786c26774eed0b9b2216dd505e003ec119",
+    "freeze_code_sha256": "8886e442c3453c50d9ce2caf5fe0dcdcedb700628e3ac0fbe37f94001d6326eb",
+    "split_code_sha256": "930894c7dd454eb9ca43f7e46d50c6c68ff330f63998407803a326b95c6aad84",
+    "label_review_sha256": null,
+    "allowed_mode": "historical_live_staging",
+    "min_groups": 10,
+    "split_policy": "chronological_70_15_15_connected_incident_session"
+  },
+  "total_audit_records": 10,
+  "selected_records": 0,
+  "independent_groups": 0,
+  "by_scenario": {},
+  "by_action": {},
+  "by_outcome": {},
+  "all_record_proposal_sources": {
+    "gemini_shadow": 2,
+    "reviewed_catalog_plan": 8
+  },
+  "all_record_by_scenario": {
+    "CON-01": 2,
+    "DB-01": 4,
+    "NET-01": 4
+  },
+  "all_record_by_action": {
+    "RESTART_SERVICE": 1,
+    "recreate_moodle_web_from_reviewed_compose": 3,
+    "remove_scoped_db_reject": 3,
+    "restart": 1,
+    "start_reviewed_compose_service": 2
+  },
+  "all_record_by_outcome": {
+    "denied": 2,
+    "success": 8
+  },
+  "excluded": {
+    "missing_independent_label_review": 8,
+    "missing_verified_predecision_features_or_observed_label": 10,
+    "unknown_historical_code_version": 10
+  },
+  "reasons": [
+    "zero_eligible_independently_labeled_records",
+    "fewer_than_10_independent_incident_session_groups"
+  ],
+  "model_input_policy": "only_pre_decision_features_no_scenario_or_post_decision_fields",
+  "lda_fit_policy": "fit_train_only_transform_validation_and_test",
+  "test_policy": "held_out_no_tuning_or_refit_after_freeze",
+  "test_labels_storage": "git_ignored_local_output_only",
+  "splits": null
+}

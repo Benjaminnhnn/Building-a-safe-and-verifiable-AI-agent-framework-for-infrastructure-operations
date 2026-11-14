@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "stage": "B1.2_aihs_shadow_offline",
+  "run_id": "20261114T131840Z",
+  "source_commit": "07314287ca0858b9a7d8dba951c96394487e2be2",
+  "scope": "offline_synthetic_no_live_moodle_recovery",
+  "audit_db_local": "evaluation/aihs/.artifacts/b1-shadow-20261114T131840Z/audit.sqlite3",
+  "audit_chain_verified": true,
+  "cases": [
+    {
+      "case": "actual_prototype_RI_unmapped",
+      "input_class": "public_prototype_synthetic",
+      "model_version": "aihs-public-prototype-as-is-v1",
+      "mapping_version": "aihs-moodle-unreviewed-v1",
+      "adapter_status": "HUMAN_REVIEW",
+      "adapter_reason": "unmapped_action",
+      "disposition": "HUMAN_REVIEW",
+      "gate_decision": null,
+      "gate_reason": null,
+      "audit_event_hash": "166a3d4dffb0ee742276571fdec53380d234d4b3ef15199591894be4dd435e11",
+      "execution_permitted": false,
+      "dispatched": false
+    },
+    {
+      "case": "unknown_action",
+      "input_class": "synthetic_test_fixture",
+      "model_version": "aihs-public-prototype-as-is-v1",
+      "mapping_version": "aihs-moodle-unreviewed-v1",
+      "adapter_status": "HUMAN_REVIEW",
+      "adapter_reason": "unknown_aihs_action",
+      "disposition": "HUMAN_REVIEW",
+      "gate_decision": null,
+      "gate_reason": null,
+      "audit_event_hash": "59ee5ffdce35fc4f8a828d6f28b20dca7b41eb03ceb8fbf2bbcbe94f6358b867",
+      "execution_permitted": false,
+      "dispatched": false
+    },
+    {
+      "case": "model_unavailable",
+      "input_class": "synthetic_test_fixture",
+      "model_version": "aihs-public-prototype-as-is-v1",
+      "mapping_version": "aihs-moodle-unreviewed-v1",
+      "adapter_status": "HUMAN_REVIEW",
+      "adapter_reason": "model_unavailable",
+      "disposition": "HUMAN_REVIEW",
+      "gate_decision": null,
+      "gate_reason": null,
+      "audit_event_hash": "9f770eefb7476606b088ea85a397c8c347af24eb1c46879f4b746ab68b9d1f97",
+      "execution_permitted": false,
+      "dispatched": false
+    },
+    {
+      "case": "test_only_NOP_gate",
+      "input_class": "synthetic_test_fixture",
+      "model_version": "aihs-public-prototype-as-is-v1",
+      "mapping_version": "test-only-observation-v1",
+      "adapter_status": "SHADOW_CANDIDATE",
+      "adapter_reason": "shadow_candidate_ready",
+      "disposition": "GATE_SHADOW_ONLY",
+      "gate_decision": "ALLOW",
+      "gate_reason": "typed staging request passed catalog, evidence, RBAC, timeout and approval gates",
+      "audit_event_hash": "f6d975b6aca11a469158153375f80cb17aaf2462624d6afc3a96d6b6996c40b4",
+      "execution_permitted": false,
+      "dispatched": false
+    }
+  ],
+  "approved_repository_mapping_count": 0,
+  "executor_calls": 0,
+  "resolved_incidents": 0
+}

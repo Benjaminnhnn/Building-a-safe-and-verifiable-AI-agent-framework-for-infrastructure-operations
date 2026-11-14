@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "baseline_id": "aihs-public-prototype-as-is-v1",
+  "status": "defined_and_run_on_bundled_synthetic_data_only",
+  "source": {
+    "repository": "https://github.com/alibaba-edu/dcbrain",
+    "commit": "07314287ca0858b9a7d8dba951c96394487e2be2",
+    "subdirectory": "AIHS_prototype",
+    "source_manifest": "evaluation/aihs/source-manifest.json",
+    "reproduction_results": "evaluation/aihs/reproduction-results-2026-11-14.json"
+  },
+  "runtime": {
+    "python": "3.12.3",
+    "requirements": "evaluation/aihs/requirements-a1.txt",
+    "working_directory": "AIHS_prototype",
+    "train_command": "python AIHS_Training.py",
+    "example_inference_command": "python AIHS_api.py",
+    "model_files": ["model/mapper.pkl", "model/predictor.pkl", "model/controller.pkl"],
+    "model_persistence": "pickle_from_verified_source_only"
+  },
+  "data": {
+    "kind": "bundled_synthetic",
+    "path": "dataset/train.csv",
+    "sha256": "5b4c69b35de32a1890b2eb5ac9bca039c2f6bd60d0cf27683c6cd9f91a1eccb1",
+    "rows": 500,
+    "input_columns": ["attributes", "action", "final_state"],
+    "timestamp_column_present": false,
+    "train_validation_test_split": "none_in_upstream_script",
+    "generator_python_random_seed": 2020,
+    "numpy_random_seed": null
+  },
+  "mapper": {
+    "source": "AIHS_Training.py:16-98",
+    "type": "LDA",
+    "attribute_encoding": "attribute name repeated by severity index: info=0, good=1, warning=2, error=3, critical=4, fatal=5",
+    "tokenizer": "sklearn.feature_extraction.text.CountVectorizer(min_df=1,max_df=1.0,lowercase=False,token_pattern='\\b\\w+\\b')",
+    "estimator": "sklearn.decomposition.LatentDirichletAllocation",
+    "inference_method": "batch_variational_not_gibbs_sampling",
+    "topics": 10,
+    "doc_topic_prior": 0.1,
+    "topic_word_prior": 0.01,
+    "max_iter": 100,
+    "learning_method": "batch",
+    "random_state": null,
+    "output": "10-dimensional document-topic probability vector"
+  },
+  "predictor": {
+    "source": "AIHS_Training.py:120-156",
+    "estimator": "lightgbm.LGBMClassifier",
+    "objective": "multiclass",
+    "boosting_type": "gbdt",
+    "n_estimators": 2000,
+    "num_leaves": 1024,
+    "learning_rate": 0.2,
+    "subsample": 0.8,
+    "class_weight": "balanced",
+    "random_state": 2020,
+    "training_population": "all_500_rows_regardless_of_final_state",
+    "target": "action",
+    "output": "one of NOP,MSR,ER,RB,RI,RMA"
+  },
+  "controller": {
+    "source": "AIHS_Training.py:158-242",
+    "estimator": "six_lightgbm.LGBMClassifier_binary_models_one_per_action",
+    "objective": "binary",
+    "boosting_type": "gbdt",
+    "n_estimators": 2000,
+    "num_leaves": 1024,
+    "learning_rate": 0.2,
+    "class_weight": "balanced",
+    "random_state": 2020,
+    "training_population": "rows_for_that_action_both_successful_and_unsuccessful",
+    "target": "final_state_successful_as_1_unsuccessful_as_0",
+    "decision": "accept predicted action if binary classifier predicts 1; otherwise upstream fallback returns call human due classifier-object comparison bug",
+    "fallback_status": "known_upstream_bug_do_not_claim_paper_cost_order_search"
+  },
+  "action_cost_order": ["NOP", "MSR", "ER", "RB", "RI", "RMA"],
+  "inference": {
+    "source": "AIHS_api.py:12-24",
+    "input": ["attribute_str", "hostname", "timestamp"],
+    "output": ["hostname", "timestamp", "action"],
+    "timestamp_behavior": "pass_through_input_not_prediction_time",
+    "decision_point": "after caller supplies attributes and before any repair action",
+    "monitoring_trigger": "not_implemented_in_prototype",
+    "execution": "not_implemented_in_prototype",
+    "post_action_verification": "not_implemented_in_prototype"
+  },
+  "safety": {
+    "proposal_only": true,
+    "authorized_to_execute": false,
+    "moodle_action_mapping": "not_defined",
+    "production_comparison_claim": false,
+    "recovery_effectiveness_claim": false
+  }
+}

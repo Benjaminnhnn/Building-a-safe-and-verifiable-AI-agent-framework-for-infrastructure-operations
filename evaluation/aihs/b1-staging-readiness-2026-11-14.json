@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "stage": "B1.3_controlled_staging_readiness",
+  "checked_at_utc": "2026-11-14T13:15:58.959680+00:00",
+  "local_terraform_state_resource_count": 0,
+  "aws_live_state": "unverified_target_account_mfa_required",
+  "repository_mapping_review_status": "no_approved_action_mapping",
+  "live_reviewed_aihs_actions": 0,
+  "a2_eligible_training_records": 0,
+  "staging_bridge_tests_passed": 7,
+  "preparation_status": "BLOCKED",
+  "blockers": [
+    "local_terraform_state_empty_live_aws_unverified",
+    "no_live_reviewed_aihs_action_mapping",
+    "no_live_planner_candidate_and_fresh_evidence",
+    "no_validated_moodle_aihs_model_or_predecision_features"
+  ],
+  "action_taken": {
+    "aws_mutations": 0,
+    "operator_approval_requests": 0,
+    "executor_calls": 0,
+    "verifier_runs": 0,
+    "resolved_incidents": 0
+  },
+  "scope": "code_and_offline_fixture_test_only",
+  "offline_real_planner_handoff_test": "passed_synthetic_probes_no_executor"
+}

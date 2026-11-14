@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "note": "Synthetic IDs and telemetry; no credentials or real hostname",
+  "examples": [
+    {
+      "case": "prototype_sample_action_unmapped",
+      "model_output": {
+        "hostname": "synthetic-host",
+        "timestamp": 12345,
+        "action": [
+          "RI"
+        ]
+      },
+      "trusted_context": {
+        "incident_id": "inc-synthetic-demo",
+        "scenario_id": "CON-01",
+        "environment": "staging",
+        "trusted_target_scope": "moodle-app-b",
+        "trusted_target_resource_id": "moodle-app-b",
+        "trusted_target_resource_type": "application",
+        "evidence_refs": [
+          "ev-demo-1",
+          "ev-demo-2",
+          "ev-demo-3"
+        ],
+        "predicted_at": "2026-11-14T10:00:00Z",
+        "model_version": "aihs-public-prototype-as-is-v1",
+        "data_version": "synthetic-source-sha256"
+      },
+      "adapter_result": {
+        "status": "HUMAN_REVIEW",
+        "reason_code": "unmapped_action",
+        "incident_id": "inc-synthetic-demo",
+        "scenario_id": "CON-01",
+        "model_version": "aihs-public-prototype-as-is-v1",
+        "data_version": "synthetic-source-sha256",
+        "mapping_version": "aihs-moodle-unreviewed-v1",
+        "predicted_at": "2026-11-14T10:00:00Z",
+        "aihs_action": "RI",
+        "catalog_action_id": null,
+        "target_scope": null,
+        "target_resource_id": null,
+        "evidence_refs": [
+          "ev-demo-1",
+          "ev-demo-2",
+          "ev-demo-3"
+        ],
+        "execution_permitted": false,
+        "dispatched": false
+      }
+    },
+    {
+      "case": "unknown_action_fails_closed",
+      "model_output": {
+        "hostname": "synthetic-host",
+        "timestamp": 12345,
+        "action": [
+          "DROP_DATABASE"
+        ]
+      },
+      "trusted_context": {
+        "incident_id": "inc-synthetic-demo",
+        "scenario_id": "CON-01",
+        "environment": "staging",
+        "trusted_target_scope": "moodle-app-b",
+        "trusted_target_resource_id": "moodle-app-b",
+        "trusted_target_resource_type": "application",
+        "evidence_refs": [
+          "ev-demo-1",
+          "ev-demo-2",
+          "ev-demo-3"
+        ],
+        "predicted_at": "2026-11-14T10:00:00Z",
+        "model_version": "aihs-public-prototype-as-is-v1",
+        "data_version": "synthetic-source-sha256"
+      },
+      "adapter_result": {
+        "status": "HUMAN_REVIEW",
+        "reason_code": "unknown_aihs_action",
+        "incident_id": "inc-synthetic-demo",
+        "scenario_id": "CON-01",
+        "model_version": "aihs-public-prototype-as-is-v1",
+        "data_version": "synthetic-source-sha256",
+        "mapping_version": "aihs-moodle-unreviewed-v1",
+        "predicted_at": "2026-11-14T10:00:00Z",
+        "aihs_action": null,
+        "catalog_action_id": null,
+        "target_scope": null,
+        "target_resource_id": null,
+        "evidence_refs": [
+          "ev-demo-1",
+          "ev-demo-2",
+          "ev-demo-3"
+        ],
+        "execution_permitted": false,
+        "dispatched": false
+      }
+    }
+  ]
+}
