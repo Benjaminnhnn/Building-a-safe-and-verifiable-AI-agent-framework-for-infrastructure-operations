@@ -154,19 +154,27 @@ since_iso="$(date -u -d "@${T[inject]%.*}" +%Y-%m-%dT%H:%M:%S)"
 decision=""
 for ((elapsed = 0; elapsed < agent_timeout; elapsed += 5)); do
   decision="$(remote monitor-ai-01 "sudo docker exec -i moodle-ai-agent python - $since_iso" <<'PY' || true
-import json, sqlite3, sys
+import json, os, sqlite3, sys
 since = sys.argv[1]
+if not os.path.exists("/app/data/evidence.db"):  # a fresh Agent creates it on its first decision
+    sys.exit(0)
 db = sqlite3.connect("file:/app/data/evidence.db?mode=ro", uri=True)
-for eid, at, payload in db.execute(
-        "select evidence_id, collected_at, json_extract(metadata_json,'$.decision_json') from evidence"
-        " where source='ai_decision' and json_extract(metadata_json,'$.decision_kind')='remediation_candidate'"
-        " order by collected_at asc"):
+query = (
+    "select evidence_id, incident_id, collected_at, json_extract(metadata_json,'$.decision_json') from evidence"
+    " where source='ai_decision' and json_extract(metadata_json,'$.decision_kind')=? order by collected_at asc")
+for eid, incident, at, payload in db.execute(query, ("remediation_candidate",)):
     if (at or "")[:19] < since:
         continue
     d = json.loads(payload or "{}")
     if d.get("catalog_action_id"):
-        print(json.dumps({"evidence_id": eid, "collected_at": at, **{k: d.get(k) for k in (
-            "scenario_id", "cause_code", "disposition", "catalog_action_id", "target_scope", "confidence")},
+        # cause_code and confidence live in the same incident's diagnosis record.
+        diag = {}
+        for _, diag_incident, diag_at, diag_payload in db.execute(query, ("diagnosis",)):
+            if diag_incident == incident and (diag_at or "") <= (at or ""):
+                diag = json.loads(diag_payload or "{}")
+        print(json.dumps({"evidence_id": eid, "incident_id": incident, "collected_at": at,
+            **{k: d.get(k) for k in ("scenario_id", "catalog_action_id", "target_scope")},
+            **{k: diag.get(k) for k in ("cause_code", "confidence", "disposition")},
             "evidence_refs": len(d.get("evidence_refs") or [])}))
         break
 PY
@@ -273,7 +281,7 @@ jq -r '"\n== \(.scenario_id) | \(.arm) ==",
   "Login page outage (probe)    : \(.seconds.login_page_outage) s",
   "RPO                          : \(.rpo.rpo_seconds) s (\(.rpo.lost_acknowledged_writes)/\(.rpo.acknowledged_writes) acknowledged writes lost)",
   "Write unavailability         : \(.rpo.write_unavailability_s) s",
-  "Baseline after run           : \(.baseline_after_run)"]' "$out_dir/result.json"
+  "Baseline after run           : \(.baseline_after_run)"' "$out_dir/result.json"
 echo "evidence: $out_dir/result.json"
 if [[ "$baseline_after" != passed ]]; then
   echo "Baseline is not clean after the run; see $out_dir/baseline-after.err before the next run." >&2

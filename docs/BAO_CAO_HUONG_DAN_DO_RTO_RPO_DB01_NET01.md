@@ -279,11 +279,17 @@ aws elbv2 describe-target-health --target-group-arn "$TG_ARN" \
 Với monitor **mới dựng**, thứ tự là: monitoring **chưa có Agent** (bước này cài Docker) → hai playbook Safe Executor
 → monitoring **có Agent**. Nhớ làm lại bước A3 (CRLF) ngay trước khối này.
 
+> **Bẫy đã gặp ngày 14/11:** khi chạy không có `--agent-image`, script vẫn lấy image trong file
+> `terraform/.artifacts/moodle-agent-image` còn lại từ lần dựng trước, tức là bật Agent bằng **image cũ** (và báo
+> thiếu khoá Verifier). Trước lần chạy đầu, cất file đó đi; lần chạy cuối với `--agent-image` sẽ ghi lại file mới.
+
 ```bash
+f=terraform/.artifacts/moodle-agent-image; [ -f "$f" ] && mv "$f" "$f.stale-$(date -u +%Y%m%d)"
 bash automation/configure-moodle-monitoring.sh
 bash automation/configure-moodle-safe-executor.sh
 bash automation/configure-moodle-safe-executor-api.sh
 bash automation/configure-moodle-monitoring.sh --agent-image "$AGENT_IMAGE"
+cat terraform/.artifacts/moodle-agent-image            # phải đúng $AGENT_IMAGE
 ```
 
 Safe Executor được **cài nhưng để tắt**: nhánh đo không dùng nó, và trạng thái tắt là điều kiện script kiểm tra.
