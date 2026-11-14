@@ -13,7 +13,6 @@ from core.evidence.evidence_collectors import (
 )
 from core.moodle.diagnosis import (
     _ALL_QUERY_IDS,
-    _AUTH_RULES,
     _BUSINESS_ALERT_RULES,
     _DIRECT_NODE_RULES,
     _DIRECT_PROBE_RULES,
@@ -57,7 +56,6 @@ def test_every_configured_moodle_alert_has_a_fixed_query_and_diagnosis_contract(
         set(_DIRECT_NODE_RULES)
         | set(_DIRECT_PROBE_RULES)
         | set(_DIRECT_THRESHOLD_RULES)
-        | set(_AUTH_RULES)
         | set(_BUSINESS_ALERT_RULES)
         | set(_SECURITY_ALERT_RULES)
         | {"MoodleSyntheticTransactionFailed"}

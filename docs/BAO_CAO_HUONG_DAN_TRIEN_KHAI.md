@@ -5,7 +5,7 @@
 **Mục tiêu:** sau khi đọc xong, bạn **tự dựng được** toàn bộ hạ tầng Moodle staging trên AWS từ con số 0, hiểu
 **vì sao** từng bước tồn tại, và biết cách tự chẩn đoán khi một bước thất bại.
 
-Tài liệu này gộp hướng dẫn deploy, quy trình vận hành, hướng dẫn phân quyền AWS IAM và các bước cấu hình Okta/Entra.
+Tài liệu này gộp hướng dẫn deploy, quy trình vận hành và hướng dẫn phân quyền AWS IAM.
 Kiến trúc và lý do thiết kế nằm ở [BAO_CAO_KIEN_TRUC_HA_TANG](BAO_CAO_KIEN_TRUC_HA_TANG.md); diễn tập sự cố và demo
 nằm ở [BAO_CAO_KICH_BAN_LOI](BAO_CAO_KICH_BAN_LOI.md); Agent, Safety Gate, Executor và Verifier nằm ở
 [BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN](BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md). Khi tài liệu khác mã nguồn,
@@ -14,7 +14,7 @@ mã nguồn thắng.
 > ⚠️ **Chi phí:** hạ tầng này **tính tiền theo giờ** ngay sau `terraform apply`
 > (2 NAT Gateway, ALB, RDS, EFS, 3 EC2). NAT Gateway là khoản lớn nhất và vẫn
 > tính tiền khi EC2 đã stop. Chỉ dựng khi có kế hoạch dùng, và destroy theo
-> phụ lục D khi xong.
+> phụ lục C khi xong.
 
 ---
 
@@ -32,17 +32,15 @@ mã nguồn thắng.
 10. [Giai đoạn 6: Chọn image Moodle](#10-giai-đoạn-6-chọn-image-moodle)
 11. [Giai đoạn 7: Secret, stage release và khởi động Moodle](#11-giai-đoạn-7-secret-stage-release-và-khởi-động-moodle)
 12. [Giai đoạn 8: Nghiệm thu](#12-giai-đoạn-8-nghiệm-thu)
-13. [Giai đoạn 9: Khôi phục đăng nhập Okta](#13-giai-đoạn-9-khôi-phục-đăng-nhập-okta)
-14. [Giai đoạn 10: Monitoring và AI Agent](#14-giai-đoạn-10-monitoring-và-ai-agent)
-15. [Giai đoạn 11: Bật CD cho các lần release sau](#15-giai-đoạn-11-bật-cd-cho-các-lần-release-sau)
-16. [Vận hành hằng ngày: release, rollback, kiểm tra drift](#16-vận-hành-hằng-ngày-release-rollback-kiểm-tra-drift)
-17. [Gỡ toàn bộ hạ tầng](#17-gỡ-toàn-bộ-hạ-tầng)
-18. [Tư duy xử lý sự cố](#18-tư-duy-xử-lý-sự-cố)
-19. [Checklist một trang](#19-checklist-một-trang)
-20. [Phụ lục A: Phân quyền AWS IAM (dành cho admin)](#phụ-lục-a-phân-quyền-aws-iam-dành-cho-admin)
-21. [Phụ lục B: Cấu hình Entra ID, Okta và OAuth 2 của Moodle](#phụ-lục-b-cấu-hình-entra-id-okta-và-oauth-2-của-moodle)
-22. [Phụ lục C: Kết thúc phiên và bàn giao](#phụ-lục-c-kết-thúc-phiên-và-bàn-giao)
-23. [Phụ lục D: Gỡ toàn bộ hạ tầng (chi tiết)](#phụ-lục-d-gỡ-toàn-bộ-hạ-tầng-chi-tiết)
+13. [Giai đoạn 9: Monitoring và AI Agent](#13-giai-đoạn-9-monitoring-và-ai-agent)
+14. [Giai đoạn 10: Bật CD cho các lần release sau](#14-giai-đoạn-10-bật-cd-cho-các-lần-release-sau)
+15. [Vận hành hằng ngày: release, rollback, kiểm tra drift](#15-vận-hành-hằng-ngày-release-rollback-kiểm-tra-drift)
+16. [Gỡ toàn bộ hạ tầng](#16-gỡ-toàn-bộ-hạ-tầng)
+17. [Tư duy xử lý sự cố](#17-tư-duy-xử-lý-sự-cố)
+18. [Checklist một trang](#18-checklist-một-trang)
+19. [Phụ lục A: Phân quyền AWS IAM (dành cho admin)](#phụ-lục-a-phân-quyền-aws-iam-dành-cho-admin)
+20. [Phụ lục B: Kết thúc phiên và bàn giao](#phụ-lục-b-kết-thúc-phiên-và-bàn-giao)
+21. [Phụ lục C: Gỡ toàn bộ hạ tầng (chi tiết)](#phụ-lục-c-gỡ-toàn-bộ-hạ-tầng-chi-tiết)
 
 ---
 
@@ -108,7 +106,6 @@ Vì vậy dự án có quy tắc cứng:
 | **OpenSSH** | Truy cập node qua bastion bằng file SSH config do Terraform sinh | Không mở cổng quản trị ra Internet |
 | **jq, curl, openssl** | Đọc output JSON, gọi health check, sinh mật khẩu ngẫu nhiên | Dùng trong hầu hết script `automation/` |
 | **psql** (PostgreSQL client >= 15) | `stage-moodle-release.sh` tạo role DB; chạy trong Docker hoặc client local | Cần khi máy không có Docker daemon |
-| **Okta + Entra ID** | Đăng nhập SSO cho Moodle qua OIDC | Phần xác thực của đề tài |
 
 **Terraform state nằm ở máy local** (`terraform/terraform.tfstate`, không có
 remote backend). Hệ quả:
@@ -129,7 +126,7 @@ remote backend). Hệ quả:
         ▼
  [6] Chọn image SHA trên GHCR ──► [7] Secret → stage → install → start
                                                      │
- [11] Bật CD ◄── [10] Monitoring + Agent ◄── [9] Okta ◄── [8] Nghiệm thu
+               [10] Bật CD ◄── [9] Monitoring + Agent ◄── [8] Nghiệm thu
 ```
 
 Thời gian tham khảo cho lần đầu: khoảng 1–2 giờ. Riêng `terraform apply` mất
@@ -164,7 +161,7 @@ git switch develop && git pull
 ```
 
 **Đăng nhập GitHub CLI (`gh`).** Cần cho việc đọc kết quả CI khi repo private,
-cho `gh secret set` và `gh workflow run` ở mục 15. Nếu `brew install gh` báo
+cho `gh secret set` và `gh workflow run` ở mục 14. Nếu `brew install gh` báo
 lỗi quyền (`sudo chown -R ... /opt/homebrew`) vì Homebrew do tài khoản IT quản
 lý, **đừng chạy lệnh `chown` đó**. Hãy cài `gh` theo cách khác, ví dụ bản
 binary đặt trong `~/.local/bin`.
@@ -360,7 +357,7 @@ terraform -chdir=terraform apply .artifacts/deployment.tfplan
 ```
 
 **Không ngắt (Ctrl+C) khi đang apply.** Nếu bị ngắt, AWS có thể đã tạo tài
-nguyên mà state chưa ghi nhận. Xem mục 18, lỗi "apply bị ngắt".
+nguyên mà state chưa ghi nhận. Xem mục 17, lỗi "apply bị ngắt".
 
 ✅ **Cổng kiểm tra:**
 
@@ -757,28 +754,9 @@ URL cũ trong tài liệu hay tin nhắn đều có thể đã chết.
 
 ---
 
-## 13. Giai đoạn 9: Khôi phục đăng nhập Okta
+## 13. Giai đoạn 9: Monitoring và AI Agent
 
-Database mới không có cấu hình OAuth 2, và ALB mới có DNS mới. Sau mỗi lần
-dựng lại cần:
-
-1. Trong Okta admin (`https://trial-3489054-admin.okta.com`; chú ý domain là
-   `trial-3489054`, **không phải** tên hiển thị `galaxyfinx-trial-3489054`):
-   sửa app `Moodle`, đặt sign-in redirect URI thành
-   `$MOODLE_URL/admin/oauth2callback.php` và sign-out URI thành `$MOODLE_URL/`.
-2. Trong Moodle: tạo lại OAuth 2 service `Okta`, endpoint, field mapping (có
-   `sub` → `username`), bật plugin OAuth 2, khóa trường name/email theo
-   phụ lục B, Bước 10. Bản xuất
-   cấu hình cũ (nếu có) nằm ở `terraform/.artifacts/preserve/moodle-oauth2-okta.json`.
-   File này **chứa client secret**: giữ mode 600, không dán vào chat.
-3. ✅ Trang đăng nhập có nút Okta; bấm vào thì chuyển tới
-   `trial-3489054.okta.com` và hiện form đăng nhập, không phải lỗi 400.
-
----
-
-## 14. Giai đoạn 10: Monitoring và AI Agent
-
-### 14.1. Chọn image Agent đã qua CI
+### 13.1. Chọn image Agent đã qua CI
 
 Image Agent do `agent-image.yml` build khi `agent_src/**` thay đổi. Workflow
 này **không tự deploy** và **không phụ thuộc CI**, nên áp dụng đúng nguyên tắc
@@ -804,7 +782,7 @@ CI có thể ra quyết định sai trên hạ tầng thật.
 
 ✅ **Cổng kiểm tra:** dòng `AGENT_IMAGE=...:<40 ký tự>` được in ra.
 
-### 14.2. Triển khai
+### 13.2. Triển khai
 
 ```bash
 bash automation/configure-moodle-monitoring.sh --agent-image "$AGENT_IMAGE"
@@ -835,7 +813,7 @@ bash automation/moodle-environment-baseline.sh verify
 ```
 
 
-### 14.3. Vận hành giám sát
+### 13.3. Vận hành giám sát
 
 Wrapper `configure-moodle-monitoring.sh` lấy URL ALB, endpoint RDS, inventory và mật khẩu synthetic từ state và
 artifact Terraform cục bộ. Nó tạo token bearer 256 bit giữa Alertmanager và Agent **ngay trên monitor** (nếu chưa
@@ -873,7 +851,7 @@ Code mới (25/10/2026) thêm probe BIZ và audit security group RDS. Sau khi k�
 (IAM role chỉ đọc `terraform/monitor-iam.tf` và tag RDS trên monitor) rồi chạy lại playbook giám sát và playbook
 executor. Kiểm tra `promtool check rules` đạt trong lúc chạy play.
 
-### 14.4. Safe Executor và các cặp khoá ký
+### 13.4. Safe Executor và các cặp khoá ký
 
 Executor là dịch vụ riêng trên monitor; nó SSH vào node bằng key forced-command và chỉ chạy các hành động trong
 allowlist. Cài lần đầu theo thứ tự, công tắc live vẫn **tắt**:
@@ -913,7 +891,7 @@ request đang chờ. Gate và Executor cùng kiểm tra chữ ký; Verifier ký 
 safe-action bị lộ, thay file
 `/etc/aiops-safe-executor/safe-action-api-token` rồi khởi động lại Agent.
 
-### 14.5. Telegram cho Agent và cầu nối phê duyệt
+### 13.5. Telegram cho Agent và cầu nối phê duyệt
 
 Agent chỉ gửi Telegram khi container có `TELEGRAM_TOKEN` và `TELEGRAM_CHAT_ID`. Điền vào `release/.env`
 (Git-ignored, mode 600), rồi deploy lại Agent bằng `configure-moodle-monitoring.sh --agent-image <image>`. Wrapper
@@ -944,7 +922,7 @@ ssh -F terraform/.artifacts/moodle-ssh.config monitor-ai-01 \
 Khoanh vùng khi không thấy tin: log worker có `TELEGRAM_TOKEN or TELEGRAM_CHAT_ID not found` → biến chưa vào
 container; `403`/`400` → bot hoặc chat sai; không có dòng nào → alert chưa tới Agent.
 
-### 14.6. Cấp quyền SSH vào monitor cho AI Engineer
+### 13.6. Cấp quyền SSH vào monitor cho AI Engineer
 
 Thêm IP public của họ dạng `/32` vào `ai_engineer_monitor_ssh_cidr_blocks`, review plan, apply, rồi chỉ cài
 **public key** của họ bằng playbook riêng. Không bao giờ mở SSH cho mọi địa chỉ Internet.
@@ -961,9 +939,9 @@ Quyền AWS (phụ lục A) và quyền SSH vào monitor là hai lớp độc l�
 
 ---
 
-## 15. Giai đoạn 11: Bật CD cho các lần release sau
+## 14. Giai đoạn 10: Bật CD cho các lần release sau
 
-### 15.1. CD làm gì, và không làm gì
+### 14.1. CD làm gì, và không làm gì
 
 Sau khi bật, mỗi lần push vào `develop` có thay đổi ở `moodle/**`,
 `release/moodle/**`, `automation/github-deploy-moodle.sh` hoặc
@@ -997,7 +975,7 @@ Hiện trạng lịch sử: mọi lần chạy `deploy-moodle` gần đây đề
 **chưa có runner online**. Job đứng `queued` rồi bị hủy, nhưng image vẫn được
 publish.
 
-### 15.2. Hai việc phải xử lý trước khi bật
+### 14.2. Hai việc phải xử lý trước khi bật
 
 **(a) Lỗi cron chạy trên cả hai node: đã sửa ngày 19/10/2026.** Trước đây
 [github-deploy-moodle.sh](../automation/github-deploy-moodle.sh) gọi
@@ -1046,7 +1024,7 @@ gh api "repos/$REPO/actions/permissions/workflow"                       # defaul
 `runs-on: [self-hosted ...]` hoặc sửa workflow có `pull_request` thì **không
 duyệt**. Với người bên ngoài, đó là dấu hiệu muốn chạy code trong VPC.
 
-### 15.3. Tạo deploy key riêng (không dùng key quản trị)
+### 14.3. Tạo deploy key riêng (không dùng key quản trị)
 
 Đừng đưa `~/.ssh/moodle-aiops` (key quản trị của bạn) lên GitHub. Tạo một key
 **chỉ để deploy**. Nếu nó bị lộ, bạn thu hồi riêng nó mà không ảnh hưởng quyền
@@ -1073,7 +1051,7 @@ GitHub, nó cũng chỉ dùng được khi kết nối xuất phát từ monitor
 Key không có passphrase (`-N ''`) vì runner phải dùng nó không cần người. Đây
 là lý do nó phải là key **riêng**, chỉ có trên 2 node Moodle.
 
-### 15.4. Cài runner trên monitor-ai-01
+### 14.4. Cài runner trên monitor-ai-01
 
 Runner chạy bằng user riêng `github-runner`, **không** dùng `ec2-user` (user
 này có sudo):
@@ -1130,7 +1108,7 @@ for ip in "$APP_A_IP" "$APP_B_IP"; do ssh-keygen -F "$ip" | grep -v '^#'; done \
 Việc cài runner hiện làm tay. Theo nguyên tắc "Ansible quản lý cấu hình
 host", về sau nên đưa nó vào một playbook.
 
-### 15.5. Tạo Environment `staging` và nạp secret
+### 14.5. Tạo Environment `staging` và nạp secret
 
 **Settings → Environments → New environment → `staging`.** Nên bật
 **Required reviewers** (chọn chính bạn). Khi đó mỗi lần deploy phải có người
@@ -1162,7 +1140,7 @@ gh secret list --repo "$REPO" --env staging                       # chỉ thấy
 
 `gh secret set` cần `gh` đã đăng nhập (giai đoạn 0) với quyền admin trên repo.
 
-### 15.6. Chạy thử lần đầu
+### 14.6. Chạy thử lần đầu
 
 ```bash
 gh workflow run cd-staging.yml --repo "$REPO" --ref develop
@@ -1185,26 +1163,26 @@ done
 # Kỳ vọng: cả hai node chạy moodle-web với image :<sha mới>; CHỈ node A có moodle-cron.
 ```
 
-Nếu node B có `moodle-cron`, nghĩa là runner đang dùng bản script cũ (trước 15.2(a)). Dừng nó ngay:
+Nếu node B có `moodle-cron`, nghĩa là runner đang dùng bản script cũ (trước 14.2(a)). Dừng nó ngay:
 `sudo docker compose ... stop moodle-cron && sudo docker compose ... rm -f moodle-cron`.
 
-### 15.7. Khi CD lỗi
+### 14.7. Khi CD lỗi
 
 | Hiện tượng | Lớp | Hướng điều tra |
 |---|---|---|
 | `deploy-moodle` đứng **Queued** rồi `cancelled` | Runner | Runner offline: `sudo ./svc.sh status` trên monitor; nhãn thiếu `moodle-staging` |
 | Đứng **Waiting** | Phê duyệt | Environment có Required reviewers: vào run bấm **Review deployments** |
 | `Missing required staging secret: X` | Secret | Secret X chưa nạp vào **environment** `staging` (nạp nhầm ở mức repo cũng không được) |
-| `Permission denied (publickey)` | SSH | Public key deploy chưa có trên node (15.3), hoặc `SSH_PRIVATE_KEY` không khớp |
-| `Host key verification failed` | SSH | IP node đổi sau khi dựng lại, nhưng `known_hosts` của `github-runner` vẫn giữ key cũ: xóa key cũ và nạp lại như 15.4 |
+| `Permission denied (publickey)` | SSH | Public key deploy chưa có trên node (14.3), hoặc `SSH_PRIVATE_KEY` không khớp |
+| `Host key verification failed` | SSH | IP node đổi sau khi dựng lại, nhưng `known_hosts` của `github-runner` vẫn giữ key cũ: xóa key cũ và nạp lại như 14.4 |
 | `Moodle runtime has not been staged` (exit 66) | Host | Chưa chạy `stage-moodle-release.sh` (mục 11) trên node đó |
 | `docker login` lỗi `unauthorized` | Quyền | `GHCR_TOKEN` hết hạn hoặc thiếu `read:packages` |
-| Health check `127.0.0.1:8080` thất bại | Ứng dụng | `docker compose logs moodle-web` trên node lỗi; rollback theo 16.2 |
+| Health check `127.0.0.1:8080` thất bại | Ứng dụng | `docker compose logs moodle-web` trên node lỗi; rollback theo 15.2 |
 
-### 15.8. Sau mỗi lần dựng lại hoặc destroy hạ tầng
+### 14.8. Sau mỗi lần dựng lại hoặc destroy hạ tầng
 
 - **Dựng lại:** IP node, DNS ALB và host key **đều đổi**. Cập nhật 3 secret
-  host/URL, cài lại deploy key (15.3), cài lại runner (15.4; monitor là máy
+  host/URL, cài lại deploy key (14.3), cài lại runner (14.4; monitor là máy
   mới), nạp lại `known_hosts` cho runner.
 - **Destroy:** gỡ runner khỏi GitHub (**Settings → Actions → Runners →
   monitor-ai-01 → Remove**), vì máy đã mất. Nếu không, các lần push sau vẫn
@@ -1213,17 +1191,17 @@ Nếu node B có `moodle-cron`, nghĩa là runner đang dùng bản script cũ (
 
 ---
 
-## 16. Vận hành hằng ngày: release, rollback, kiểm tra drift
+## 15. Vận hành hằng ngày: release, rollback, kiểm tra drift
 
-### 16.1. Release phiên bản mới
+### 15.1. Release phiên bản mới
 
-Khuyến nghị dùng CD (mục 15). Khi phải làm tay: chọn SHA (mục 10), rồi trên
+Khuyến nghị dùng CD (mục 14). Khi phải làm tay: chọn SHA (mục 10), rồi trên
 **từng node, B trước A sau**, cập nhật `MOODLE_IMAGE` trong
 `/opt/moodle/release/moodle-runtime.env`, chạy `compose up -d --wait`, kiểm
 tra health, rồi mới sang node kia. Node A dùng `--profile cron ... moodle-web
 moodle-cron`, node B chỉ `moodle-web` (như mục 11.4).
 
-### 16.2. Rollback
+### 15.2. Rollback
 
 Script deploy **không tự rollback**. Khi release lỗi:
 
@@ -1235,7 +1213,7 @@ Script deploy **không tự rollback**. Khi release lỗi:
 Vì image bất biến và tag theo SHA, rollback chỉ là "deploy lại một SHA cũ".
 Đây là lý do không bao giờ dùng tag `latest`.
 
-### 16.3. Kiểm tra drift cuối mỗi phiên làm việc
+### 15.3. Kiểm tra drift cuối mỗi phiên làm việc
 
 ```bash
 terraform -chdir=terraform plan -input=false -var-file=deployment.tfvars -detailed-exitcode
@@ -1244,9 +1222,9 @@ terraform -chdir=terraform plan -input=false -var-file=deployment.tfvars -detail
 
 ---
 
-## 17. Gỡ toàn bộ hạ tầng
+## 16. Gỡ toàn bộ hạ tầng
 
-Làm theo **phụ lục D**, không làm tắt. Tóm tắt các điểm dễ sai:
+Làm theo **phụ lục C**, không làm tắt. Tóm tắt các điểm dễ sai:
 
 1. Thu thập bằng chứng cần cho báo cáo **trước**.
 2. RDS cấu hình `skip_final_snapshot=true`: destroy **không** tạo snapshot
@@ -1264,9 +1242,9 @@ Làm theo **phụ lục D**, không làm tắt. Tóm tắt các điểm dễ sai
 
 ---
 
-## 18. Tư duy xử lý sự cố
+## 17. Tư duy xử lý sự cố
 
-### 18.1. Phương pháp: đừng sửa khi chưa biết lỗi nằm ở lớp nào
+### 17.1. Phương pháp: đừng sửa khi chưa biết lỗi nằm ở lớp nào
 
 Mỗi khi một bước thất bại, đi qua sáu câu hỏi theo thứ tự:
 
@@ -1274,7 +1252,7 @@ Mỗi khi một bước thất bại, đi qua sáu câu hỏi theo thứ tự:
    code. Đừng diễn giải ("không kết nối được" là diễn giải;
    `Connection closed by UNKNOWN port 65535` là triệu chứng).
 2. **Lỗi thuộc lớp nào?** Quyền AWS → Terraform/AWS → mạng/SSH → host
-   (Ansible) → ứng dụng (container) → tích hợp (ALB, Okta). Bước gần nhất đã
+   (Ansible) → ứng dụng (container) → tích hợp (ALB, CD). Bước gần nhất đã
    qua cổng kiểm tra cho biết các lớp bên dưới còn tốt.
 3. **Có những giả thuyết nào?** Liệt kê ít nhất hai.
 4. **Phép thử nào phân biệt được chúng?** Chọn lệnh nhỏ nhất cho kết quả khác
@@ -1297,7 +1275,7 @@ Mỗi khi một bước thất bại, đi qua sáu câu hỏi theo thứ tự:
   `StrictHostKeyChecking yes`.
 - *Sửa:* làm mục 8 (so fingerprint), chạy lại `ansible ... -m ping`.
 
-### 18.2. Các lỗi đã thực sự gặp trong dự án
+### 17.2. Các lỗi đã thực sự gặp trong dự án
 
 | Triệu chứng | Lớp | Nguyên nhân gốc | Cách xử lý |
 |---|---|---|---|
@@ -1316,13 +1294,11 @@ Mỗi khi một bước thất bại, đi qua sáu câu hỏi theo thứ tự:
 | Kiểm tra manifest GHCR trả **404** | Image | SHA lấy bằng `git log -1 -- moodle/` là commit nằm giữa một lần push; chỉ commit cuối của lần push có image | Chọn SHA bằng `pick_image` (mục 10.2), tức là hỏi registry chứ không đoán từ git |
 | `stage-moodle-release.sh` báo `Docker CLI is unavailable. Enable Docker Desktop WSL integration...` trên macOS | Công cụ | Không có Docker daemon **và** `psql` không nằm trên PATH (libpq là keg-only) | Mở Docker Desktop, hoặc `export PATH="/opt/homebrew/opt/libpq/bin:$PATH"` (ghi vào `~/.zshrc`) |
 | `findmnt` trống trên node | Host | EFS chưa mount | Kiểm tra mount target, SG cổng 2049, access point; chạy lại `prepare-moodle-runtime.sh` |
-| Okta trả **400** hoặc API token "invalid" | Tích hợp | Dùng nhầm tên hiển thị `galaxyfinx-trial-3489054` thay vì domain `trial-3489054` | Lấy domain từ thanh địa chỉ trình duyệt của trang Okta admin |
-| Okta báo `redirect_uri` không hợp lệ sau khi dựng lại | Tích hợp | DNS ALB đã đổi | Cập nhật redirect URI trong Okta (mục 13) |
 | Job `deploy-moodle` đứng `queued` | CI/CD | Không có runner tự host online | Image vẫn đã publish; deploy tay hoặc cài runner |
 | CI đỏ, sửa xong lại đỏ ở bước khác | CI/CD | CI dừng ở bước lỗi **đầu tiên**, lỗi phía sau bị che | Chạy toàn bộ các bước trong `AGENTS.md` ở local trước khi push |
 | `AccessDenied` khi xóa recovery point EFS | Quyền | Role không có `backup:*` | Nhờ admin, hoặc chờ hết hạn |
 
-### 18.3. Khi nào dừng và hỏi
+### 17.3. Khi nào dừng và hỏi
 
 - `plan` có `destroy` hoặc `replace` mà bạn không chủ động yêu cầu.
 - Một lệnh đòi bạn tắt kiểm tra an toàn (`StrictHostKeyChecking no`, mở
@@ -1332,7 +1308,7 @@ Mỗi khi một bước thất bại, đi qua sáu câu hỏi theo thứ tự:
 
 ---
 
-## 19. Checklist một trang
+## 18. Checklist một trang
 
 ```text
 [ ] 0  Công cụ đã cài, SSH key ~/.ssh/moodle-aiops đã có
@@ -1345,9 +1321,8 @@ Mỗi khi một bước thất bại, đi qua sáu câu hỏi theo thứ tự:
 [ ] 6  MOODLE_IMAGE = pick_image moodle moodle, CI của SHA đó xanh, preflight OK
 [ ] 7  Secret trong file mode 600 → stage → install (chỉ A, 1 lần) → start (A: web+cron, B: web)
 [ ] 8  healthz 200 qua ALB, 2 target healthy, đăng nhập admin được, B không có cron
-[ ] 9  Okta redirect URI cập nhật, nút Okta đăng nhập được
-[ ] 10 AGENT_IMAGE = pick_image moodle-ai-agent agent_src, CI xanh → Monitoring + Agent chạy, Prometheus targets UP, baseline capture + verify
-[ ] 11 (CD) deploy key riêng
+[ ] 9  AGENT_IMAGE = pick_image moodle-ai-agent agent_src, CI xanh → Monitoring + Agent chạy, Prometheus targets UP, baseline capture + verify
+[ ] 10 (CD) deploy key riêng
        → runner monitor-ai-01 Idle (3 nhãn) → environment staging + secret → chạy thử,
        chỉ node A có moodle-cron
 [ ] Cuối phiên: plan -detailed-exitcode = 0; ghi lại SHA image và kết quả
@@ -1367,7 +1342,7 @@ Mỗi khi một bước thất bại, đi qua sáu câu hỏi theo thứ tự:
 ## Phụ lục A: Phân quyền AWS IAM (dành cho admin)
 
 **Người thực hiện:** quản trị viên AWS. Các role trong phụ lục này **không** có quyền quản lý IAM. Mô hình phân quyền
-và lý do thiết kế nằm ở [BAO_CAO_KIEN_TRUC_HA_TANG, mục 10](BAO_CAO_KIEN_TRUC_HA_TANG.md#10-phân-quyền-aws-iam).
+và lý do thiết kế nằm ở [BAO_CAO_KIEN_TRUC_HA_TANG, mục 9](BAO_CAO_KIEN_TRUC_HA_TANG.md#9-phân-quyền-aws-iam).
 Thay `<ACCOUNT_ID>`, `<infra-user>`, `<ai-user>`, `<mfa-device>` bằng giá trị thật khi làm; **không** commit access
 key, mật khẩu hay link kích hoạt.
 
@@ -1780,267 +1755,7 @@ Muốn thử policy mà không cần chạy thật: **IAM → Policy simulator**
 
 ---
 
-## Phụ lục B: Cấu hình Entra ID, Okta và OAuth 2 của Moodle
-
-Thực hiện ngày 09–11/10/2026; mục 13 của tài liệu này mô tả phần phải làm lại sau mỗi lần dựng lại hạ tầng. Giá trị
-cấu hình và lý do thiết kế nằm ở [BAO_CAO_KIEN_TRUC_HA_TANG, mục 9](BAO_CAO_KIEN_TRUC_HA_TANG.md#9-xác-thực-entra-id--okta--moodle).
-Domain Okta **luôn** là `trial-3489054.okta.com` (lấy từ thanh địa chỉ, bỏ `-admin`), **không** phải tên hiển thị
-`galaxyfinx-trial-3489054`.
-
-### B.1. Các bước cấu hình
-
-Các bước 6–9 của lần triển khai gốc (IAM, Terraform, Ansible, deploy Moodle) chính là các giai đoạn 1–7 của tài liệu
-này nên không lặp lại.
-
-#### Bước 1. Entra ID: tạo user và group demo
-
-1. Trong Entra admin center, tạo 3 group: `moodle-students`, `moodle-teachers`, `moodle-denied`.
-   - Membership type là **Assigned** (không dùng dynamic rule).
-   - **Không lồng group**, vì Okta không import nested group.
-2. Tạo user demo và thêm mỗi user vào đúng group của mình.
-3. **Bắt buộc điền** cho từng user (*Edit properties*):
-   - Tab **Identity**: **First name** và **Last name**.
-   - Tab **Contact information**: **Email**.
-
-   Okta bắt buộc `firstName` và `lastName`. Moodle bắt buộc họ, tên và email. Xem lỗi *Import user thất bại* ở B.2.
-
-#### Bước 2. Okta: import user và group từ Entra
-
-1. **Applications → Browse App Catalog → Microsoft Office 365 → Add Integration**, nhập tenant `m365x22866088.onmicrosoft.com`.
-2. **Sign-On**: không federate domain cho Moodle. Domain `.onmicrosoft.com` cũng **không thể federate**. Xem lý do ở báo cáo kiến trúc hạ tầng, mục 9.5.
-3. **Provisioning → API Integration**:
-   - Tick **Enable API integration** và **Import Groups**.
-   - **Bấm "Authenticate with Microsoft Account" trước**, đăng nhập Global Admin, **Accept** quyền cho *Okta Microsoft Graph Client*.
-   - **Sau đó** mới bấm **Save**. Xem lỗi *Lưu provisioning trước khi cấp consent* ở B.2.
-4. **Provisioning → To Okta**: username format là email; tick **Import unlicensed users** (user demo không có license M365); **bỏ** auto-confirm.
-5. **Import → Import Now → Full import**, rồi **chỉ confirm user demo**. Okta kéo về toàn bộ user của tenant; org trial chỉ cho 10 active user.
-6. Kiểm tra **Directory → Groups**: 3 group có biểu tượng Office 365, mỗi group 1 thành viên. Các group mẫu như *Tailspin Toys* hay *Contoso Team* là dữ liệu có sẵn của tenant demo, bỏ qua.
-
-#### Bước 3. Okta: kích hoạt user và đặt mật khẩu Okta
-
-User sau khi import ở trạng thái **Staged**: chưa có mật khẩu Okta, và **mật khẩu Entra không dùng được**.
-
-1. **Directory → People →** chọn user → **Activate**. **Bỏ tick** gửi email kích hoạt, vì user demo không có hộp thư.
-2. Trạng thái chuyển thành *Pending user action*. Bấm **Set Password & Activate** (hoặc lấy mật khẩu tạm), rồi giao mật khẩu cho user demo.
-3. Lần đầu đăng nhập, Okta yêu cầu đổi mật khẩu (nếu dùng mật khẩu tạm) và **đăng ký Okta Verify**.
-4. Chỉ cần kích hoạt `student.test` và `teacher.test`. User trong `moodle-denied` không cần.
-
-#### Bước 4. Okta: tạo app OIDC cho Moodle
-
-Phương án Terraform cho Okta đã bị bỏ (xem báo cáo kiến trúc hạ tầng, mục 9.5). App được tạo **bằng tay**:
-
-**Applications → Create App Integration → OIDC - OpenID Connect → Web Application**
-
-| Trường | Giá trị |
-|---|---|
-| Name | `Moodle` |
-| Grant type | **Chỉ Authorization Code** |
-| Sign-in redirect URI | `http://<ALB_DNS_NAME>/admin/oauth2callback.php` |
-| Sign-out redirect URI | `http://<ALB_DNS_NAME>/` |
-| Controlled access | **Limit access to selected groups**: `moodle-students`, `moodle-teachers` |
-| Client authentication | **Client secret** |
-| Require PKCE | **Tắt** |
-
-Kiểm tra: URL của trang app có dạng `/admin/app/oidc_client/instance/<OKTA_CLIENT_ID>/`, và app ở trạng thái **Active**.
-
-#### Bước 5. Okta: policy MFA cho app
-
-**Security → Authentication Policies → Add a policy** `Moodle Demo - MFA`:
-
-| Priority | Rule | IF | THEN |
-|---|---|---|---|
-| 1 | Students and teachers require MFA | Group membership: `moodle-students` hoặc `moodle-teachers`. Các điều kiện khác để mặc định (Any) | Allowed after successful authentication; **Password + Another factor** (Okta Verify); re-authentication mỗi 2 giờ |
-| 2 | Catch-all Rule | Mọi user còn lại | **Denied** |
-
-Tab **Applications → Add app** → chọn `Moodle`.
-
-
-#### Bước 10. Moodle: cấu hình OAuth 2 service `Okta`
-
-**a) Tạo service:** **Site administration → Server → OAuth 2 services → Custom**
-
-| Trường | Giá trị | Lý do |
-|---|---|---|
-| Name | `Okta` | |
-| Client ID / Client secret | Lấy từ app `Moodle` trong Okta | |
-| Authenticate token requests via HTTP headers | **Tắt** | Gửi secret trong POST body (`client_secret_post`), khớp mặc định của Okta |
-| Service base URL | **Để trống** | Endpoint nhập thủ công ở bước b) (xem báo cáo kiến trúc hạ tầng, mục 9.5) |
-| This service will be used | **Login page only** | Không cần system account hay internal services |
-| Display on login page as | `Sign in by Okta` | |
-| Scopes | `openid profile email` | |
-| Login domains | `m365x22866088.onmicrosoft.com` | Chỉ chấp nhận email thuộc tenant demo |
-| Require email verification | **Tắt** | Moodle chưa cấu hình SMTP |
-
-**b) Endpoint** (biểu tượng 🔍 *Configure endpoints*), **dùng domain thật của org**:
-
-| Name | URL |
-|---|---|
-| `authorization_endpoint` | `https://trial-3489054.okta.com/oauth2/v1/authorize` |
-| `token_endpoint` | `https://trial-3489054.okta.com/oauth2/v1/token` |
-| `userinfo_endpoint` | `https://trial-3489054.okta.com/oauth2/v1/userinfo` |
-
-**c) User field mappings** (biểu tượng 👤):
-
-| External (claim của Okta) | Internal (trường Moodle) |
-|---|---|
-| `given_name` | `firstname` |
-| `family_name` | `lastname` |
-| `email` | `email` |
-| `sub` | `username` |
-
-**d) Bật xác thực:** **Plugins → Authentication → Manage authentication**: bật **OAuth 2**. Đảm bảo *Prevent account creation when authenticating* **tắt**.
-
-**e) Khóa các trường do IdP quản lý:** trong Settings của OAuth 2, đặt `First name`, `Last name`, `Email address` là **Locked**.
-
-**Đã kiểm tra trực tiếp trong database:**
-- Issuer `enabled=1`, `baseurl=''`, `basicauth=0`, `requireconfirmation=0`, đúng scope và login domain.
-- Đủ 3 endpoint và 4 mapping.
-- `auth = email,oauth2`.
-- `registerauth=''`, nghĩa là **không** cho tự đăng ký tài khoản.
-- Cả 3 trường đều `locked`.
-- Cột **Login** của service trong giao diện hiện ✅.
-
-#### Bước 11. Kiểm thử đầu-cuối (đang chờ nghiệm thu)
-
-| # | Kịch bản | Kỳ vọng |
-|---|---|---|
-| 1 | `student.test`: cửa sổ ẩn danh → *Sign in by Okta* → mật khẩu Okta + Okta Verify | Vào Moodle với họ tên lấy từ Entra; account có `auth = oauth2` |
-| 2 | `teacher.test` | Tương tự |
-| 3 | User trong `moodle-denied` | Okta chặn, **không có** session Moodle |
-| 4 | Kiểm tra liên kết account | `auth_oauth2_linked_login.username` là `sub` của Okta (dạng `00u…`), **không phải** email |
-| 5 | Phân quyền | Ghi danh `teacher.test` làm Teacher, `student.test` làm Student. Kiểm tra quyền sửa course |
-| 6 | Vòng đời từ Entra | Disable user ở Entra → **Full import** ở Okta → user không đăng nhập mới được nữa |
-
-Logout khỏi Moodle **không** logout khỏi Okta, nên đăng nhập lại ngay sẽ không phải nhập mật khẩu. Đây là hành vi bình thường của SSO.
-
-
-Trạng thái nghiệm thu (22/10/2026): đăng nhập đầu-cuối `student.test` qua Okta đã xác nhận trong DB (một tài khoản
-`auth = oauth2`, username là `sub`, một liên kết tới issuer `Okta`, sự kiện `user_loggedin` đúng thời điểm);
-`moodle-denied` bị Okta từ chối và Moodle không tạo tài khoản. Lần đầu đăng nhập, Okta đòi đăng ký Okta Verify; nút
-*Set up Okta Verify* trên Mac chỉ chạy khi đã cài ứng dụng Okta Verify for macOS, nên nhanh hơn là *Return to
-authenticator list* rồi đăng ký bằng điện thoại.
-
-**Dựng lại issuer bằng CLI.** Bản xuất cấu hình trước khi destroy nằm ở
-`terraform/.artifacts/preserve/moodle-oauth2-okta.json` (chứa client secret, mode 600). Chép vào container qua stdin,
-chạy script khôi phục, rồi xoá ngay; PHP CLI phải chạy với `-u 1000:1999`:
-
-```bash
-C=terraform/.artifacts/moodle-ssh.config
-ssh -F $C moodle-app-a 'sudo docker exec -i -u 1000:1999 release-moodle-web-1 sh -c "umask 077; cat > /tmp/okta-issuer.json"' \
-  < terraform/.artifacts/preserve/moodle-oauth2-okta.json
-ssh -F $C moodle-app-a 'sudo docker exec -i -u 1000:1999 release-moodle-web-1 php' < restore-okta.php
-ssh -F $C moodle-app-a 'sudo docker exec -u 1000:1999 release-moodle-web-1 rm -f /tmp/okta-issuer.json'
-```
-
-`restore-okta.php` đọc rồi xoá `/tmp/okta-issuer.json`, gọi `core\oauth2\api::create_issuer`, `create_endpoint`,
-`create_user_field_mapping`, bật issuer, đặt `auth` (`email,oauth2`), khoá các trường họ tên và email, rồi
-`purge_all_caches()`. Nếu đã có issuer cùng tên, script dừng mà không đổi gì. Kết quả mong đợi:
-`restored issuer=Okta enabled=1 showonloginpage=2 endpoints=3 mappings=4 auth=email,oauth2`. Container không có
-`CAP_FOWNER`: file trong `/tmp` phải được xoá bởi đúng user đã tạo nó.
-
-### B.2. Lỗi đã gặp khi cấu hình SSO
-
-#### Lỗi gốc: dùng nhầm domain của org Okta
-
-| | |
-|---|---|
-| **Triệu chứng** | API token mới tạo bị báo `E0000011 Invalid token provided`; OAuth service app bị `invalid_client: Invalid value for 'client_id'`; `/.well-known/openid-configuration` và `/oauth2/v1/keys` trả 403 `E0000006`; `/oauth2/v1/authorize` trả **400 trống** với mọi tham số; user đăng nhập báo "Không thể đăng nhập" |
-| **Nguyên nhân gốc** | Lấy `galaxyfinx-trial-3489054`, **tên hiển thị** của org ở góc phải Admin Console, làm subdomain. Domain thật là `trial-3489054.okta.com`, xem trên **thanh địa chỉ** (`trial-3489054-admin.okta.com`). Mọi request đều gửi tới **một org khác** |
-| **Chẩn đoán sai trước đó** | Kết luận "org trial bị hỏng ở cấp tenant", đề xuất tạo org mới. Kết luận này **sai**. Việc người vận hành yêu cầu tìm root cause thay vì tạo lại org là quyết định đúng |
-| **Cách tìm ra** | Bài KB của Okta về lỗi 400 không kèm mô tả trỏ tới lỗi `client_id`. Kiểm tra trang app (đúng loại `oidc_client`, đang Active), thì **URL trên thanh địa chỉ** để lộ domain thật |
-| **Xác nhận** | Trên domain đúng: discovery 200, JWKS 200, `/authorize` trả trang đăng nhập, và redirect sai trả lỗi **có mô tả** |
-| **Cách sửa** | Đổi 3 endpoint của Moodle sang `trial-3489054.okta.com` |
-| **Phòng tránh** | Luôn lấy domain Okta từ **thanh địa chỉ** (bỏ `-admin`). Đối chứng nhanh: `curl https://<domain>/.well-known/openid-configuration` phải trả 200 |
-
-#### Lộ thông tin bí mật trong lúc làm
-
-| Sự cố | Xử lý |
-|---|---|
-| API token Okta xuất hiện trong ảnh chụp terminal (do gõ `export OKTA_API_TOKEN=...`) | Revoke token; dùng `read -s` để nhập token |
-| File `terraform/okta/env` chứa token nhưng **không được Git bỏ qua** | Đổi tên thành `.env` (đã có trong `.gitignore`), `chmod 600` |
-| Private key của OAuth service app nằm trong repo | Chuyển ra `~/.okta/`, `chmod 600` |
-| Secret access key AWS lộ khi mở file CSV trong editor | Tạo access key mới, vô hiệu hóa và xóa key cũ, xóa file CSV |
-
-**Nguyên tắc:** không gõ secret trên dòng lệnh, không mở file chứa secret trong editor đang được chia sẻ, chụp màn hình trước khi secret hiện ra, và luôn chạy `git check-ignore -v <file>` với mọi file chứa bí mật.
-
-#### Lưu provisioning trước khi cấp consent
-
-| | |
-|---|---|
-| **Triệu chứng** | *"Please grant consent by authenticating with Microsoft Graph"* |
-| **Nguyên nhân** | Bấm **Save** trước khi **Authenticate with Microsoft Account** |
-| **Cách sửa** | Authenticate bằng Global Admin, Accept quyền, rồi mới Save |
-
-#### Import user thất bại: firstName / lastName trống
-
-| | |
-|---|---|
-| **Triệu chứng** | *Confirm Imported User Assignments*: `firstName/lastName – The field cannot be left blank` |
-| **Nguyên nhân** | User trên Entra chưa có First name và Last name |
-| **Cách sửa** | Điền họ, tên và email trong Entra, rồi **Full import** lại. Sửa ở nguồn (Entra) chứ không vá ở Okta |
-
-#### Không đăng nhập Okta được bằng mật khẩu Entra; không thấy nút đặt mật khẩu
-
-| | |
-|---|---|
-| **Nguyên nhân** | Import qua Graph **không chép mật khẩu**. User đang **Staged** nên chưa có mật khẩu Okta, và nút đặt mật khẩu chỉ xuất hiện sau khi Activate |
-| **Cách sửa** | Activate (không gửi email), rồi **Set Password & Activate** hoặc dùng mật khẩu tạm |
-
-
-#### Script chỉ chạy trên Linux, lỗi trên macOS
-
-| Script | Lỗi | Cách sửa |
-|---|---|---|
-| `automation/update-infrastructure.sh` | `chmod --reference` là tùy chọn chỉ có ở GNU | Đọc quyền file bằng `stat -c '%a'` (Linux), nếu không được thì `stat -f '%Lp'` (macOS) |
-| `automation/stage-moodle-release.sh` | `stat -c`, `ss -ltn`, chạy `psql` trong Docker (máy không có Docker) | Thêm cách đọc quyền file cho macOS; hàm `port_is_listening` dùng `ss` hoặc `lsof`; thêm nhánh chạy **`psql` trực tiếp** (vẫn qua SSH tunnel, vẫn `sslmode=verify-full`). Hành vi trên Linux/WSL giữ nguyên |
-
-#### Chạy script từ sai thư mục
-
-| Triệu chứng | Nguyên nhân | Cách sửa |
-|---|---|---|
-| `No such file or directory` khi đứng trong `automation/` | Đường dẫn tương đối tính từ thư mục gốc repo | `cd` về thư mục gốc repo |
-| Không thấy file mật khẩu admin | Lệnh tạo secret chạy trong `automation/`, nên file nằm ở `automation/terraform/.artifacts/…`, **chỗ này không được Git bỏ qua** | Chuyển về `terraform/.artifacts/moodle-secrets/`, so mã băm với bản trên server để xác nhận trùng |
-| `Required command not found: ansible-playbook` | Chưa cài Ansible | `brew install ansible` |
-
-
-#### Gateway Timeout (504) trên trang Moodle
-
-| | |
-|---|---|
-| **Triệu chứng** | Người dùng gặp 504 một lần |
-| **Điều tra** | ALB và cả 2 target healthy; `/healthz.php` và `/login` trả 200; tải thấp; không có lỗi PHP. Request bị 504 **không có trong access log** |
-| **Kết luận** | Không tái hiện được. Khả năng cao là xảy ra trong lúc Moodle đang cài đặt hoặc khởi động. **Chưa đóng**: nếu lặp lại, ghi lại URL và thời điểm để đối chiếu với metric của ALB |
-
-#### Hai phát hiện không phải lỗi
-
-- Access log có request tới `wp-login.php` và `wp-links-opml.php`: đó là **bot quét lỗ hổng WordPress** trên Internet, vô hại với Moodle.
-- `m365x22866088` hiện thành `m365×22866088` trên giao diện Okta: do **font** hiển thị chữ "x" giữa các con số. Ký tự thật vẫn là "x".
-
-
-### B.3. Lệnh kiểm tra nhanh
-
-```bash
-# Domain Okta có đúng không (phải trả issuer = https://trial-3489054.okta.com)
-curl -s https://trial-3489054.okta.com/.well-known/openid-configuration | jq -r .issuer
-
-# Moodle qua ALB
-MOODLE_URL="$(terraform -chdir=terraform output -json moodle_application | jq -r .url)"
-curl -s -o /dev/null -w '%{http_code}\n' "$MOODLE_URL/healthz.php"
-
-# Hạ tầng có khớp với code không (phải "No changes")
-cd terraform && eval "$(aws configure export-credentials --profile target-account --format env)" \
-  && terraform plan -var-file=deployment.tfvars -detailed-exitcode
-
-# Log 20 request gần nhất trên mỗi node Moodle (chạy từ thư mục gốc repo)
-for h in moodle-app-a moodle-app-b; do
-  ssh -F terraform/.artifacts/moodle-ssh.config "$h" \
-    'sudo docker logs --since 10m release-moodle-web-1 2>&1 | grep -v healthz | tail -20'
-done
-```
-
----
-
-## Phụ lục C: Kết thúc phiên và bàn giao
+## Phụ lục B: Kết thúc phiên và bàn giao
 
 Nếu một bộ gây lỗi hay chiến dịch thất bại, đừng lặp lại lỗi ngay. Reset các kịch bản trong allowlist và đưa hệ thống
 về baseline trước:
@@ -2065,14 +1780,14 @@ sát về alert và kết quả Terraform cuối cùng. Che credential, IP khôn
 
 ---
 
-## Phụ lục D: Gỡ toàn bộ hạ tầng (chi tiết)
+## Phụ lục C: Gỡ toàn bộ hạ tầng (chi tiết)
 
 Đây là thao tác **phá huỷ**. Nó xoá mọi tài nguyên mà state Terraform của staging đang quản lý: hai EC2 Moodle,
 monitor và EIP, ALB và target group, RDS, EFS cùng access point và mount target, NAT Gateway và EIP của chúng, subnet,
 route, Internet Gateway, security group, IAM role của monitor và tài nguyên CloudWatch do Terraform quản lý. Nó
 **không** xoá image trên GitHub, mã nguồn, khoá trên máy bạn, hay tài nguyên không nằm trong state.
 
-### D.1. Trước khi tạo plan destroy
+### C.1. Trước khi tạo plan destroy
 
 1. Dừng mọi thử nghiệm hoặc soak đang chạy, thu thập bằng chứng cần cho báo cáo.
 2. Quyết định là **gỡ có giữ dữ liệu** hay **gỡ hẳn**. RDS đang đặt `skip_final_snapshot=true` và
@@ -2104,7 +1819,7 @@ aws rds wait db-snapshot-available \
   --db-snapshot-identifier "$SNAPSHOT_ID"
 ```
 
-### D.2. Plan destroy, review, rồi apply đúng file đó
+### C.2. Plan destroy, review, rồi apply đúng file đó
 
 EFS có `lifecycle.prevent_destroy = true` để chống mất dữ liệu. Khi gỡ hẳn có chủ đích, tạm xoá khối `lifecycle`
 trong `terraform/efs.tf`, chạy plan destroy đã review, rồi **khôi phục** khối đó trong source khi destroy xong. Không
@@ -2129,10 +1844,10 @@ Plan chỉ được chứa đúng tài nguyên Moodle staging. Sau khi review:
 terraform -chdir=terraform apply .artifacts/moodle-destroy.tfplan
 ```
 
-### D.3. Kiểm tra không còn gì tính tiền
+### C.3. Kiểm tra không còn gì tính tiền
 
 Xác nhận Terraform không còn theo dõi tài nguyên, đã khôi phục khối `lifecycle` của EFS (`git diff` phải sạch), và
-kiểm tra **trong AWS**: một lần apply bị ngắt có thể để lại tài nguyên ngoài state (mục 7.2 và 18.2).
+kiểm tra **trong AWS**: một lần apply bị ngắt có thể để lại tài nguyên ngoài state (mục 7.2 và 17.2).
 
 ```bash
 terraform -chdir=terraform state list
@@ -2148,7 +1863,7 @@ aws ec2 describe-vpcs --filters Name=is-default,Values=false --query 'Vpcs[].Vpc
 Tài nguyên chưa từng nằm trong state (ví dụ một EC2 tạo tay trong VPC mặc định) nằm ngoài phạm vi phụ lục này: báo
 cho người sở hữu, đừng tự xoá. Xoá các dòng `~/.ssh/known_hosts` của host đã gỡ trước lần dựng lại kế tiếp (mục 8).
 
-### D.4. Xoá snapshot và recovery point khi gỡ hẳn
+### C.4. Xoá snapshot và recovery point khi gỡ hẳn
 
 Terraform không xoá snapshot RDS thủ công hay recovery point EFS do AWS Backup quản lý. Chỉ làm phần này khi chủ đích
 là xoá **toàn bộ** dữ liệu có thể khôi phục, sau khi destroy thành công. Không thể hoàn tác.
@@ -2221,7 +1936,7 @@ point tự hết hạn. `mapfile` cần bash ≥ 4; trên macOS (bash 3.2) hãy 
 Cuối cùng xoá bản sao secret và artifact cục bộ theo chính sách xoá an toàn của máy. Không commit chúng làm "bản sao
 lưu".
 
-### D.5. Chi phí khi tạm dừng
+### C.5. Chi phí khi tạm dừng
 
 Dừng EC2 chỉ giảm tiền máy; RDS, EFS, NAT Gateway, ALB, EIP, backup, snapshot và lưu trữ vẫn tính tiền. Giữ bằng
 chứng trước. Khi không cần staging nữa, review một plan destroy tường minh; không dùng thao tác xoá tay rộng trên AWS

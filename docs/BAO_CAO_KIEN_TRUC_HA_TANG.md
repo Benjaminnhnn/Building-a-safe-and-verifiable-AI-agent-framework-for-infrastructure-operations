@@ -27,11 +27,10 @@ mã nguồn khác nhau, **mã nguồn thắng**; hãy sửa tài liệu.
 6. [Dữ liệu: RDS PostgreSQL và EFS](#6-dữ-liệu-rds-postgresql-và-efs)
 7. [Ứng dụng Moodle](#7-ứng-dụng-moodle)
 8. [Giám sát và cảnh báo](#8-giám-sát-và-cảnh-báo)
-9. [Xác thực: Entra ID → Okta → Moodle](#9-xác-thực-entra-id--okta--moodle)
-10. [Phân quyền AWS IAM](#10-phân-quyền-aws-iam)
-11. [CI/CD](#11-cicd)
-12. [Tính sẵn sàng, chi phí và giới hạn](#12-tính-sẵn-sàng-chi-phí-và-giới-hạn)
-13. [Bằng chứng kiểm chứng và vấn đề còn mở](#13-bằng-chứng-kiểm-chứng-và-vấn-đề-còn-mở)
+9. [Phân quyền AWS IAM](#9-phân-quyền-aws-iam)
+10. [CI/CD](#10-cicd)
+11. [Tính sẵn sàng, chi phí và giới hạn](#11-tính-sẵn-sàng-chi-phí-và-giới-hạn)
+12. [Bằng chứng kiểm chứng và vấn đề còn mở](#12-bằng-chứng-kiểm-chứng-và-vấn-đề-còn-mở)
 
 ---
 
@@ -74,7 +73,7 @@ Người vận hành (IP /32 được phép)
         ├─ Safe Executor API (127.0.0.1/172.17.0.1:8765), audit RDS security group (IAM chỉ đọc)
         └─ SSH ProxyJump ─► hai node Moodle
 
-Moodle server ──(NAT, egress 443)──► GHCR (pull image), Okta (token, userinfo)
+Moodle server ──(NAT, egress 443)──► GHCR (pull image)
 ```
 
 **Luồng dữ liệu chính:**
@@ -84,7 +83,6 @@ Moodle server ──(NAT, egress 443)──► GHCR (pull image), Okta (token, u
 | Người dùng → Moodle | ALB :80 (hoặc :443 khi có ACM) → node :8080 | Health check ALB: `/healthz.php` |
 | Moodle → DB | Node → RDS :5432, `sslmode=verify-full` | User `moodle_app` quyền tối thiểu |
 | Moodle → file | Node → EFS :2049, TLS, access point | `moodledata` dùng chung |
-| Moodle → Okta | Node → NAT → Internet :443 | Bước đổi `code` lấy token, đọc userinfo |
 | Giám sát | Monitor → node :9100 (Node Exporter), :8088 (cAdvisor); Monitor → RDS :5432 (exporter chỉ đọc) | Probe node ghi qua textfile collector |
 | Cảnh báo | Prometheus → Alertmanager → `POST /webhook` của Agent (bearer token) | Agent chỉ nghe trên loopback của monitor |
 | Sửa lỗi có duyệt | Agent → Executor API (HMAC) → SSH forced-command tới node | Chỉ khi công tắc live bật |
@@ -143,7 +141,7 @@ Luồng nội bộ dùng **tham chiếu security group**, không dùng CIDR.
 | Moodle SG | RDS SG | 5432 | Database |
 | Monitor SG | RDS SG | 5432 | Exporter chỉ đọc |
 | Moodle SG | EFS SG | 2049 | `moodledata` |
-| Moodle SG | Internet qua NAT | 443 | GHCR, kho gói HTTPS, Okta |
+| Moodle SG | Internet qua NAT | 443 | GHCR, kho gói HTTPS |
 
 **Bị cấm:**
 - Internet → node Moodle, RDS, EFS.
@@ -257,7 +255,7 @@ Hệ thống **gần như stateless**, không hoàn toàn stateless: session và
 |---|---|---|
 | Node Exporter, cAdvisor | Node A, B | CPU, bộ nhớ, đĩa; container |
 | `moodle-node-probes.sh` (timer) | Node A, B | Web container chạy không, router Apache, kết nối RDS từ node, DNS, EFS, maintenance flag, upgrade đang chạy, cron, số ad-hoc task quá hạn (chỉ đọc) |
-| Blackbox Exporter | Monitor | Trang công khai, trang login (`probe=login`), tuỳ chọn SSO (`http_moodle_sso_option`), RDS TCP |
+| Blackbox Exporter | Monitor | Trang công khai, trang login (`probe=login`), RDS TCP |
 | Synthetic transaction (timer 30 s) | Monitor | Đăng nhập admin, đọc/ghi fixture qua ALB |
 | `moodle-rds-ingress-audit.sh` | Monitor | Số rule ingress chưa duyệt trong SG của RDS (IAM chỉ đọc) |
 | Prometheus, Alertmanager, Grafana | Monitor | Lưu metric, đánh giá rule, gửi cảnh báo, dashboard `moodle-infrastructure` |
@@ -265,12 +263,12 @@ Hệ thống **gần như stateless**, không hoàn toàn stateless: session và
 Mọi dashboard chỉ truy cập qua SSH tunnel (3000, 9090, 9093, 8000). Prometheus rule được kiểm tra bằng
 `promtool check rules` mỗi lần triển khai.
 
-### 8.2. Danh sách 24 alert (`ansible/config/moodle_alert_rules.yml`)
+### 8.2. Danh sách 23 alert (`ansible/config/moodle_alert_rules.yml`)
 
 | Nhóm | Alert |
 |---|---|
 | Thu thập | `MoodleNodeExporterDown`, `MoodleCAdvisorDown`, `MoodleNodeProbeStale`, `MoodleSyntheticTransactionStale`, `MoodleAdhocQueueProbeFailed`, `MoodleRdsIngressAuditFailed` |
-| Cửa vào | `MoodlePublicProbeFailed`, `MoodleSsoLoginOptionMissing`, `MoodleSyntheticTransactionFailed` |
+| Cửa vào | `MoodlePublicProbeFailed`, `MoodleSyntheticTransactionFailed` |
 | Container và router | `MoodleWebContainerMissing`, `MoodleWebContainerRestarting`, `MoodleApacheRouterMissing`, `MoodleNodeRouterFallbackFailed`, `MoodleTrustedProxyConfigDrift` |
 | Database | `MoodleRdsTcpProbeFailed`, `MoodleNodeRdsTcpFailed`, `MoodleNodeRdsTcpLatencyHigh` |
 | Tài nguyên | `MoodleNodeCpuHigh`, `MoodleNodeMemoryPressure`, `MoodleScratchEnospc`, `MoodleEfsMountMissing` |
@@ -279,9 +277,6 @@ Mọi dashboard chỉ truy cập qua SSH tunnel (3000, 9090, 9093, 8000). Promet
 
 **Nguyên tắc thiết kế:**
 - Alert **không mang mã kịch bản**. Marker kịch bản chỉ nằm trong file root trên host, để Agent không thể "nhìn đáp án".
-- `MoodleSsoLoginOptionMissing` chỉ bắn khi trang login vẫn lên mà thiếu nút SSO
-  (`probe_success{job="blackbox_moodle_sso"} == 0 and on() probe_success{...probe="login"} == 1`, `for: 1m`). Nhờ vậy
-  nó không trùng với alert khi Moodle sập hẳn.
 - `MoodleNodeMemoryPressure` đo độ **giảm** bộ nhớ khả dụng hơn 32 MiB trong 1 phút. Mỗi lần container khởi động lại
   nó có thể bắn trong 10–80 s; đây là cảnh báo nhạy quá mức, đã ghi nhận.
 
@@ -293,78 +288,7 @@ hai phía. Đổi token phải deploy lại cả Alertmanager lẫn Agent cùng 
 
 ---
 
-## 9. Xác thực: Entra ID → Okta → Moodle
-
-### 9.1. Phân chia trách nhiệm
-
-| Hệ thống | Trả lời câu hỏi | Không làm |
-|---|---|---|
-| **Microsoft Entra ID** | Người này là ai, tài khoản còn hoạt động không? | Không cấp session Moodle, không phân quyền course |
-| **Okta** | Có đúng là người này không, có được dùng Moodle không? Mật khẩu, MFA, phát hành token OIDC | Không quản lý course hay role Moodle |
-| **Moodle** | Vào rồi thì được làm gì? Account, session, role, ghi danh | Không nhận và không lưu mật khẩu Entra hay Okta |
-
-Khi có sự cố, hỏi *"câu hỏi nào đang được trả lời sai"* là biết lỗi nằm ở hệ thống nào.
-
-### 9.2. Luồng đồng bộ (nền)
-
-```text
-Entra ID ──(Microsoft Graph, Okta chủ động import)──► Okta Universal Directory
-user + group                                           bản sao user + group
-```
-
-Chỉ đồng bộ profile và group, **không đồng bộ mật khẩu**. Thay đổi ở Entra chỉ sang Okta ở lần import kế tiếp; user bị
-disable chỉ được phát hiện bởi **Full import**.
-
-### 9.3. Luồng đăng nhập (OIDC Authorization Code)
-
-```text
- ①  Trình duyệt → Moodle /login/index.php
- ②  Bấm "Sign in by Okta" → 302 → Okta /oauth2/v1/authorize?client_id&redirect_uri&state&scope
- ③  Okta: mật khẩu + Okta Verify; kiểm tra user Active, được assign app, policy MFA
- ④  Okta → 302 → Moodle /admin/oauth2callback.php?code=…&state=…
- ⑤  Moodle server → Okta /oauth2/v1/token (code + client secret; server-to-server, qua NAT)
- ⑥  Moodle server → Okta /oauth2/v1/userinfo → sub, email, given_name, family_name
- ⑦  Moodle tìm linked login theo (issuer, sub): có thì đăng nhập, chưa có thì tạo account
- ⑧  Cookie MoodleSession, role và ghi danh
-```
-
-Mật khẩu chỉ đi giữa trình duyệt và Okta. `code` đi qua trình duyệt nhưng vô dụng nếu thiếu client secret, vốn chỉ nằm
-trên server Moodle.
-
-### 9.4. Giá trị cấu hình
-
-| Thành phần | Giá trị |
-|---|---|
-| Entra tenant | `m365x22866088.onmicrosoft.com` (tenant demo) |
-| Group (Assigned, không lồng) | `moodle-students`, `moodle-teachers`, `moodle-denied` |
-| User demo | `student.test`, `teacher.test`, một user thuộc `moodle-denied` |
-| **Okta domain thật** | **`https://trial-3489054.okta.com`** (admin: `trial-3489054-admin.okta.com`) |
-| Tên hiển thị của org (không phải domain) | `galaxyfinx-trial-3489054` |
-| Authorization server | Org authorization server `/oauth2/v1/...` (không dùng `/oauth2/default`) |
-| App Okta | `Moodle`, `oidc_client` (Web), chỉ Authorization Code, client secret, không PKCE |
-| Quyền vào app | Chỉ group `moodle-students`, `moodle-teachers` |
-| Policy | `Moodle Demo - MFA`: hai group trên cần mật khẩu + Okta Verify, xác thực lại sau 2 giờ; Catch-all **Denied** |
-| Issuer trong Moodle | `Okta`, endpoint nhập tay, scope `openid profile email`, login domain của tenant, chỉ dùng cho trang login |
-| Field mapping | `given_name`→`firstname`, `family_name`→`lastname`, `email`→`email`, **`sub`→`username`** |
-| Redirect URI | `<URL Moodle>/admin/oauth2callback.php` (đổi mỗi khi dựng lại ALB) |
-
-### 9.5. Vì sao thiết kế như vậy
-
-| Quyết định | Lý do |
-|---|---|
-| OIDC Authorization Code, không SAML, không đồng bộ mật khẩu | Moodle có sẵn client OAuth 2; token ở phía server; Moodle không bao giờ thấy mật khẩu |
-| Liên kết account theo `(issuer, sub)` | `sub` bất biến; email có thể đổi hoặc trùng. Kết hợp login domain chặn chiếm account qua trùng email |
-| Mật khẩu và MFA ở Okta | Mật khẩu không rời IdP. Hai lớp chặn: assignment của app và policy (Catch-all Deny) |
-| Group Okta chỉ quyết định "được vào Moodle hay không" | Role Teacher/Student do Moodle quản lý, để IdP không vô tình cấp quyền sửa course |
-| Không dùng WS-Federation | WS-Fed chỉ cho đăng nhập Microsoft 365; bật nó sẽ federate cả domain. Domain `.onmicrosoft.com` cũng không federate được |
-| Cấu hình Okta bằng tay | Module Terraform cho Okta từng bị bỏ vì lỗi sai domain (xem 13.2). Với domain đúng, Terraform cho Okta nhiều khả năng dùng lại được |
-| Endpoint nhập tay | Quyết định khi discovery trả 403, cũng do sai domain. Trên domain đúng có thể dùng *Service base URL*; endpoint tay vẫn đúng |
-| Org authorization server | Có ở mọi org, không cần add-on API Access Management |
-| HTTP tạm thời | Kiểm chứng luồng sớm. `code` và cookie đi qua kết nối không mã hoá, nên **không dùng cho demo chính thức**. Chuyển HTTPS chỉ cần sửa redirect URI và `wwwroot`; account liên kết theo `sub` không đổi |
-
----
-
-## 10. Phân quyền AWS IAM
+## 9. Phân quyền AWS IAM
 
 ```text
 IAM user <infra-user> (access key + MFA) ──► Role InfraEngineer (MFA, phiên ≤ 4 giờ) ─┐
@@ -389,9 +313,9 @@ Engineer chỉ cần quan sát, gắn policy chỉ đọc cho role `AIEngineer`.
 
 ---
 
-## 11. CI/CD
+## 10. CI/CD
 
-### 11.1. Ranh giới
+### 10.1. Ranh giới
 
 | Thành phần | Chủ sở hữu | Thay đổi bằng |
 |---|---|---|
@@ -401,7 +325,7 @@ Engineer chỉ cần quan sát, gắn policy chỉ đọc cho role `AIEngineer`.
 | Image Agent | GitHub Actions + GHCR | Build theo SHA; **người** chọn và triển khai |
 | Secret runtime | File trên host | Stage tay; không trong image, repo hay log |
 
-### 11.2. Workflow theo sự kiện
+### 10.2. Workflow theo sự kiện
 
 | Sự kiện | `ci.yml` | `moodle-image.yml` | `agent-image.yml` | `cd-staging.yml` |
 |---|---|---|---|---|
@@ -413,7 +337,7 @@ Engineer chỉ cần quan sát, gắn policy chỉ đọc cho role `AIEngineer`.
 
 Không có CD production. Workflow build image chạy **độc lập** với CI: có image không có nghĩa là đã qua CI.
 
-### 11.3. Các bước CI (`lint-test-build`)
+### 10.3. Các bước CI (`lint-test-build`)
 
 | Bước | Kiểm tra |
 |---|---|
@@ -427,7 +351,7 @@ Không có CD production. Workflow build image chạy **độc lập** với CI:
 | Compose | `docker compose config` cho Moodle |
 | Thông báo | Gửi Telegram khi có bước lỗi |
 
-### 11.4. CD staging Moodle
+### 10.4. CD staging Moodle
 
 ```text
 push develop (đúng path filter)
@@ -447,7 +371,7 @@ push develop (đúng path filter)
 
 ---
 
-## 12. Tính sẵn sàng, chi phí và giới hạn
+## 11. Tính sẵn sàng, chi phí và giới hạn
 
 | Chủ đề | Hiện trạng |
 |---|---|
@@ -461,9 +385,9 @@ push develop (đúng path filter)
 
 ---
 
-## 13. Bằng chứng kiểm chứng và vấn đề còn mở
+## 12. Bằng chứng kiểm chứng và vấn đề còn mở
 
-### 13.1. Đã kiểm chứng
+### 12.1. Đã kiểm chứng
 
 | Hạng mục | Kết quả |
 |---|---|
@@ -471,27 +395,23 @@ push develop (đúng path filter)
 | Dựng hạ tầng thật | Đã dựng và vận hành; `terraform plan` cuối phiên trả "No changes" |
 | Topology | CIDR không chồng nhau; app route qua NAT cùng AZ; data subnet không có route Internet; không còn ingress `0.0.0.0/0` vào máy |
 | Runtime | 2 target ALB `healthy`; EFS mount `nfs4` trên cả hai node; chỉ node A có cron |
-| SSO | Đăng nhập đầu-cuối `student.test` qua Okta đã xác nhận trong DB (22/10/2026); `moodle-denied` bị Okta chặn |
 
-### 13.2. Sự cố đã gặp khi dựng hạ tầng và SSO
+### 12.2. Sự cố đã gặp khi dựng hạ tầng
 
 | Sự cố | Nguyên nhân gốc | Bài học |
 |---|---|---|
-| Okta trả 400 trống, API token "invalid", discovery 403 | Dùng **tên hiển thị** `galaxyfinx-trial-3489054` làm subdomain; domain thật là `trial-3489054` | Lấy định danh từ thanh địa chỉ hoặc output API, không từ nhãn giao diện. Khi **mọi thứ** cùng hỏng, nghi ngờ thứ chung nhất trước |
-| Chẩn đoán sai "org Okta bị hỏng", đề xuất tạo org mới | Thiếu giả thuyết "đang gọi nhầm đối tượng" | Tìm nguyên nhân gốc trước khi làm lại |
 | `RunInstances` báo `PendingVerification` | AWS đang xác minh account mới | Chờ email xác minh rồi plan lại; không destroy |
 | Ansible `UNREACHABLE` | Host key EC2 mới chưa được tin | Không tắt kiểm tra; đối chiếu fingerprint qua console output |
 | Secret bị lộ qua ảnh chụp và editor | Gõ token trên dòng lệnh, mở CSV access key | Thu hồi và thay mới, không chỉ xoá ảnh; luôn `git check-ignore` file chứa bí mật |
 
-### 13.3. Vấn đề còn mở
+### 12.3. Vấn đề còn mở
 
 | # | Vấn đề | Ưu tiên |
 |---|---|---|
-| 1 | HTTPS cho ALB (ACM + hostname cố định), cập nhật redirect URI | Cao, trước demo chính thức |
-| 2 | Redirect URI Okta phải sửa tay sau mỗi lần dựng lại (DNS ALB đổi) | Trung bình; giải bằng hostname cố định hoặc Terraform cho Okta |
-| 3 | `MoodleNodeMemoryPressure` nhạy quá mức khi container khởi động | Trung bình |
-| 4 | Một lần 504 không tái hiện được (ALB và target đều healthy, không có trong access log) | Thấp; ghi URL và thời điểm nếu lặp lại |
-| 5 | Monitor đơn lẻ, RDS Single-AZ | Giới hạn chấp nhận cho staging |
-| 6 | Runner CD cài tay | Nên đưa vào playbook |
+| 1 | HTTPS cho ALB (ACM + hostname cố định) | Cao, trước demo chính thức |
+| 2 | `MoodleNodeMemoryPressure` nhạy quá mức khi container khởi động | Trung bình |
+| 3 | Một lần 504 không tái hiện được (ALB và target đều healthy, không có trong access log) | Thấp; ghi URL và thời điểm nếu lặp lại |
+| 4 | Monitor đơn lẻ, RDS Single-AZ | Giới hạn chấp nhận cho staging |
+| 5 | Runner CD cài tay | Nên đưa vào playbook |
 
 Các request tới `wp-login.php` trong access log là bot quét lỗ hổng WordPress, vô hại với Moodle.

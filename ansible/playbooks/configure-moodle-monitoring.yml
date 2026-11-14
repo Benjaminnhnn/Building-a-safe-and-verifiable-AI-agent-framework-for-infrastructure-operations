@@ -451,25 +451,20 @@
         - moodle_agent_enabled | bool
         - moodle_agent_telegram_env_file | default('') | length == 0
 
-    - name: Install root-only Okta log reader environment
-      ansible.builtin.copy:
-        src: "{{ moodle_okta_log_env_file }}"
-        dest: "{{ moodle_observability_root }}/secrets/okta-log-reader.env"
-        owner: root
-        group: root
-        mode: '0600'
-      no_log: true
-      when: moodle_okta_log_enabled | default(false) | bool
+    - name: Remove retired Okta log reader container
+      ansible.builtin.command:
+        cmd: docker rm -f moodle-okta-sso-monitor
+      register: retired_okta_monitor
+      changed_when: retired_okta_monitor.rc == 0
+      failed_when: false
 
-    - name: Install root-only Okta service app private key
-      ansible.builtin.copy:
-        src: "{{ moodle_okta_log_private_key_file }}"
-        dest: "{{ moodle_observability_root }}/secrets/okta-log-reader-private.pem"
-        owner: root
-        group: root
-        mode: '0600'
-      no_log: true
-      when: moodle_okta_log_enabled | default(false) | bool
+    - name: Remove retired Okta log reader secrets
+      ansible.builtin.file:
+        path: "{{ moodle_observability_root }}/secrets/{{ item }}"
+        state: absent
+      loop:
+        - okta-log-reader.env
+        - okta-log-reader-private.pem
 
     - name: Install Moodle synthetic transaction service
       ansible.builtin.copy:
@@ -708,19 +703,6 @@
                   replacement: blackbox-exporter:9115
                 - source_labels: [__param_target]
                   target_label: target
-            - job_name: blackbox_moodle_sso
-              metrics_path: /probe
-              params: {module: [http_moodle_sso_option]}
-              static_configs:
-                - targets: ['{{ moodle_monitor_public_url }}/login/index.php']
-                  labels: {service: moodle, probe: sso_login_option}
-              relabel_configs:
-                - source_labels: [__address__]
-                  target_label: __param_target
-                - target_label: __address__
-                  replacement: blackbox-exporter:9115
-                - source_labels: [__param_target]
-                  target_label: target
             - job_name: blackbox_moodle_rds
               metrics_path: /probe
               params: {module: [tcp_connect]}
@@ -809,17 +791,6 @@
             tcp_connect:
               prober: tcp
               timeout: 10s
-            # Read-only: the login page must render and still offer the OAuth 2
-            # (Okta) sign-in link. No credentials are sent.
-            http_moodle_sso_option:
-              prober: http
-              timeout: 10s
-              http:
-                method: GET
-                preferred_ip_protocol: ip4
-                valid_status_codes: [200]
-                fail_if_body_not_matches_regexp:
-                  - 'auth/oauth2/login\.php\?id=[0-9]+'
 
     - name: Install Alertmanager baseline configuration
       ansible.builtin.copy:
@@ -973,23 +944,6 @@
               depends_on:
                 agent-redis:
                   condition: service_healthy
-          {% if moodle_okta_log_enabled | default(false) | bool %}
-            okta-sso-monitor:
-              image: {{ moodle_agent_image }}
-              container_name: moodle-okta-sso-monitor
-              restart: unless-stopped
-              command: [python, -m, core.okta_sso_monitor]
-              env_file:
-                - ./secrets/agent-telegram.env
-                - ./secrets/okta-log-reader.env
-              environment:
-                OKTA_API_PRIVATE_KEY_FILE: /run/secrets/okta_log_reader_private_key
-                OKTA_SSO_MONITOR_DB: /app/data/okta-sso-monitor.sqlite3
-                PYTHONUNBUFFERED: "1"
-              volumes:
-                - agent-evidence:/app/data
-                - ./secrets/okta-log-reader-private.pem:/run/secrets/okta_log_reader_private_key:ro
-          {% endif %}
           {% endif %}
             monitor-node-exporter:
               image: quay.io/prometheus/node-exporter:v1.8.2

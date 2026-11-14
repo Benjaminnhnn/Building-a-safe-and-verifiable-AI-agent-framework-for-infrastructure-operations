@@ -97,7 +97,7 @@ CI verifies the Moodle image's secret-file handling, PHP syntax, public web-root
 ## Conventions to preserve
 
 - **No production image builds on EC2.** EC2 only pulls GHCR artifacts that CI produced. Do not copy application source to EC2 for releases.
-- Moodle staging deploys through `.github/workflows/cd-staging.yml` and `automation/github-deploy-moodle.sh` (self-hosted runner `moodle-staging`), or manually per `docs/BAO_CAO_HUONG_DAN_TRIEN_KHAI.md`, sections 10–16. Run operator scripts from the repository root.
+- Moodle staging deploys through `.github/workflows/cd-staging.yml` and `automation/github-deploy-moodle.sh` (self-hosted runner `moodle-staging`), or manually per `docs/BAO_CAO_HUONG_DAN_TRIEN_KHAI.md`, sections 10–15. Run operator scripts from the repository root.
 - **Terraform owns cloud resources; Ansible owns host config.** Don't mix concerns.
 - **Ruff lint uses only critical rules** (`E9,F63,F7,F82`) in CI — undefined names and syntax. Broader style rules are not enforced; do not fail a change for style unless it breaks CI.
 - **`httpx` must stay `<0.28`** for FastAPI `TestClient` compatibility.
@@ -106,9 +106,9 @@ CI verifies the Moodle image's secret-file handling, PHP syntax, public web-root
 ## Reference docs (already in repo)
 
 - `README.md` — Moodle thesis scope, repository map and evidence modes.
-- `docs/BAO_CAO_KIEN_TRUC_HA_TANG.md` — current infrastructure architecture: network, security groups, EC2, RDS, EFS, monitoring and alerts, Entra → Okta → Moodle SSO, IAM model, CI/CD, limits.
-- `docs/BAO_CAO_HUONG_DAN_TRIEN_KHAI.md` — end-to-end deploy and operations guide (Terraform, host keys, Ansible, image selection, Moodle, Okta, monitoring, executor, Telegram, CD, troubleshooting); appendices for IAM setup, Okta/Entra setup and teardown.
-- `docs/BAO_CAO_KICH_BAN_LOI.md` — the 12 scenarios (7 thesis: BIZ-01, BIZ-02, CON-01, DB-01, RES-01, NET-01, SEC-01; 5 SSO: SSO-04, SSO-10, SSO-11, SSO-12, SSO-13) with step-by-step run commands and live results.
+- `docs/BAO_CAO_KIEN_TRUC_HA_TANG.md` — current infrastructure architecture: network, security groups, EC2, RDS, EFS, monitoring and alerts, IAM model, CI/CD, limits.
+- `docs/BAO_CAO_HUONG_DAN_TRIEN_KHAI.md` — end-to-end deploy and operations guide (Terraform, host keys, Ansible, image selection, Moodle, monitoring, executor, Telegram, CD, troubleshooting); appendices for IAM setup, session handoff and teardown.
+- `docs/BAO_CAO_KICH_BAN_LOI.md` — the 7 thesis scenarios (BIZ-01, BIZ-02, CON-01, DB-01, RES-01, NET-01, SEC-01) with step-by-step run commands and live results.
 - `docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md` — agent architecture, Safety Gate, Safe Executor, Independent Verifier, Telegram approval, Hermes, threat model and evidence status.
 - `agent_src/README.md` — current agent modules and evidence-mode boundaries.
 - `agent_src/RAG_SYSTEM_GUIDE.md` — RAG engine details.

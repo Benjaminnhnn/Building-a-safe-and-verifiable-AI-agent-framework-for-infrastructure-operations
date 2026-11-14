@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only live board for the CON-01 and SSO-13 demo scenarios.
+"""Read-only live board for the CON-01 demo scenario.
 
 Every few seconds it asks monitor-ai-01 (one reused SSH connection) for the
 Prometheus alerts and probe values, the Agent's recent decisions, the live
@@ -14,7 +14,6 @@ Run it in its own terminal from the repository root, before starting the
 scenario:
 
     python3 automation/moodle-demo-watch.py CON-01
-    python3 automation/moodle-demo-watch.py SSO-13
 """
 
 from __future__ import annotations
@@ -40,11 +39,6 @@ SCENARIOS = {
         "cause": "web_container_not_running",
         "title": "CON-01 · web container trên node B bị dừng",
     },
-    "SSO-13": {
-        "alert": "MoodleSsoLoginOptionMissing",
-        "cause": "sso_login_option_missing",
-        "title": "SSO-13 · issuer Okta trong Moodle bị tắt",
-    },
 }
 
 # Runs on monitor-ai-01 as root. Read-only: GET requests and mode=ro SQLite.
@@ -69,8 +63,6 @@ def query(expr):
     rows = r.get("data", {}).get("result", [])
     return {row["metric"].get("instance", row["metric"].get("job", "-")): float(row["value"][1]) for row in rows}
 out["web_running"] = query('moodle_node_web_running{job="moodle_node"}')
-out["sso_probe"] = query('probe_success{job="blackbox_moodle_sso"}')
-out["login_probe"] = query('probe_success{job="blackbox_moodle_public",probe="login"}')
 agent = get("http://127.0.0.1:8000/health")
 executor = get("http://172.17.0.1:8765/healthz")
 out["agent_live"] = agent.get("safe_action_live_enabled")
@@ -176,7 +168,6 @@ class Board:
         self.since_iso = start.strftime("%Y-%m-%dT%H:%M:%S")
         self.first_seen: dict[str, str] = {}
         self.baseline_exec = baseline_exec
-        self.sso_ok_streak: list[str] = []
 
     def mark(self, key: str) -> str:
         return self.first_seen.setdefault(key, utc_now().strftime("%H:%M:%S"))
@@ -205,26 +196,14 @@ class Board:
                      f"Agent={word(agent_live)} · Executor={word(exec_live)}"
                      + (" · đang mở cửa sổ live" if switch_state == RUN else "")))
 
-        if self.scenario == "CON-01":
-            b_running = remote.get("web_running", {}).get("moodle-app-b")
-            faulted = b_running == 0.0
-            if faulted:
-                self.mark("fault")
-            fault_state = RUN if faulted else (DONE if "fault" in self.first_seen else WAIT)
-            rows.append(("①", "Lỗi: web node B", fault_state,
-                         f"web_running B={b_running} A={remote.get('web_running', {}).get('moodle-app-a')}"
-                         + (f" · thấy lúc {self.first_seen['fault']}" if "fault" in self.first_seen else "")))
-        else:
-            sso, page = remote.get("sso_probe", {}), remote.get("login_probe", {})
-            sso_v = next(iter(sso.values()), None)
-            page_v = next(iter(page.values()), None)
-            faulted = sso_v == 0.0 and page_v == 1.0
-            if faulted:
-                self.mark("fault")
-            fault_state = RUN if faulted else (DONE if "fault" in self.first_seen else WAIT)
-            rows.append(("①", "Lỗi: nút Okta biến mất", fault_state,
-                         f"probe SSO={sso_v} · trang login={page_v}"
-                         + (f" · thấy lúc {self.first_seen['fault']}" if "fault" in self.first_seen else "")))
+        b_running = remote.get("web_running", {}).get("moodle-app-b")
+        faulted = b_running == 0.0
+        if faulted:
+            self.mark("fault")
+        fault_state = RUN if faulted else (DONE if "fault" in self.first_seen else WAIT)
+        rows.append(("①", "Lỗi: web node B", fault_state,
+                     f"web_running B={b_running} A={remote.get('web_running', {}).get('moodle-app-a')}"
+                     + (f" · thấy lúc {self.first_seen['fault']}" if "fault" in self.first_seen else "")))
 
         if mine:
             a = mine[0]
@@ -248,16 +227,11 @@ class Board:
                 parts.append(f"chẩn đoán {diag.get('status')} conf={diag.get('confidence')} → {diag.get('disposition')}")
             if cand:
                 parts.append(f"candidate {cand['id'][:14]}… {cand.get('catalog_action_id')} scope={cand.get('target_scope')} evidence={cand['refs']}")
-            elif self.scenario == "SSO-13" and diag:
-                parts.append("không có candidate (chỉ người được sửa)")
             rows.append(("③", "AI phân tích", DONE, f"{hhmmss((cand or diag)['at'])} " + " · ".join(parts)))
         else:
             rows.append(("③", "AI phân tích", WAIT, "chưa có quyết định mới"))
 
-        if self.scenario == "CON-01":
-            rows.extend(self._con01_gate_to_verifier(files, executions))
-        else:
-            rows.extend(self._sso13_gate_to_verifier(remote, executions))
+        rows.extend(self._con01_gate_to_verifier(files, executions))
         return rows
 
     def _con01_gate_to_verifier(self, files: dict, executions) -> list[tuple[str, str, str, str]]:
@@ -314,32 +288,6 @@ class Board:
         bad = sorted({name for s in samples for name, ok in s["checks"].items() if not ok})
         return f" · probe hỏng: {', '.join(bad)}" if bad else ""
 
-    def _sso13_gate_to_verifier(self, remote: dict, executions) -> list[tuple[str, str, str, str]]:
-        rows = []
-        delta = (executions - self.baseline_exec) if isinstance(executions, int) and self.baseline_exec is not None else None
-        gate_state = WAIT if delta is None else (DONE if delta == 0 else FAIL)
-        rows.append(("④", "Gate: không thực thi", gate_state,
-                     f"executions {self.baseline_exec} → {executions} (phải không đổi) · prepare/forced-command thử tay ở T3"))
-        sso_v = next(iter(remote.get("sso_probe", {}).values()), None)
-        if "fault" in self.first_seen and sso_v == 1.0:
-            self.mark("fixed")
-            now = utc_now().strftime("%H:%M:%S")
-            if not self.sso_ok_streak or self.sso_ok_streak[-1] != now:
-                self.sso_ok_streak.append(now)
-            rows.append(("⑤", "Operator bật lại issuer", DONE, f"probe SSO=1 từ {self.first_seen['fixed']}"))
-            elapsed = (utc_now() - datetime.strptime(self.first_seen["fixed"], "%H:%M:%S").replace(
-                year=utc_now().year, month=utc_now().month, day=utc_now().day, tzinfo=timezone.utc)).total_seconds()
-            state = DONE if elapsed >= 120 else RUN
-            rows.append(("⑥", "Ổn định ≥ 120 s", state,
-                         f"probe SSO liên tục =1 trong {int(elapsed)} s · chạy probe OIDC 5 mẫu ở T3 (mục 5.4)"))
-        elif "fault" in self.first_seen:
-            rows.append(("⑤", "Operator bật lại issuer", WAIT, "đang chờ người sửa"))
-            rows.append(("⑥", "Ổn định ≥ 120 s", WAIT, "chưa"))
-        else:
-            rows.append(("⑤", "Operator bật lại issuer", WAIT, "chưa"))
-            rows.append(("⑥", "Ổn định ≥ 120 s", WAIT, "chưa"))
-        return rows
-
 
 def render(board: Board, rows, remote: dict, clear: bool) -> None:
     out = []
@@ -378,7 +326,7 @@ def main() -> int:
     try:
         while True:
             remote = collect_remote(board.since_iso)
-            files = latest_evidence(args.scenario, board.started) if args.scenario == "CON-01" else {}
+            files = latest_evidence(args.scenario, board.started)
             render(board, board.rows(remote, files), remote, clear=not args.once)
             if args.once:
                 return 0 if "_error" not in remote else 1

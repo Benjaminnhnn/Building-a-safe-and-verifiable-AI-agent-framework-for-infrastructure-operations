@@ -120,14 +120,14 @@ def test_alert_report_for_human_only_has_no_proposal_to_execute() -> None:
     report = {
         "incident_id": "inc-2",
         "status": "investigation_hypothesis",
-        "diagnosis": {"hypothesis": "SSO option missing", "cause_code": "sso_login_option_missing", "confidence": 0.65},
-        "remediation_disposition": {"disposition": "human_only_escalation", "scenario_id": "SSO-13",
-                                    "catalog_action_id": "restore_moodle_oauth2_issuer",
-                                    "target_scope": "staging_moodle_oauth2_issuer"},
+        "diagnosis": {"hypothesis": "RDS port exposed", "cause_code": "database_port_exposure", "confidence": 0.65},
+        "remediation_disposition": {"disposition": "human_only_escalation", "scenario_id": "SEC-01",
+                                    "catalog_action_id": "remove_tagged_database_ingress_rule",
+                                    "target_scope": "staging_database_security_group"},
         "remediation_candidate": None,
     }
-    text = notify_mod.format_alert_report({"labels": {"alertname": "MoodleSsoLoginOptionMissing"}}, report)
-    assert "Chỉ người xử lý" in text and "OAuth 2 issuer" in text
+    text = notify_mod.format_alert_report({"labels": {"alertname": "MoodleDatabasePortExposure"}}, report)
+    assert "Chỉ người xử lý" in text and "rule ingress lạ" in text
     assert "Không mở luồng approve" in text
 
 

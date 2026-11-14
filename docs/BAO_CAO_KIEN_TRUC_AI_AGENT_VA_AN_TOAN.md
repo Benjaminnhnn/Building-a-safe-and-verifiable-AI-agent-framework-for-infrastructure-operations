@@ -117,8 +117,7 @@ Alertmanager
 ### 4.2. Chẩn đoán
 
 Luật bảo thủ, theo từng alert. Ví dụ RES-01: độ tin cậy lên **0.80** chỉ khi fixture tải CPU chạy đúng trên B và
-không có trên A, web hai node đều chạy, CPU A ≤ 70 % < CPU B. SSO-13: `probe SSO = 0` **và** `trang login = 1` → giả
-thuyết `sso_login_option_missing` (0.65); thiếu một trong hai → `conflicting_evidence`. Mẫu "xanh" trong lúc alert
+không có trên A, web hai node đều chạy, CPU A ≤ 70 % < CPU B. Mẫu "xanh" trong lúc alert
 đang firing, mẫu cũ, hoặc thiếu danh tính node đều dẫn tới escalate.
 
 Runbook chỉ là ngữ cảnh tham khảo: chunk được lọc theo tên alert, mang theo đường dẫn nguồn, thời điểm và SHA-256;
@@ -136,7 +135,6 @@ nội dung runbook **không** đi vào chẩn đoán hay chọn hành động. B
 | NET-01 | `recreate_moodle_web_from_reviewed_compose` | `staging_moodle_nodes` | `reconcile_net01_safe_baseline` | Cho đề xuất, cần duyệt |
 | SEC-02 | `restore_fixture_directory_mode` | thư mục fixture | `reconcile_sec02_safe_baseline` | Cho đề xuất (bộ 15 cũ) |
 | SEC-01 | `remove_tagged_database_ingress_rule` (HIGH) | SG của RDS | — | **Chỉ người** |
-| SSO-13 | `restore_moodle_oauth2_issuer` (operator) | issuer OAuth 2 | — | **Chỉ người** |
 
 Bộ 15 kịch bản kỹ thuật cũ (cho CI replay) dùng `SCENARIO_REMEDIATION_DISPOSITION`; bộ 7 kịch bản luận văn dùng thêm
 `BUSINESS_SCENARIO_REMEDIATION_DISPOSITION` và `load_moodle_7_scenario_catalog()`. Test
@@ -217,7 +215,7 @@ khôi phục; chỉ attestation hợp lệ mới chuyển incident sang `RESOLVE
 | Log | Không ghi body, phê duyệt, chữ ký hay query string |
 | Trên node | SSH bằng key **forced-command**: wrapper `/usr/local/sbin/moodle-safe-executor` chỉ biết các hành động đã review; lệnh khác → `forced command rejected`, **exit 64** |
 
-Executor **không có shell**. Hành động chỉ-người (ví dụ `restore_moodle_oauth2_issuer`, mọi thay đổi SG của RDS)
+Executor **không có shell**. Hành động chỉ-người (ví dụ mọi thay đổi SG của RDS)
 không nằm trong allowlist lẫn wrapper; CI kiểm tra `moodle-scenario-verify.sh SEC-01` trả 64.
 
 ---
@@ -252,7 +250,7 @@ nhận đang chờ xác minh. State machine (`core/verification/state_machine.py
 **Vì sao không để "health check xanh" là đủ:** một hệ thống có thể trả 200 trong khi cổng DB đang mở ra Internet, hoặc
 alert vẫn firing ở node khác. Probe *phải bị chặn* và probe *liên quan* bắt được những trường hợp đó.
 
-**Giới hạn:** tình huống chỉ-người (SSO-13, SEC-01) không có biên nhận `executed`, nên hiện **không** có attestation
+**Giới hạn:** tình huống chỉ-người (SEC-01) không có biên nhận `executed`, nên hiện **không** có attestation
 ký và không chuyển `RESOLVED`. SEC-01 dùng `moodle-human-remediation-verify.sh` (chỉ đọc) để kiểm tra sau khi người
 sửa.
 
@@ -356,7 +354,6 @@ Manual/Ansible/AI cùng các ablation trước khi kết luận câu hỏi nghi�
 | Hạng mục | Kết quả |
 |---|---|
 | CON-01 trọn chuỗi ①→⑥ | Đạt 4 lần (run 5–8, 22–23/10/2026). Run 8 có **người bấm duyệt trên Telegram**; `RESOLVED` bằng attestation ký |
-| SSO-13 chỉ-người | Đạt nhiều lần: Agent chẩn đoán đúng lớp, không có candidate, executions không đổi, OIDC 5/5 sau khi người sửa |
 | RES-01 tới Safety Gate | Chạy thử 23/10/2026: alert, candidate, Gate 8/8, phê duyệt qua Telegram, không thực thi |
 | Thông báo Telegram ①–⑥ | Đã gửi thật trong run 7–8 |
 

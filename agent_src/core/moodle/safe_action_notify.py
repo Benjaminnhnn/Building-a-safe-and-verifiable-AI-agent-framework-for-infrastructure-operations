@@ -41,8 +41,6 @@ _REMEDIATION_TEXT = {
 
 _HUMAN_TEXT = {
     "SEC-01": "Kỹ sư an ninh kiểm tra và thu hồi đúng rule ingress lạ của RDS.",
-    "SSO-04": "Kiểm tra assignment hoặc group của người dùng trên Okta.",
-    "SSO-13": "Kiểm tra OAuth 2 issuer Okta và nút đăng nhập trong Moodle.",
 }
 
 

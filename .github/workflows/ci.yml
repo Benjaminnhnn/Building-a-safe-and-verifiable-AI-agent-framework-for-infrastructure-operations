@@ -76,7 +76,6 @@ jobs:
             automation/run-benchmark.py \
             automation/moodle-auth-verify.py \
             automation/sprint6-acceptance.py \
-            automation/sso-identity-drill.py \
             automation/benchmark-cost-dashboard.py \
             automation/erpnext-synthetic-transaction.py \
             evaluation/benchmark/statistical_analysis.py

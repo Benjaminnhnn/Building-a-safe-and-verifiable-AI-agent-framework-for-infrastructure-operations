@@ -434,7 +434,6 @@ _PLATFORM_WIRING_ALLOWED: dict[str, set[str]] = {
         "core.moodle", "core.moodle.alert_correlation", "core.moodle.alert_integration",
         "core.moodle.notification_receipt", "core.moodle.operator_report",
     },
-    "core/okta_sso_monitor.py": {"core.moodle.safe_action_notify"},
 }
 _PLATFORM_PACKAGES = ("core/moodle/", "core/erpnext/")
 

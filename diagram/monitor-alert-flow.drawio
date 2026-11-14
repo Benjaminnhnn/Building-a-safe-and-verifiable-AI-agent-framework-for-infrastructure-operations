@@ -8,7 +8,7 @@
         <mxCell id="title" value="LUỒNG ALERT VÀ XÁC MINH KHÔI PHỤC • MOODLE STAGING" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#17365c;strokeColor=#17365c;strokeWidth=2;fontColor=#ffffff;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
           <mxGeometry x="120" y="20" width="1440" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="probes" value="Blackbox / synthetic&lt;br&gt;node probes A, B&lt;br&gt;RDS, ALB, SSO" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf3ff;strokeColor=#3568a5;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
+        <mxCell id="probes" value="Blackbox / synthetic&lt;br&gt;node probes A, B&lt;br&gt;RDS, ALB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf3ff;strokeColor=#3568a5;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
           <mxGeometry x="60" y="130" width="230" height="100" as="geometry" />
         </mxCell>
         <mxCell id="prom" value="Prometheus&lt;br&gt;scrape + alert rules" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf3ff;strokeColor=#3568a5;strokeWidth=2;fontColor=#172b4d;fontSize=15;spacing=8;align=center;verticalAlign=middle;" vertex="1" parent="1">
