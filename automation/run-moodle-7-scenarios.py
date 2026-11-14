@@ -36,6 +36,7 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
@@ -140,6 +141,18 @@ def _get_disposition(scenario_id: str) -> dict[str, str]:
         BUSINESS_SCENARIO_REMEDIATION_DISPOSITION.get(scenario_id)
         or SCENARIO_REMEDIATION_DISPOSITION.get(scenario_id, {})
     )
+
+
+class _ReceiptClock(datetime):
+    """Audit clock for the simulated executor receipt: 150 s before now.
+
+    The three verifier samples span the last 120 s, so the receipt precedes
+    every sample, matching the order of a real run.
+    """
+
+    @classmethod
+    def now(cls, tz=None):
+        return datetime.now(tz) - timedelta(seconds=150)
 
 
 def _ed25519_keypair() -> tuple[bytes, bytes]:
@@ -369,7 +382,21 @@ def run_scenario(scenario_id: str, interactive: bool = False) -> bool:
         pub_file.write_bytes(pub_pem)
         audit_db = tmp_path / "safe_action_audit.sqlite3"
 
-        with SafeActionAuditStore(audit_db) as store:
+        # The Verifier only accepts probe samples taken after the executor
+        # receipt. Record the simulated receipt before the 120 s probe window,
+        # as on a real run, instead of sleeping through the window.
+        with patch("core.safety.safe_action_audit.datetime", _ReceiptClock), SafeActionAuditStore(audit_db) as store:
+            # The Verifier rebuilds the incident from the audit and requires the
+            # Gate's ALLOW for this request ahead of the executor receipt.
+            store.append(
+                incident_id=f"inc-{scenario_id.lower()}",
+                event_type="live_gate",
+                payload={
+                    "request_id": f"req-{scenario_id.lower()}",
+                    "scenario_id": scenario_id,
+                    "decision": verdict_approved.decision,
+                },
+            )
             receipt = store.append(
                 incident_id=f"inc-{scenario_id.lower()}",
                 event_type="live_executor_result",
