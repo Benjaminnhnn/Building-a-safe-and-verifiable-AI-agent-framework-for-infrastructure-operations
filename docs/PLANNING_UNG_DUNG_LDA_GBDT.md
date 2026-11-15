@@ -1,10 +1,12 @@
-# Kế hoạch ứng dụng LDA và GBDT (theo AIHS của Alibaba) cho Moodle AIOps
+# Kế hoạch tích hợp Safety Gate, Executor và Verifier vào AIHS LDA/GBDT
 
-**Cập nhật:** 14/11/2026 · **Trạng thái:** đã chạy prototype LDA/GBDT trên dữ liệu tổng hợp AIHS; chưa huấn luyện model Moodle hoặc đưa AIHS vào đường quyết định live.
+**Cập nhật:** 15/11/2026 · **Trạng thái:** đã chạy prototype LDA/GBDT trên dữ liệu tổng hợp AIHS; chưa huấn luyện model Moodle hoặc đưa AIHS vào đường quyết định live.
 **Dành cho:** người thực hiện khoá luận và hội đồng đánh giá.
 
-Tài liệu này gộp phân tích ứng dụng LDA/GBDT, đối chiếu thời gian khôi phục DB-01 với AIHS, và các bằng chứng đo Safety
-Gate thực tế. Kiến trúc Agent/Gate/Executor/Verifier nằm ở
+Tài liệu này lấy pipeline LDA/GBDT của AIHS làm **hệ thống nền**, rồi nghiên cứu tác động của Safety Gate,
+Safe Executor và Independent Verifier khi gắn vào pipeline đó trên cùng môi trường Moodle. Các số liệu AIHS
+đã công bố là bối cảnh nghiên cứu; bằng chứng cải thiện phải đến từ đối chứng cùng dữ liệu và cùng điều kiện.
+Kiến trúc Agent/Gate/Executor/Verifier nằm ở
 [BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN](BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md); cách chạy kịch bản ở
 [BAO_CAO_KICH_BAN_LOI](BAO_CAO_KICH_BAN_LOI.md).
 
@@ -12,17 +14,38 @@ Gate thực tế. Kiến trúc Agent/Gate/Executor/Verifier nằm ở
 
 ## 1. Mục tiêu và nguyên tắc so sánh
 
-**Mục tiêu:** đưa phương pháp của AIHS (LDA biến log thành đặc trưng, GBDT chọn và đánh giá hành động sửa) vào hệ thống
-Moodle, và chứng minh hệ thống **cải thiện so với AIHS** trên các chỉ số so sánh được.
+**Mục tiêu nghiên cứu:** áp dụng Safety Gate, Safe Executor và Independent Verifier **cho chính pipeline AIHS
+LDA → GBDT Predictor → GBDT Controller**; kiểm định giả thuyết rằng phiên bản có ba lớp bảo vệ xử lý sự cố
+**an toàn và đáng tin cậy hơn AIHS cơ sở** trên các chỉ số có thể đo cùng điều kiện. Kết quả cải thiện chỉ được
+khẳng định sau khi có đối chứng và mẫu số hợp lệ; nếu thời gian hoặc tỷ lệ hoàn tất kém hơn, báo đúng phần đánh đổi.
+
+**Hai nhánh so sánh chính:**
+
+```text
+AIHS cơ sở:    cùng snapshot → LDA → Predictor → Controller → action đề xuất
+AIHS bảo vệ:   cùng snapshot → cùng LDA/Predictor/Controller → mapping đã review
+               → Safety Gate → Operator approval → Safe Executor → Independent Verifier
+```
+
+Giữ nguyên model, tập test, action đề xuất và mốc chốt dự đoán ở hai nhánh. Nhánh cơ sở dùng để **đối chứng
+quyết định offline** khi action nguy hiểm hoặc vượt phạm vi; không cho action đó chạy thật để lấy số liệu.
+Với action an toàn trong staging, đối chứng live chỉ hợp lệ khi cả hai nhánh có quy trình duyệt, tải nền,
+fault, điều kiện reset và cách đo tương đương. Tách đóng góp của Gate (chặn/cho phép), Executor (thực thi
+đúng phạm vi, receipt) và Verifier (xác nhận phục hồi) bằng các ablation tương ứng.
 
 **Nguyên tắc để kết luận hợp lệ:**
 - **Không** so trực tiếp số đo của hai hệ thống khác nhau. 695 giây (Moodle DB-01) và 9,8 giờ (server Alibaba) khác đối
   tượng, loại lỗi, định nghĩa và mẫu; không được tính "Moodle tốt hơn AIHS x %".
-- So sánh **cùng phương pháp trên cùng dữ liệu**: tái hiện AIHS trên dữ liệu Moodle, và chạy prototype công khai của
-  Alibaba cùng mô hình của khoá luận trên cùng dữ liệu tổng hợp.
-- Mức giảm thời gian khôi phục chỉ so với **baseline của chính hệ thống** (thủ công, Agent theo luật), giống cách AIHS
-  báo −51 % so với baseline của họ.
-- ML **chỉ gợi ý**; Safety Gate, chữ ký của người, Executor allowlist và Independent Verifier giữ nguyên.
+- Tái hiện AIHS trên dữ liệu Moodle với baseline có version; prototype công khai trên dữ liệu tổng hợp chỉ dùng
+  để kiểm tra pipeline, không thay thế nhánh đối chứng Moodle. Bản `as-is` và bản sửa để sát bài báo là **hai
+  baseline khác nhau**, phải công bố rõ bản nào được so sánh.
+- Khi chỉ thêm Gate/Executor/Verifier mà giữ nguyên LDA/GBDT, **metric dự đoán của model phải được báo riêng**;
+  không gán thay đổi HitRate/F1 cho ba lớp bảo vệ. Đo cải thiện ở quyết định sau model, hành động thực thi và
+  kết luận phục hồi; báo cả chặn sai, không hoàn tất và độ trễ tăng thêm.
+- So sánh thời gian với **AIHS cơ sở trong cùng Moodle staging** nếu có nhánh live an toàn và tương đương;
+  Agent theo luật hoặc thủ công là đối chứng phụ. Không dùng mức −51 % của Alibaba làm ngưỡng đạt.
+- Output AIHS là đề xuất không đáng tin cậy. Gate kiểm tra policy; Operator ký; Executor chỉ chạy allowlist;
+  Verifier độc lập mới được xác nhận `RESOLVED`.
 
 ---
 
@@ -158,12 +181,13 @@ Xác suất của nó chưa chắc đã đúng thang (0,9 chưa hẳn là đúng
 làm ngưỡng. Dữ liệu trôi (phiên bản Moodle, tải khác) làm mô hình kém đi, nên phải huấn luyện lại định kỳ (AIHS: hằng
 tháng).
 
-#### Vị trí trong hệ thống
+#### Vị trí trong nghiên cứu
 
-LDA và GBDT chỉ thay **bước chọn hành động** của `planner.py`, nơi hiện đang tra bảng cố định. Mọi bước sau giữ
-nguyên: hành động vẫn phải nằm trong catalog và đúng phạm vi kịch bản, Safety Gate vẫn kiểm tra, Operator vẫn ký,
-Executor vẫn chỉ chạy allowlist, và chỉ Independent Verifier mới xác nhận đã khôi phục. Mô hình sai thì hậu quả xấu
-nhất là một gợi ý tồi bị Gate hoặc Operator chặn, chứ không phải một lệnh nguy hiểm được chạy.
+LDA và hai tầng GBDT tạo **cùng một đề xuất AIHS** cho cả hai nhánh đối chứng. Phần đóng góp cần đo của khóa luận
+là lớp kiểm soát **sau đề xuất**: mapping có review → Safety Gate → Operator ký → Safe Executor → Independent
+Verifier. Giữ nguyên model và snapshot cho phép quy khác biệt an toàn/khôi phục cho các lớp này. Nếu có biến thể
+model dùng thêm metric Moodle, đánh giá nó trong một thí nghiệm riêng; không trộn tác động model với tác động
+Gate/Executor/Verifier. Gate hoặc Operator vẫn có thể chặn sai action hợp lệ, nên phải đo cả sự cố không hoàn tất.
 
 ---
 
@@ -193,7 +217,7 @@ sed -n '1,35p' "$AIHS_SRC/AIHS_api.py"          # thời điểm chốt action t
 
 Khi áp dụng cho Moodle, phải định nghĩa **snapshot trước quyết định** và một adapter chuyển log/metric Moodle sang thuộc tính đã review; fit từ vựng và LDA **chỉ trên train**. Giữ nhãn action thực sự chạy và kết quả hậu quyết định ngoài feature. Cần quyết định công khai baseline nào được đo: **prototype as-is** (giữ cả hai sai khác nêu trên) hoặc **bản tái hiện theo bài báo** (lọc success cho Predictor và sửa fallback), với version và kết quả riêng. Không diễn giải xác suất topic hay nhãn GBDT là quyền thi hành; output AIHS vẫn đi qua mapping, Safety Gate, Operator, Executor và Independent Verifier. Hiện [báo cáo A2/B2](BAO_CAO_AIHS.md) ghi 0 mẫu Moodle đủ điều kiện train và 0 mapping action live được review.
 
-## 3. Hiện trạng hệ thống Moodle (baseline)
+## 3. Bằng chứng lịch sử của Moodle (chưa phải baseline AIHS)
 
 ### 3.1. Luồng hiện tại
 
@@ -214,7 +238,8 @@ Alert → Agent thu bằng chứng Prometheus → **chẩn đoán theo luật** 
 | Verifier hoàn tất | 09:01:48 | 3 phút 14 s |
 | Runtime ghi `resolved` | 09:01:49 | 1 s |
 
-**RTO theo quy ước drill:** `t_resolved − t_detect = 695 s`. Từ lúc cấy lỗi là 753 s. RPO không áp dụng (không phục
+**Thời gian detect→RESOLVED theo quy ước drill lịch sử:** `t_resolved − t_detect = 695 s`. Đây chưa phải thời gian
+phục hồi thật được chấm độc lập cho đối chứng AIHS. Từ lúc cấy lỗi là 753 s. RPO không áp dụng (không phục
 hồi dữ liệu). Khoảng có thể tối ưu lớn nhất là **candidate → duyệt (7 phút 45 s)**, gồm chuẩn bị, AI shadow và chờ
 người; artifact chưa tách riêng từng phần. Lượt NET-01 cùng ngày có RTO 9.110 s vì chờ Operator và làm mới MFA nhiều
 giờ, nên không đại diện.
@@ -240,43 +265,54 @@ PYTHONPATH=agent_src python3 automation/moodle-live-gate-fpr.py \
   --since <UTC> --labels <nhãn.jsonl>
 ```
 
-Nhánh [`ai_shadow_proposal.py`](../agent_src/core/moodle/ai_shadow_proposal.py) là mẫu tích hợp mô hình chỉ đề xuất;
-hiện dùng Gemini, sẽ là điểm gắn LDA/GBDT.
+Nhánh [`ai_shadow_proposal.py`](../agent_src/core/moodle/ai_shadow_proposal.py) là ví dụ shadow Gemini lịch sử;
+bridge AIHS riêng nằm tại [`aihs_shadow.py`](../agent_src/core/moodle/aihs_shadow.py) và
+[`aihs_staging_handoff.py`](../agent_src/core/moodle/aihs_staging_handoff.py). Không tính kết quả Gemini là AIHS.
 
 ---
 
-## 4. Chỉ số mục tiêu
+## 4. Chỉ số để kiểm định cải thiện so với AIHS cơ sở
 
-| Nhóm | Chỉ số | AIHS | Cách đo trong khoá luận | Kỳ vọng |
-|---|---|---|---|---|
-| **An toàn** (AIHS không có) | Tỉ lệ thực thi hành động nguy hiểm hoặc ngoài phạm vi | Không đo; Controller tự chạy | Cùng tập đề xuất nguy hiểm cố định (`evaluation/benchmark/dangerous_injection.py`) đưa qua: bản AIHS tái hiện (không Gate) và hệ thống của khoá luận (có Gate) | Bản AIHS thực thi một phần; hệ thống có Gate thực thi **0** |
-| **An toàn** | Tỉ lệ báo khôi phục sai | Không đo ("thành công" theo bản ghi sửa lỗi) | Kết luận health-only so với Verifier trên cùng lượt (ablation RQ2 đã có) | Verifier phát hiện các ca health-only bỏ sót |
-| **Độ chính xác** | HitRate, ReverseRate, OverallRate, macro-F1, top-k | 0,89 / 0,98 / 0,93 | Cùng định nghĩa AIHS, trên dữ liệu Moodle; so với **AIHS tái hiện cùng dữ liệu** và planner theo luật | ≥ AIHS tái hiện; kỳ vọng cao hơn nhờ thêm metric có cấu trúc |
-| **Độ chính xác, cùng benchmark** | F1 Predictor / Controller | 0,97 / 0,90 | Prototype công khai của Alibaba và mô hình khoá luận trên **cùng dữ liệu tổng hợp** | So sánh trực tiếp duy nhất với code của Alibaba |
-| **Thời gian** | Mức giảm trung vị thời gian phát hiện → `RESOLVED` | −51 % so với baseline của họ | (A) thủ công so với Agent; (B) Agent theo luật so với Agent có gợi ý ML; cùng tập lỗi | Báo "giảm X % trên baseline Moodle", **không** viết "vượt Alibaba" |
-| **Thời gian quyết định** | Độ trễ suy luận | 7 ms | Thời gian từ đặc trưng tới gợi ý | Vài ms đến vài chục ms; không ảnh hưởng RTO |
+**Đối chứng chính:** cùng bản AIHS LDA/GBDT đã khóa version, cùng snapshot trước quyết định, cùng tập proposal
+và cùng mapping Moodle đã review. Không dùng các số 0,89/0,98/0,93 hay −51 % trong bài báo làm đối chứng trực
+tiếp cho Moodle; chúng chỉ là mốc tham khảo khác môi trường.
 
-**Câu kết luận có thể bảo vệ:** *"Trên cùng tập lỗi Moodle, khung LDA + GBDT có Safety Gate và Independent Verifier đạt
-OverallRate tương đương hoặc cao hơn bản AIHS tái hiện, đồng thời giảm tỉ lệ thực thi hành động nguy hiểm từ x % xuống
-0 và phát hiện y ca khôi phục giả mà kiểm tra kiểu AIHS bỏ sót."*
+| Tác động cần chứng minh | AIHS cơ sở trên cùng mẫu | AIHS có Gate/Executor/Verifier | Chỉ số và bằng chứng bắt buộc |
+| --- | --- | --- | --- |
+| Chặn action nguy hiểm/vượt phạm vi | Ghi **would-dispatch** offline theo action AIHS; không thi hành action nguy hiểm | Gate `DENY` hoặc chuyển người; Executor không mutate ngoài catalog/scope | `unsafe_block_rate = unsafe bị chặn / unsafe có nhãn độc lập`; số action ngoài phạm vi thực thi thật; báo mẫu số, `REQUIRE_APPROVAL` và thiếu nhãn riêng. |
+| Không chặn sai action an toàn | Ghi proposal hợp lệ của cùng cohort | Theo dõi `DENY`, timeout, `REQUIRE_APPROVAL`, Operator reject và noncompletion | `false_block_rate = safe bị Gate DENY / safe có nhãn độc lập`; phân biệt Gate chặn sai với Operator từ chối và model không ánh xạ. |
+| Thực thi có kiểm soát | AIHS chọn action; nhánh đối chứng chỉ thực thi **action an toàn được review** trong staging | Executor kiểm lại action, target, scope, chữ ký và ghi receipt | Số attempt sai bị từ chối; số mutation trái phép quan sát; tỷ lệ action đã duyệt thực thi đúng; đối chiếu receipt với trạng thái thực tế. Không quy lỗi model cho Executor. |
+| Giảm khôi phục giả | Kết luận health-only hoặc trạng thái sửa đã ghi trên **cùng lượt** | Verifier kiểm allowed/forbidden/related và cửa sổ ổn định; chỉ attestation hợp lệ cho `RESOLVED` | `false_recovery_rate = kết luận RESOLVED sai / kết luận RESOLVED`, adjudicate bằng bằng chứng độc lập sau quyết định; số collateral được phát hiện/bỏ sót. Tách ca cấy lỗi khỏi sự cố tự nhiên. |
+| Duy trì xử lý sự cố an toàn | Theo dõi mọi lượt và action thật sự chạy | Theo dõi cả `RESOLVED`, blocked, timeout, rollback và Verifier fail | `safe_completion_rate = sự cố an toàn RESOLVED / toàn bộ sự cố an toàn được giao`; báo riêng false block và thời gian đến phục hồi thật. Không loại lượt không hoàn tất. |
+| Độ trễ và RTO | Cùng định nghĩa mốc, lỗi, workload và phép chấm **phục hồi thật độc lập** | Cùng điều kiện; cộng thời gian Gate, duyệt, Executor, Verifier | Chênh lệch median detect→phục hồi thật, downtime, thời gian chờ duyệt và thời gian chốt `RESOLVED`; báo khoảng tin cậy khi đủ mẫu. Lớp bảo vệ có thể tăng độ trễ. |
+| Chất lượng LDA/GBDT | HitRate, ReverseRate, OverallRate, F1/top-k của model đã khóa | **Cùng prediction** trước Gate | Các metric model phải giống nhau nếu không thay model; biến thể model Moodle được đo ở nghiên cứu phụ, không tính là cải thiện của Gate/Executor/Verifier. |
+
+**Mẫu câu kết luận sau khi đo:** “Trên cùng tập lỗi Moodle và cùng AIHS LDA/GBDT, phiên bản có Gate/Executor/
+Verifier thay đổi chỉ số X từ a/n thành b/n; tỷ lệ chặn sai là c/m; tỷ lệ hoàn tất an toàn là d/k; thời gian
+phục hồi thật thay đổi e giây. Kết quả chỉ áp dụng cho môi trường và loại lỗi đã thử.” Điền số sau khi có bằng
+chứng; nếu kết quả không cải thiện, ghi rõ điều kiện và tác động bất lợi.
 
 ---
 
 ## 5. Kiến trúc ứng dụng
 
 ```text
-evidence mới ─► Mapper: LDA trên log đã lọc + metric Prometheus có cấu trúc
-             ─► Predictor: GBDT xếp hạng action ID trong catalog, hoặc "chuyển người"
-             ─► Controller: GBDT theo từng action, xác suất sửa thành công;
-                 thấp thì thử action rẻ hơn kế tiếp; hết thì chuyển người
-             ─► Safety Gate (giữ nguyên) ─► Operator ký ─► Executor ─► Independent Verifier
+snapshot trước quyết định → AIHS Mapper LDA → GBDT Predictor → GBDT Controller
+                                                │
+                                                └─ action AIHS + model/evidence version
+                                                   ↓
+                              mapping Moodle đã review → Safety Gate
+                                                   ↓
+                              Operator ký action/scope → Safe Executor + receipt
+                                                   ↓
+                              Independent Verifier → RESOLVED hoặc chưa khôi phục
 ```
 
 | Thành phần | Vai trò của ML | Quyền quyết định |
 |---|---|---|
-| Trước Gate | Xếp hạng hành động, gợi ý chuyển người | Gate vẫn kiểm tra bằng chứng, catalog, phạm vi, chữ ký |
-| Executor | Có thể dự đoán nguy cơ thất bại để Operator xem | Executor chỉ chạy hành động đã ký đúng phạm vi; ML không tạo lệnh hay đổi tham số |
-| Verifier | Có thể cảnh báo mẫu bất thường | Chỉ Verifier ký attestation; probe và cửa sổ ổn định bắt buộc |
+| Trước Gate | AIHS đề xuất action server; adapter ánh xạ sang action Moodle đã review hoặc chuyển người | Gate kiểm tra bằng chứng, catalog, phạm vi và điều kiện thực thi. |
+| Executor | Không nhận lệnh tự do hoặc quyền từ model | Chỉ chạy action đã được ký đúng scope; receipt chứng minh hành động được phép đã hoặc chưa chạy. |
+| Verifier | Không lấy điểm model làm kết luận phục hồi | Chỉ Verifier ký attestation sau probe và cửa sổ ổn định bắt buộc. |
 
 **Bảng hành động theo chi phí** (để cùng triệu chứng có nhiều cách sửa, giống AIHS): chờ và kiểm tra lại → khởi động
 lại service → tạo lại container từ compose đã review → gỡ fixture gây lỗi đúng tên → chuyển người. Mọi hành động mới
@@ -325,38 +361,47 @@ staging live, lab, mô phỏng và replay; xuất tập nghiên cứu đã lọc
 
 1. **Đóng băng schema và mốc dự đoán.** Chia train/validation/test **theo thời gian và theo nhóm incident/phiên**
    (như AIHS: 80/20 theo thời gian); không để mẫu của cùng incident rơi vào nhiều tập. Giữ tập test mới nhất tới cuối.
-2. **Baseline:**
-   - planner theo luật hiện tại;
-   - **AIHS tái hiện**: LDA (α = 0,1, β = 0,01, Gibbs sampling) + GBDT, theo đúng mô tả trong bài;
-   - prototype công khai của Alibaba trên dữ liệu tổng hợp của nó.
-3. **Mô hình khoá luận và ablation:** GBDT trên metric có cấu trúc; LDA + GBDT; LDA + metric + GBDT; có/không Controller
-   (giống thí nghiệm B.1 của AIHS). LDA fit trên log train, đóng băng từ vựng. Chỉnh siêu tham số chỉ trên validation;
-   lưu version dữ liệu, đặc trưng, code, model, seed.
-4. **Chỉ số:** HitRate, ReverseRate, OverallRate, precision/recall/F1 theo từng hành động, macro-F1, top-k, tỉ lệ đề
-   xuất sai phạm vi, tỉ lệ từ chối dự đoán, calibration (Brier, reliability) trên dữ liệu tách biệt, khoảng tin cậy.
-   Không lấy kết quả train làm kết quả test.
-5. **Shadow:** gắn vào Agent qua nhánh AI shadow, chỉ gợi ý (hiện trên Telegram), ghi cả dự đoán lẫn kết quả; Gate,
-   chữ ký, Executor, Verifier không đổi. Chỉ hiển thị gợi ý cho Operator khi đủ bằng chứng và thiết kế đã review.
+2. **Khóa AIHS cơ sở:** chọn và công bố rõ `prototype-as-is` hoặc bản tái hiện sát bài báo; huấn luyện LDA và GBDT
+   chỉ trên train, chọn tham số trên validation, khóa model, vocabulary, mapping, seed và test trước khi đo. Prototype
+   công khai trên dữ liệu tổng hợp xác minh khả năng chạy, không thay dữ liệu Moodle. Planner theo luật là đối chứng phụ.
+3. **So sánh chính trên cùng proposal:** phát lại chính output AIHS đã khóa cho bốn cấu hình **C0–C3** (tên cấu hình,
+   khác với giai đoạn công việc B1–B3): C0 AIHS cơ sở (`would-dispatch` offline cho action không an toàn),
+   C1 thêm Gate, C2 thêm Operator và Executor, C3 thêm
+   Independent Verifier. Ghi riêng `DENY`, `REQUIRE_APPROVAL`, timeout, reject, fail và `RESOLVED`; dùng nhãn an toàn
+   và kết quả độc lập với đường quyết định. Nhánh C0 không được thực thi action nguy hiểm để lấy số liệu.
+4. **Ablation phụ về model:** GBDT metric, LDA + GBDT, LDA + metric + GBDT, có/không Controller chỉ trả lời
+   câu hỏi về độ chính xác AIHS; không cộng tác động đó vào hiệu quả Gate/Executor/Verifier. Báo HitRate,
+   ReverseRate, OverallRate, F1/top-k, độ phủ nhãn và calibration khi có dữ liệu; không lấy kết quả train làm test.
+5. **Shadow rồi staging:** shadow ghi đề xuất và Gate verdict, chưa tạo kết quả phục hồi. Staging chỉ cho action
+   an toàn có mapping được review và quy trình duyệt; theo dõi cùng incident/proposal qua receipt và Verifier.
+   Chỉ kết luận tác động live khi có nhánh đối chứng tương đương, không dùng replay làm bằng chứng RTO.
 
 ---
 
 ## 8. Đo thời gian khôi phục và an toàn
 
-**Định nghĩa:** RTO vận hành = `t_resolved − t_detect`. Báo riêng `t_detect − t_inject`, thời điểm giao dịch bắt đầu
-hồi phục (nằm giữa hai mẫu liên tiếp), chờ duyệt, thực thi, xác minh. Mức cải thiện =
-`(trung vị baseline − trung vị nhánh mới) / trung vị baseline × 100 %`, cùng định nghĩa và tập lỗi.
+**Định nghĩa:** chấm **thời điểm phục hồi thật** bằng bộ probe/nhãn độc lập dùng chung cho cả hai nhánh;
+`t_recovered − t_detect` là thời gian phục hồi so sánh được. Báo riêng thời điểm hệ thống *tuyên bố* `RESOLVED`,
+`t_detect − t_inject`, thời điểm giao dịch hồi phục, chờ duyệt, thực thi và xác minh. Không dùng thời điểm health-only
+ở C0 so trực tiếp với thời điểm Verifier ký ở C3 vì hai mốc mang ý nghĩa khác nhau. Chỉ tính phần trăm chênh lệch
+trung vị trên các lượt cùng điều kiện; giữ timeout và không hoàn tất trong mẫu số tỷ lệ hoàn tất.
 
 **Thiết kế thí nghiệm:**
-- (A) thủ công so với Agent hiện tại; (B) Agent theo luật so với Agent có gợi ý ML.
-- Cùng lỗi, tải, người trực, probe, Gate, điều kiện Verifier; thứ tự ngẫu nhiên theo phiên; reset baseline trước mỗi
-  lượt. Chốt trước thời hạn quan sát và cách xử lý lượt không hoàn thành.
+- Chính: **cùng AIHS LDA/GBDT** ở C0 so với C3; C1/C2 tách đóng góp từng lớp. So sánh `would-dispatch` và
+  Gate offline trên cùng đề xuất; so sánh health-only với Verifier trên cùng action đã thực thi. Chỉ chạy live các
+  action an toàn được review, với quy trình duyệt hợp lệ ở cả nhánh đối chứng. C0 live cần một harness có kiểm soát
+  để thực thi action AIHS đã review vì prototype chỉ trả đề xuất; không gọi harness này là AIHS production. Không báo so sánh RTO live nếu
+  chưa xây được hai nhánh tương đương.
+- Cùng lỗi, tải, người trực, probe độc lập và điều kiện reset; thứ tự ngẫu nhiên theo phiên. Chốt trước hạn quan
+  sát và cách chấm lượt bị chặn sai, từ chối, timeout hoặc không hoàn thành. Thủ công/Agent theo luật là phân tích phụ.
 - Báo tỉ lệ hoàn tất, trung vị, khoảng tin cậy, phân bố; p95 khi đủ mẫu; phân tầng theo kịch bản và phiên.
 - Báo thêm: tỉ lệ thất bại, hành động sai phạm vi, vi phạm probe, khôi phục giả. Không quan sát thấy lỗi không có
   nghĩa là rủi ro bằng 0.
 - Pilot chỉ để ước lượng độ biến động và tính cỡ mẫu; đóng băng model trước tập test.
 
-**Không được làm:** rút ngắn cửa sổ ổn định của Verifier để có số RTO đẹp hơn. ML không tự rút ngắn cửa sổ Verifier hay
-bảo đảm Operator phản hồi nhanh; phần có thể cải thiện là thời gian **chọn hành động và duyệt**.
+**Không được làm:** rút ngắn cửa sổ ổn định của Verifier để có số RTO đẹp hơn, thực thi action nguy hiểm ở C0,
+hoặc loại ca Gate chặn sai khỏi báo cáo. Ba lớp bảo vệ có thể tăng thời gian chờ; giá trị chính cần kiểm định là
+giảm hành động trái phép và kết luận phục hồi sai trong khi duy trì tỷ lệ hoàn tất an toàn.
 
 **Phạm vi hạ tầng (đã chốt):** làm trọn trên Moodle trước, sau đó chuyển sang ERPNext; AIOpsLab/Kubernetes chỉ
 cân nhắc nếu còn thời gian. Mỗi môi trường được báo cáo riêng, không gộp số liệu. Chi tiết ở mục 9.3.
@@ -378,18 +423,33 @@ cân nhắc nếu còn thời gian. Mỗi môi trường được báo cáo riê
 | **B2.3 — Verifier** | Đo lại một ca NET-01 lịch sử: HTTP 200 nhưng probe DNS database/ALB liên quan lỗi; Verifier trả `collateral_damage` và runtime sidecar không `RESOLVED`. | **1 ca cấy lỗi có kiểm soát** chứng minh khác biệt health-only/Verifier; chưa có tỷ lệ false recovery của quần thể hoặc Verifier live mới. |
 | **B3 — phục hồi live staging** | Kiểm toán 8 lượt staging lịch sử đã phân loại: detect→RESOLVED trung vị **521,5 giây** (232–9110 giây). Kiểm tra điều kiện chạy lượt mới. | Lượt mới `BLOCKED_NOT_RUN`: **0 drill mới**, 0 thay đổi AWS. Terraform state cục bộ rỗng, AWS chưa xác minh được qua CLI/MFA, AIHS mapping live và tập test đều rỗng. Số lịch sử gồm chờ duyệt/xác minh, không phải downtime hoặc đối chứng AIHS. |
 
+### 9.0. Điều kiện đo cải thiện: đã có và còn thiếu
+
+| Điều kiện | Đã giải quyết | Chưa giải quyết / bằng chứng cần để mở khóa |
+| --- | --- | --- |
+| **AIHS cơ sở có version** | Prototype công khai `aihs-public-prototype-as-is-v1` đã chạy trên 500 dòng tổng hợp; commit, phụ thuộc và checksum có trong [báo cáo AIHS](BAO_CAO_AIHS.md). | Chưa có baseline **được huấn luyện và khóa trên Moodle**. Chọn `as-is` hoặc bản tái hiện theo bài báo, ghi sai khác, seed, model hash và thời điểm chốt proposal. Prototype không đại diện cho AIHS production. |
+| **Dữ liệu và test độc lập** | A2 có schema, exporter lọc nhạy cảm, manifest/checksum và công cụ chia/freeze; 10 dòng audit đã kiểm tra. | **0/10** dòng đủ train, **0** test record, chưa có nhãn hậu nghiệm độc lập cho cohort. Thu snapshot trước quyết định, version lịch sử, các action success/failure thực chạy; review rò rỉ, khóa split theo thời gian/incident. Ngưỡng kỹ thuật 10 nhóm không chứng minh đủ cỡ mẫu thống kê. |
+| **Action mapping và tích hợp** | A3 có hợp đồng fail-closed; B1 có bridge shadow và handoff staging kiểm thử bằng fixture. | **0 action AIHS `live_reviewed`**; chưa có model Moodle hoặc proposal AIHS live. Domain owner phải review action→catalog/target/scope/precondition/rollback; xác minh proposal thật qua bridge. Fixture `ALLOW` không thay mapping chính thức. |
+| **Gate/Executor/Verifier và nhãn đối chứng** | Luồng Moodle hiện có; công cụ freeze/đo và một ca collateral NET-01 có HTTP 200 nhưng Verifier chặn xác nhận. | Chưa có cặp quyết định **cùng proposal AIHS** với nhãn action an toàn/nguy hiểm độc lập, receipt và nhãn phục hồi thật. Chưa đo được false-block, unsafe-block, mutation ngoài phạm vi, false recovery hoặc safe completion của AIHS với mẫu số hợp lệ. Một ca cấy lỗi không phải tỷ lệ quần thể. |
+| **Staging và phép đo live** | Có 8 lượt Moodle lịch sử đã phân loại để mô tả thời gian detect→RESOLVED; cấu hình Terraform/Ansible/Compose đã kiểm tra offline. | **0 lượt AIHS live mới**. State cục bộ rỗng; AWS live chưa được xác minh ở lượt 14/11. Teammate phải kiểm tra state có thẩm quyền, dựng/cấu hình nếu cần, probe/Telegram/khóa ký/reset, rồi chạy protocol đối chứng đã khóa. Không dùng 8 lượt lịch sử làm nhánh AIHS cơ sở. |
+
+**Kết luận nghiệm thu hiện tại:** công cụ và hợp đồng đủ để tiếp tục thu dữ liệu, replay và thiết kế phép đo; **chưa
+đủ điều kiện tính hoặc tuyên bố bất kỳ tỷ lệ cải thiện nào so với AIHS trên Moodle**. Mọi metric thiếu cohort/nhãn
+giữ `NOT_MEASURABLE`, không ghi 0%. Nhánh C0 là *bản tái hiện AIHS tại chỗ* cho đề xuất và đối chứng offline; mã
+prototype không thi hành action, nên `would-dispatch` không phải số hành động nguy hiểm thực tế của Alibaba.
+
 ### 9.1. Phần teammate tiếp nhận: đo live staging mới
 
-**Mục đích:** tạo bằng chứng trên cùng môi trường Moodle staging để so sánh quyết định theo luật hiện tại với nhánh có gợi ý AIHS **thực sự được Operator nhìn thấy**, trong khi Gate, chữ ký, Executor và Verifier giữ cùng quy tắc. Shadow chỉ ghi dự đoán và không thể chứng minh thay đổi RTO. Người tiếp nhận thực hiện các bước theo thứ tự; nếu điều kiện đầu vào chưa đạt, ghi `BLOCKED` với bằng chứng thay vì tạo số liệu giả.
+**Mục đích:** tạo bằng chứng so sánh **AIHS LDA/GBDT cơ sở** với chính AIHS đó khi thêm Gate, Executor và Verifier trên Moodle. Khóa cùng model, snapshot, proposal và mapping; dùng replay cho quyết định nguy hiểm, dùng live staging có kiểm soát cho action an toàn. Agent theo luật hiện tại là đối chứng phụ. Shadow chỉ ghi dự đoán và không thể chứng minh thay đổi RTO. Nếu điều kiện đầu vào chưa đạt, ghi `BLOCKED` với bằng chứng.
 
 | Bước | Việc phải thực hiện | Mục đích | Output/điều kiện đạt |
 | --- | --- | --- | --- |
 | **1. Khóa phiên bản và kiểm tra cloud** | Ghi Git SHA, version policy/catalog/Verifier/model và ngày; teammate dùng **IAM user/CLI profile riêng**, chạy `aws sts get-caller-identity --profile "$AWS_PROFILE"` và MFA trong terminal. Xác nhận account dự kiến, quyền Terraform/IAM cần thiết, rồi đối chiếu state với tài nguyên AWS thực, ALB, hai node, RDS, EFS, monitor và kinh phí. Không suy ra AWS đã xóa chỉ từ state cục bộ rỗng. | Biết chính xác môi trường và danh tính của lượt đo. | Manifest môi trường, account/role đã lọc, danh sách tài nguyên/phiên bản và biên bản `READY` hoặc `BLOCKED`; không lưu credentials, Terraform state hay private key vào Git. |
 | **2. Dựng/bật lại và chốt baseline** | Nếu staging không còn, dựng theo [guide triển khai](BAO_CAO_HUONG_DAN_TRIEN_KHAI.md); xác nhận ALB và từng target, synthetic transaction, kết nối DB, probe allowed/forbidden/related, monitoring/Telegram, khả năng reset lỗi và backup cần thiết. Đo baseline trước khi cấy lỗi. | Có môi trường sạch và quan sát được cả phụ thuộc mà health HTTP đơn lẻ bỏ sót. | Snapshot baseline có timestamp, các probe đạt, reset rehearsal và bằng chứng không có lỗi còn tồn từ lượt trước. Chưa đạt thì dừng fault drill. |
 | **3. Hoàn tất điều kiện nhánh AIHS** | Thu thêm incident/action có telemetry **trước** quyết định và nhãn độc lập **sau** action thực chạy; review rò rỉ, chia tập theo thời gian/nhóm, fit LDA trên train, đóng băng test và model. Domain owner review từng mapping AIHS→catalog Moodle, target/scope/precondition; test cả action không ánh xạ và Gate chặn sai. | Đảm bảo so sánh đúng AIHS trên Moodle, không dùng prototype tổng hợp hoặc Gemini shadow thay AIHS. | Freeze manifest/checksum, model/data version, nhãn review và mapping `live_reviewed` có người chịu trách nhiệm. Nếu chưa có, chỉ được chạy đối chứng theo luật và báo nhánh AIHS `NOT_READY`. |
-| **4. Chốt protocol trước pilot** | Chọn cùng kịch bản, tải nền, fault, probe, cửa sổ ổn định, người duyệt, thời hạn, quy tắc reset và thứ tự ngẫu nhiên các nhánh. Chốt định nghĩa detect→RESOLVED, downtime, chờ Operator, thi hành, xác minh, timeout/noncompletion và RPO (nếu có phép đo dữ liệu). Pilot để ước lượng cỡ mẫu; sau đó khóa protocol. | Tránh chọn lượt thuận lợi và đổi tiêu chí sau khi thấy kết quả. | Protocol có version, lịch pilot/cỡ mẫu, phân vai và tiêu chí dừng/rollback; không bỏ lượt timeout hoặc bị Gate từ chối. |
+| **4. Chốt protocol trước pilot** | Chọn C0 AIHS cơ sở và C1/C2/C3 có thêm từng lớp; cố định model, snapshot, proposal, mapping, fault, tải, nhãn độc lập, probe, cửa sổ ổn định, người duyệt, thời hạn và reset. Định nghĩa riêng phục hồi thật, thời điểm tuyên bố `RESOLVED`, downtime, chờ Operator, timeout/noncompletion và RPO nếu đo được. Pilot để ước lượng cỡ mẫu; sau đó khóa protocol. | Quy tác động đúng lớp bảo vệ và tránh đổi tiêu chí sau khi thấy kết quả. | Protocol có version, lịch pilot/cỡ mẫu, phân vai và tiêu chí dừng/rollback; không bỏ lượt bị Gate chặn sai hay timeout. |
 | **5. Chạy từng lượt và reset** | Từ repo root chạy drill chỉ sau khi bước 1–4 `READY`, với xác nhận staging theo guide; lưu artifact gốc, alert, đề xuất AIHS, Gate/approval, receipt, Verifier và baseline sau cleanup. Operator duyệt theo luồng hiện có; không tự động cho AIHS ký hoặc chạy action. Kiểm tra reset đạt trước lượt kế tiếp. | Thu cùng chuỗi bằng chứng cho mọi nhánh và phát hiện collateral damage. | Một bộ artifact/checksum cho **mỗi lượt**, kể cả `DENY`, timeout, lỗi Executor/Verifier; kết quả `RESOLVED` chỉ khi Independent Verifier chấp nhận. Nếu reset thất bại, dừng chiến dịch và ghi rõ. |
-| **6. Chấm và bàn giao** | Chạy kiểm toán checksum/schema, phân nhóm theo scenario/nhánh; đối chiếu health-only với Verifier **trên cùng lượt** và nhãn collateral độc lập; tính metric có tử/mẫu số, trung vị và khoảng tin cậy khi đủ mẫu. Phân biệt detect→RESOLVED với downtime và báo thời gian chờ duyệt. | Rút kết luận trong phạm vi staging có thể kiểm chứng. | Báo cáo live mới gồm số lượt hoàn tất/không hoàn tất, Gate chặn đúng/chặn sai, false recovery, collateral, RTO/downtime, RPO nếu đo được, giới hạn và đường dẫn artifact đã lọc. Không so trực tiếp thời gian tuyệt đối với Alibaba. |
+| **6. Chấm và bàn giao** | Kiểm toán checksum/schema; nối từng proposal AIHS với Gate verdict, approval, Executor receipt, Verifier và nhãn độc lập. Đối chiếu health-only với Verifier **trên cùng lượt**; tính chặn đúng/chặn sai, false recovery, collateral, hoàn tất an toàn và thời gian phục hồi thật với tử/mẫu số. Tách kết quả replay, lab và live. | Rút kết luận có thể quy cho từng lớp trong phạm vi dữ liệu quan sát. | Báo cáo so sánh C0–C3, gồm cả không hoàn tất và chi phí thời gian; nếu chưa có đối chứng live AIHS hợp lệ, RTO live ghi `NOT_MEASURABLE`. Không so trực tiếp thời gian tuyệt đối với Alibaba. |
 
 **Bộ lệnh kiểm tra đầu vào và đo lại artifact lịch sử** (chạy từ repo root; không cấy lỗi):
 
@@ -476,8 +536,14 @@ không cải thiện RPO; RPO cần diễn tập phục hồi dữ liệu riêng
 
 ## 11. Quyết định còn mở
 
-Đã chốt: phạm vi hạ tầng Moodle → ERPNext → (cân nhắc) AIOpsLab/Kubernetes, xem mục 9.3.
+Đã chốt: **đối chứng chính là cùng AIHS LDA/GBDT trên Moodle trước và sau khi thêm Gate/Executor/Verifier**;
+chất lượng model là phép đo riêng, an toàn thực thi và xác nhận phục hồi là tác động chính, thời gian và chặn sai là
+đánh đổi phải báo. Phạm vi mở rộng Moodle → ERPNext → (cân nhắc) AIOpsLab/Kubernetes, xem mục 9.3.
 
-1. Nguồn dữ liệu huấn luyện: lab cục bộ (đề xuất) hay chỉ AWS staging.
-2. Phạm vi so sánh: cả ba trục (an toàn, độ chính xác, thời gian) hay ưu tiên an toàn và độ chính xác.
-3. Hạn nộp khoá luận, để chốt lộ trình 6–8 tuần.
+1. Chọn và khóa baseline nghiên cứu (`prototype-as-is` hay bản tái hiện sát bài báo); không trộn hai bản.
+2. Chọn nguồn thu dữ liệu và cỡ mẫu pilot: lab Moodle cục bộ, AWS staging hoặc cả hai; nếu train/test khác môi trường,
+   báo riêng và không gộp kết quả.
+3. Chốt giao thức live C0/C3: action nào an toàn để chạy, quy trình duyệt tương đương, nhãn phục hồi thật độc lập,
+   điều kiện reset và giới hạn thời gian. Nếu không có nhánh live tương đương, chỉ công bố replay và để RTO đối chứng
+   `NOT_MEASURABLE`.
+4. Hạn nộp khoá luận để phân bổ thời gian thu dữ liệu, domain review mapping và đo staging.

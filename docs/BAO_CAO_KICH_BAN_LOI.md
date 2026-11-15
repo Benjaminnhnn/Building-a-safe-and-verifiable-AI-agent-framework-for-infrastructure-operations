@@ -1,12 +1,12 @@
 # Báo cáo kịch bản lỗi: 7 kịch bản và hướng dẫn chạy từng bước
 
-**Cập nhật:** 10/11/2026 · **Môi trường:** Moodle staging trên AWS và demo mô phỏng trên WSL
+**Cập nhật:** 15/11/2026 · **Môi trường:** Moodle staging trên AWS và demo mô phỏng trên WSL
 **Dành cho:** người trực tiếp chạy kịch bản trên staging, và người đọc kết quả trong luận văn.
 
-> **Trạng thái 10/11/2026:** Terraform đã gỡ 70 tài nguyên AWS của Moodle staging tại tài khoản
-> `829162041762` (region `ap-southeast-1`); state hiện rỗng. Các lượt chạy và lệnh live bên dưới là
-> bằng chứng/hướng dẫn lịch sử, cần dựng lại hạ tầng trước khi chạy tiếp. Recovery point EFS trong AWS Backup
-> chưa thể kiểm kê hoặc xóa vì role `InfraEngineer` thiếu quyền AWS Backup.
+> **Lưu ý về thời điểm:** ngày 10/11/2026 Terraform đã gỡ 70 tài nguyên staging; báo cáo ngày 14/11 ghi các lượt
+> ablation DB-01/NET-01 chạy trên staging ở một phiên sau đó. Các mốc này không xác nhận **trạng thái AWS hiện tại**.
+> Trước khi chạy lại phải đối chiếu tài khoản, Terraform state có thẩm quyền, tài nguyên thật và baseline. Recovery
+> point EFS trong AWS Backup chưa được báo cáo đã xóa vì role `InfraEngineer` thiếu quyền kiểm kê/xóa.
 
 Báo cáo gồm **7 kịch bản luận văn** (bộ đánh giá chuẩn hoá ngày 24/10/2026). Mỗi kịch bản
 có: lỗi là gì, hệ thống phát hiện thế nào, Safety Gate được làm gì, và **từng bước lệnh** để chạy, quan sát, khôi phục.
@@ -25,7 +25,8 @@ Sơ đồ luồng alert có thể mở và chỉnh sửa bằng diagrams.net: [m
 4. [Bảy kịch bản luận văn](#4-bảy-kịch-bản-luận-văn)
 5. [Kết quả đã chạy thật](#5-kết-quả-đã-chạy-thật)
 6. [Demo DB-01 và NET-01 theo từng mục tiêu](#52-demo-db-01-và-net-01-theo-từng-mục-tiêu)
-7. [Khi có bước hỏng](#6-khi-có-bước-hỏng)
+7. [Nhánh đối chứng không Gate/Executor/Verifier](#doi-chung-khong-gate)
+8. [Khi có bước hỏng](#6-khi-có-bước-hỏng)
 
 ---
 
@@ -790,6 +791,65 @@ Kỳ vọng khi chưa có đánh giá độc lập: `false_block_rate: null`,
 `evidence_ref`), chạy lại với `--labels /đường/dẫn/nhãn.jsonl`. Tỷ lệ chỉ công bố khi đủ nhãn và có hành động hợp lệ:
 **số `DENY` được xác nhận là hợp lệ an toàn / tất cả quyết định live được xác nhận là hợp lệ an toàn**. Nếu không có
 ca `DENY` hợp lệ bị chặn thì không được dựng một ca giả để gọi là “chặn sai tự nhiên”.
+
+---
+
+<a id="doi-chung-khong-gate"></a>
+
+### 5.3. Nhánh đối chứng không Gate/Executor/Verifier (14/11/2026)
+
+Ngày 14/11 đã chạy **5 lượt DB-01 và 5 lượt NET-01** trên staging bằng
+[`moodle-rto-rpo-ablation.sh`](../automation/moodle-rto-rpo-ablation.sh). Đây là **Agent chẩn đoán theo luật**, sau đó
+harness chỉ thực thi đúng hai action reset đã review; bỏ Gate, chữ ký Operator, Safe Executor và Independent Verifier.
+Tiêu chí phục hồi là **ba synthetic transaction liên tiếp thành công**, khác tiêu chí `RESOLVED` của luồng đầy đủ.
+Đây **không phải baseline AIHS LDA/GBDT** và không được ghép trực tiếp với các lượt có Verifier để tuyên bố tỷ lệ
+cải thiện hoặc RTO như cùng một phép chấm.
+
+| Kịch bản | Lượt chính thức | Agent nhận diện và đề xuất đúng | Trung vị MTTD | Trung vị RTO từ lúc gây lỗi | Trung vị RTO từ alert | RPO quan sát |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| DB-01 | 5/5 | 5/5 | 47,6 s | 111,0 s | 59,6 s | 0 s; 0/200 bản ghi đã ACK bị mất |
+| NET-01 | 5/5 | 5/5 | 49,2 s | 135,1 s | 80,1 s | 0 s; 0/249 bản ghi đã ACK bị mất |
+
+**Từng lượt (giây):**
+
+| Mã lượt | RTO gây lỗi→phục hồi | RTO alert→phục hồi | Bản ghi mất/ACK | Baseline sau |
+| --- | ---: | ---: | ---: | --- |
+| `ABL-DB-01-20261114T072502Z` | 111,0 | 63,4 | 0/39 | đạt |
+| `ABL-DB-01-20261114T073452Z` | 106,0 | 59,6 | 0/41 | đạt |
+| `ABL-DB-01-20261114T074112Z` | 120,5 | 56,7 | 0/41 | đạt |
+| `ABL-DB-01-20261114T074732Z` | 73,7 | 54,6 | 0/38 | đạt |
+| `ABL-DB-01-20261114T075305Z` | 116,7 | 65,9 | 0/41 | đạt |
+| `ABL-NET-01-20261114T082351Z` | 135,1 | 73,2 | 0/48 | đạt |
+| `ABL-NET-01-20261114T083205Z` | 139,9 | 90,7 | 0/53 | đạt |
+| `ABL-NET-01-20261114T083841Z` | 124,1 | 80,1 | 0/49 | đạt |
+| `ABL-NET-01-20261114T084459Z` | 148,1 | 81,0 | 0/51 | đạt |
+| `ABL-NET-01-20261114T085137Z` | 122,4 | 77,4 | 0/48 | đạt |
+
+MTTD lấy từ `activeAt` của Prometheus; RTO lấy lúc synthetic thành công đầu tiên trong chuỗi ba mẫu; RPO so bản ghi
+đã ACK với dữ liệu trong RDS sau khôi phục. Các lượt **ngoài cohort năm lượt** được ghi riêng để thấy quy tắc chọn
+mẫu, không thêm vào bảng chính sau khi xem kết quả:
+
+| Lượt ngoài cohort | Lý do | MTTD | RTO gây lỗi→phục hồi | RTO alert→phục hồi | Mất/ACK |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `ABL-DB-01-20261114T041721Z` | Script cũ chưa ghi `cause_code`/`confidence` | 37,2 s | 127,6 s | 90,4 s | 0/40 |
+| `ABL-NET-01-20261114T080606Z` | Lượt hợp lệ chạy trước cohort đã chốt | 45,2 s | 126,4 s | 81,2 s | 0/50 |
+| `ABL-NET-01-20261114T081520Z` | Lượt hợp lệ chạy trước cohort đã chốt | 83,5 s | 162,9 s | 79,4 s | 0/49 |
+| `ABL-NET-01-20261113T155950Z` | Thư mục chạy thử rỗng, không có kết quả | — | — | — | — |
+
+Raw `result.json`, login probe và heartbeat nằm dưới `terraform/.artifacts/moodle-rto-rpo/<run_id>/` trên máy
+Operator (Git bỏ qua).
+
+**Chạy lại nhánh này chỉ khi có protocol riêng được duyệt:** xác minh AWS và baseline, bảo đảm công tắc live Agent
+và Executor **đều tắt**, kiểm tra target/reset và giữ artifact mọi lượt. Script chỉ chấp nhận DB-01 hoặc NET-01 và
+không chạy action nếu Agent đề xuất khác hai reset đã review. Chạy từ repo root:
+
+```bash
+MOODLE_FAULT_CONFIRM=staging bash automation/moodle-rto-rpo-ablation.sh DB-01
+MOODLE_FAULT_CONFIRM=staging bash automation/moodle-rto-rpo-ablation.sh NET-01
+```
+
+Chạy từng lượt, xác nhận `baseline_after_run=passed` và reset sạch trước lượt tiếp theo. Mỗi lượt có thể làm gián
+đoạn Moodle staging. **Không** dùng nhánh bỏ Gate này để đại diện cho C0 AIHS hoặc chạy trên production.
 
 ---
 

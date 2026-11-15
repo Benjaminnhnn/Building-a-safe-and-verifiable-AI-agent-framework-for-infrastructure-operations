@@ -4,12 +4,13 @@ Thesis implementation and operations tooling for an AI agent that observes Moodl
 
 ## Start here
 
-- [AI agent, safety controls and evidence status](docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md)
-- Documentation (Vietnamese):
-  [infrastructure architecture](docs/BAO_CAO_KIEN_TRUC_HA_TANG.md),
-  [deploy and operations guide](docs/BAO_CAO_HUONG_DAN_TRIEN_KHAI.md),
-  [fault scenarios and demo](docs/BAO_CAO_KICH_BAN_LOI.md),
-  [AI agent and safety controls](docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md)
+- Documentation (Vietnamese): [infrastructure](docs/BAO_CAO_KIEN_TRUC_HA_TANG.md),
+  [deployment](docs/BAO_CAO_HUONG_DAN_TRIEN_KHAI.md),
+  [fault scenarios and measured runs](docs/BAO_CAO_KICH_BAN_LOI.md),
+  [Safety Gate / Executor / Verifier](docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md),
+  [AIHS evidence](docs/BAO_CAO_AIHS.md),
+  [AIHS comparison plan](docs/PLANNING_UNG_DUNG_LDA_GBDT.md), and
+  [remaining work](docs/PHAN_CONG_LDA_GBDT.md)
 - [Repository and agent instructions](AGENTS.md)
 
 ## Find the code
@@ -25,14 +26,14 @@ Thesis implementation and operations tooling for an AI agent that observes Moodl
 | `evaluation/agent_replay/` | Offline replay roles, domain model, coordination, and independent verification used by the replay harnesses; not imported by the runtime image. |
 | `automation/` | Moodle baseline, fault/reset drills, replay, safe-executor workflows, evidence harvesting, and deployment helpers. |
 | `.github/workflows/` | CI validation, AI/Moodle image publishing, and Moodle staging deployment. |
-| `docs/` | Planning, runbooks, architecture, operational evidence, and sprint reports. Treat dated reports as historical snapshots. |
+| `docs/` | Seven focused reports: deployment, infrastructure, fault scenarios, safety controls, AIHS evidence, comparison plan, and remaining work. Treat dated results as historical snapshots. |
 
 ## Common workflows
 
 - **Validate locally:** follow the ordered commands in `AGENTS.md`.
 - **Run offline replay:** `python automation/aiops-unified-replay.py all --output-dir <output-dir>`; replay is simulated evidence, not live recovery.
 - **Deploy Moodle staging / run live drills:** use the Moodle-specific workflow and scripts documented in [the deploy and operations guide](docs/BAO_CAO_HUONG_DAN_TRIEN_KHAI.md) and [the fault scenario report](docs/BAO_CAO_KICH_BAN_LOI.md). Verify AWS identity, target environment, baseline, and reset path first.
-- **Understand evidence status:** read [the agent report, section 11](docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md#11-trạng-thái-bằng-chứng) and [benchmark evidence status](evaluation/benchmark/results/BENCHMARK_REPORT.md). Keep fixture, shadow, deployed runtime, and live acceptance claims separate.
+- **Understand evidence status:** read section 6 of [the safety report](docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md) and [benchmark evidence status](evaluation/benchmark/results/BENCHMARK_REPORT.md). Keep fixture, shadow, deployed runtime, and live acceptance claims separate.
 
 ## Project boundaries
 
