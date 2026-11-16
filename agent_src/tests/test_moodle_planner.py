@@ -157,6 +157,58 @@ def _s3_3_evidence(scenario: str):
     ]
 
 
+def test_shared_storage_markers_match_on_staging():
+    """Live session 16/11/2026: shared EFS / shared DB make SEC-02 and BIZ-02 markers appear on both nodes."""
+    sec02 = [
+        _metric(q, v, i, f"sec02s-{n}") for n, (q, v, i) in enumerate([
+            ("moodle_synthetic_success", 0, "monitor-ai-01"),
+            ("moodle_rds_tcp_probe", 1, "blackbox-exporter:9115"),
+            ("moodle_public_probe", 1, "blackbox-exporter:9115"),
+            ("moodle_efs_mount", 1, "moodle-app-a"),
+            ("moodle_efs_mount", 1, "moodle-app-b"),
+            ("moodle_fault_net01_hosts_override", 0, "moodle-app-a"),
+            ("moodle_fault_net01_hosts_override", 0, "moodle-app-b"),
+            ("moodle_fault_sec02_fixture_mode_zero", 1, "moodle-app-a"),
+            ("moodle_fault_sec02_fixture_mode_zero", 1, "moodle-app-b"),
+        ])
+    ]
+    biz02 = [
+        _metric(q, v, i, f"biz02s-{n}") for n, (q, v, i) in enumerate([
+            ("moodle_adhoc_tasks_overdue_count", 1, "moodle-app-a"),
+            ("moodle_adhoc_tasks_overdue_count", 1, "moodle-app-b"),
+            ("moodle_cron_container_stopped", 1, "moodle-app-a"),
+            ("moodle_cron_container_stopped", 0, "moodle-app-b"),
+            ("moodle_node_web_running", 1, "moodle-app-a"),
+            ("moodle_node_web_running", 1, "moodle-app-b"),
+        ])
+    ]
+    for scenario, alert, cause, evidence in (
+        ("SEC-02", "MoodleSyntheticTransactionFailed", "application_path_not_isolated", sec02),
+        ("BIZ-02", "MoodleAdhocTaskQueueStuck", "moodle_adhoc_task_queue_stuck", biz02),
+    ):
+        proposal = plan_moodle_s3_3_remediation(
+            incident_id=f"inc-{scenario}", alert_name=alert,
+            diagnosis={"status": "hypothesis", "cause_code": cause, "evidence_refs": [evidence[0].evidence_id]},
+            evidence=evidence,
+        )
+        assert proposal is not None and proposal["scenario_id"] == scenario
+        assert proposal["execution_permitted"] is False and proposal["approval_required"] is True
+    # Node B alone never establishes SEC-02, and zero overdue tasks never establish BIZ-02.
+    sec02_b_only = [e if e.evidence_id != "ev-sec02s-7" else _metric("moodle_fault_sec02_fixture_mode_zero", 0, "moodle-app-a", "x")
+                    for e in sec02]
+    biz02_zero = [_metric("moodle_adhoc_tasks_overdue_count", 0, i, f"z-{i}") for i in ("moodle-app-a", "moodle-app-b")] + biz02[2:]
+    for alert, cause, evidence in (
+        ("MoodleSyntheticTransactionFailed", "application_path_not_isolated", sec02_b_only),
+        ("MoodleAdhocTaskQueueStuck", "moodle_adhoc_task_queue_stuck", biz02_zero),
+    ):
+        assert plan_moodle_s3_3_remediation(
+            incident_id="inc-neg", alert_name=alert,
+            diagnosis={"status": "hypothesis", "cause_code": cause,
+                       "evidence_refs": [e.evidence_id for e in evidence if e.evidence_id.startswith(("ev-sec02s-0", "ev-biz02s-2"))]},
+            evidence=evidence,
+        ) is None
+
+
 def test_s3_3_plans_require_exact_fresh_runtime_fault_evidence():
     alerts = {
         "DB-01": "MoodleNodeRdsTcpFailed",

@@ -605,8 +605,11 @@ def diagnose_moodle_alert(alert_name: str, evidence: list[Any]) -> dict[str, Any
             and status["moodle_efs_mount"] == 1
             and status["moodle_synthetic_success"] == 0
         )
+        # The fixture directory lives on the EFS volume both nodes mount, so on staging both nodes report the
+        # mode-0000 marker; a node-local (non-shared) volume reports it on node A only. Node A must always see it.
         sec02_exact = (
-            exact_instances("moodle_fault_sec02_fixture_mode_zero", {"moodle-app-a": 1.0, "moodle-app-b": 0.0})
+            (exact_instances("moodle_fault_sec02_fixture_mode_zero", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
+             or exact_instances("moodle_fault_sec02_fixture_mode_zero", {"moodle-app-a": 1.0, "moodle-app-b": 0.0}))
             and status["moodle_rds_tcp_probe"] == 1
             and status["moodle_public_probe"] == 1
             and status["moodle_efs_mount"] == 1

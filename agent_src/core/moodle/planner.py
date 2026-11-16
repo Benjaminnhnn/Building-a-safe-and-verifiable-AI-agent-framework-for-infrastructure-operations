@@ -293,6 +293,18 @@ def plan_moodle_s3_3_remediation(
         evidence_ids.update(sample[1] for sample in samples.values())
         return True
 
+    def matches_all_positive(query_id: str) -> bool:
+        # The overdue ad-hoc task count is read from the shared Moodle database, so every node reports the same
+        # value; accept both nodes present and overdue (> 0). The earlier node-B-only form (a <= 0, b > 0) is kept
+        # for the offline fixtures, but it never matched on the shared-database staging stack (16/11/2026).
+        samples = rows.get(query_id, {})
+        if set(samples) != {"moodle-app-a", "moodle-app-b"}:
+            return False
+        if any(sample[0] <= 0 for sample in samples.values()):
+            return matches(query_id, minimum=0.0)
+        evidence_ids.update(sample[1] for sample in samples.values())
+        return True
+
     candidates: list[str] = []
     if alert_name == _S3_3_REMEDIATIONS["DB-01"][0] and (
         matches("moodle_node_rds_tcp_success", {"moodle-app-a": 0.0, "moodle-app-b": 0.0})
@@ -322,7 +334,11 @@ def plan_moodle_s3_3_remediation(
         )
         if deps_healthy and matches("moodle_fault_net01_hosts_override", {"moodle-app-a": 1.0, "moodle-app-b": 1.0}):
             candidates.append("NET-01")
-        if deps_healthy and matches("moodle_fault_sec02_fixture_mode_zero", {"moodle-app-a": 1.0, "moodle-app-b": 0.0}):
+        # Shared EFS: both nodes see the mode-0000 fixture (staging); a node-local volume shows it on node A only.
+        if deps_healthy and (
+            matches("moodle_fault_sec02_fixture_mode_zero", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
+            or matches("moodle_fault_sec02_fixture_mode_zero", {"moodle-app-a": 1.0, "moodle-app-b": 0.0})
+        ):
             candidates.append("SEC-02")
     if alert_name == _S3_3_REMEDIATIONS["BIZ-01"][0] and (
         matches("moodle_cli_maintenance_mode_enabled", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
@@ -331,7 +347,7 @@ def plan_moodle_s3_3_remediation(
     ):
         candidates.append("BIZ-01")
     if alert_name == _S3_3_REMEDIATIONS["BIZ-02"][0] and (
-        matches("moodle_adhoc_tasks_overdue_count", minimum=0.0)
+        matches_all_positive("moodle_adhoc_tasks_overdue_count")
         and matches("moodle_cron_container_stopped", {"moodle-app-a": 1.0, "moodle-app-b": 0.0})
         and matches("moodle_node_web_running", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
     ):
