@@ -29,6 +29,7 @@ FORBIDDEN_FEATURE = re.compile(
     re.IGNORECASE,
 )
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+DISAGREEMENT_REASON = "independent_label_disagrees_with_observed_outcome"
 
 
 def digest(path: Path) -> str:
@@ -65,8 +66,10 @@ def review_index(rows: list[dict], path: Path | None) -> dict[str, dict]:
         if record_id not in known or record_id in result:
             raise ValueError("label review has unknown or duplicate record ID")
         row = known[record_id]
+        # A human verdict that differs from the runner outcome is NOT an error: it is recorded below as an explicit
+        # exclusion (DISAGREEMENT_REASON). Anything else (runner outcome not a repair label, bad shape) still fails closed.
         if (review["outcome"] not in {"success", "failure"}
-                or review["outcome"] != row["outcome"]
+                or (review["outcome"] != row["outcome"] and row["outcome"] not in {"success", "failure"})
                 or review["executed_action_id"] != row["post_decision"]["executed_action_id"]
                 or not isinstance(review["reviewer_id"], str) or not review["reviewer_id"].strip()
                 or not isinstance(review["evidence_sha256"], str)
@@ -84,7 +87,8 @@ def review_index(rows: list[dict], path: Path | None) -> dict[str, dict]:
 
 def freeze(*, records: Path, source_manifest: Path, schema_path: Path,
            label_review: Path | None, output_root: Path, manifest_out: Path,
-           allowed_mode: str = "historical_live_staging", min_groups: int = 10) -> dict:
+           allowed_mode: str = "historical_live_staging", min_groups: int = 10,
+           purge_overlap: bool = False) -> dict:
     source = json.loads(source_manifest.read_text())
     schema = json.loads(schema_path.read_text())
     Draft202012Validator.check_schema(schema)
@@ -109,6 +113,7 @@ def freeze(*, records: Path, source_manifest: Path, schema_path: Path,
     reviews = review_index(rows, label_review)
     selected = []
     excluded = Counter()
+    disagreements = []
     for row in rows:
         row_reasons = []
         if row["provenance"]["evidence_mode"] != allowed_mode:
@@ -120,6 +125,10 @@ def freeze(*, records: Path, source_manifest: Path, schema_path: Path,
             row_reasons.append("missing_verified_predecision_features_or_observed_label")
         if row["outcome"] in {"success", "failure"} and row["record_id"] not in reviews:
             row_reasons.append("missing_independent_label_review")
+        elif row["record_id"] in reviews and reviews[row["record_id"]]["outcome"] != row["outcome"]:
+            # Neither value is overwritten: the row is simply not usable as a trusted label.
+            row_reasons.append(DISAGREEMENT_REASON)
+            disagreements.append(row["record_id"])
         if row_reasons:
             excluded.update(row_reasons)
         else:
@@ -140,6 +149,13 @@ def freeze(*, records: Path, source_manifest: Path, schema_path: Path,
         "validation": groups[train_end:valid_end],
         "test": groups[valid_end:],
     }
+    purged_records = []
+    if purge_overlap:
+        # Opt-in embargo: parallel lab workers make neighbouring groups overlap in time; drop the overlapping groups
+        # of the earlier split (reported below) instead of blocking. Thresholds are unchanged.
+        from moodle_aihs.purge import purge_temporal_overlap
+        assigned_groups, purged = purge_temporal_overlap(assigned_groups)
+        purged_records = sorted(row["record_id"] for group in purged for row in group)
     assigned = {name: [row for group in blocks for row in group]
                 for name, blocks in assigned_groups.items()}
     if selected and any(not assigned[name] for name in assigned):
@@ -162,7 +178,7 @@ def freeze(*, records: Path, source_manifest: Path, schema_path: Path,
         "freeze_code_sha256": digest(Path(__file__)),
         "split_code_sha256": digest(EVAL / "a2_split.py"),
         "label_review_sha256": label_hash, "allowed_mode": allowed_mode,
-        "min_groups": min_groups, "split_policy": "chronological_70_15_15_connected_incident_session",
+        "min_groups": min_groups, "purge_overlap": purge_overlap, "split_policy": "chronological_70_15_15_connected_incident_session",
     }
     freeze_id = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:20]
     manifest = {
@@ -180,6 +196,8 @@ def freeze(*, records: Path, source_manifest: Path, schema_path: Path,
         "all_record_by_action": dict(sorted(Counter(row["proposal"]["action_id"] or "unknown" for row in rows).items())),
         "all_record_by_outcome": dict(sorted(Counter(row["outcome"] for row in rows).items())),
         "excluded": dict(sorted(excluded.items())), "reasons": reasons,
+        "label_disagreements": {"count": len(disagreements), "record_ids": sorted(disagreements)},
+        "purged_records": purged_records,
         "model_input_policy": "only_pre_decision_features_no_scenario_or_post_decision_fields",
         "lda_fit_policy": "fit_train_only_transform_validation_and_test",
         "test_policy": "held_out_no_tuning_or_refit_after_freeze",
@@ -231,16 +249,19 @@ def main() -> None:
     parser.add_argument("--allowed-mode", choices=("historical_live_staging", "lab", "offline_replay", "synthetic"),
                         default="historical_live_staging")
     parser.add_argument("--min-groups", type=int, default=10)
+    parser.add_argument("--purge-overlap", action="store_true",
+                        help="drop groups of the earlier split that overlap in time with the next split (embargo)")
     args = parser.parse_args()
     if args.min_groups < 3:
         parser.error("min-groups must be at least 3")
     result = freeze(records=args.records, source_manifest=args.source_manifest,
                     schema_path=args.schema, label_review=args.label_review,
                     output_root=args.output_root, manifest_out=args.manifest_out,
-                    allowed_mode=args.allowed_mode, min_groups=args.min_groups)
+                    allowed_mode=args.allowed_mode, min_groups=args.min_groups,
+                    purge_overlap=args.purge_overlap)
     print(json.dumps({key: result[key] for key in
                       ("status", "freeze_id", "total_audit_records", "selected_records",
-                       "independent_groups", "excluded", "reasons", "splits")}, ensure_ascii=False))
+                       "independent_groups", "excluded", "label_disagreements", "reasons", "splits")}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

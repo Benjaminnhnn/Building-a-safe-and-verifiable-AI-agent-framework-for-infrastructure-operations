@@ -540,10 +540,52 @@ không cải thiện RPO; RPO cần diễn tập phục hồi dữ liệu riêng
 chất lượng model là phép đo riêng, an toàn thực thi và xác nhận phục hồi là tác động chính, thời gian và chặn sai là
 đánh đổi phải báo. Phạm vi mở rộng Moodle → ERPNext → (cân nhắc) AIOpsLab/Kubernetes, xem mục 9.3.
 
-1. Chọn và khóa baseline nghiên cứu (`prototype-as-is` hay bản tái hiện sát bài báo); không trộn hai bản.
-2. Chọn nguồn thu dữ liệu và cỡ mẫu pilot: lab Moodle cục bộ, AWS staging hoặc cả hai; nếu train/test khác môi trường,
-   báo riêng và không gộp kết quả.
-3. Chốt giao thức live C0/C3: action nào an toàn để chạy, quy trình duyệt tương đương, nhãn phục hồi thật độc lập,
-   điều kiện reset và giới hạn thời gian. Nếu không có nhánh live tương đương, chỉ công bố replay và để RTO đối chứng
-   `NOT_MEASURABLE`.
-4. Hạn nộp khoá luận để phân bổ thời gian thu dữ liệu, domain review mapping và đo staging.
+### 11.1. Quyết định giai đoạn 0 (chốt ngày 15/11/2026)
+
+| Câu hỏi | Quyết định | Lý do |
+| --- | --- | --- |
+| Baseline C0 | **`aihs-paper-repro-moodle-v1`**: tái hiện phương pháp bài báo trên Moodle. Predictor chỉ học ca sửa thành công; Controller fallback thử action theo chi phí tăng dần rồi chuyển người. LDA dùng `sklearn` (batch, α = 0,1, β = 0,01); ghi rõ khác biệt với Gibbs sampling. Lớp của Predictor = các `action_id` an toàn trong catalog Moodle + `call_human`. `aihs-public-prototype-as-is-v1` chỉ dùng để đối chiếu pipeline, không báo chung kết quả. | Đóng góp của đồ án là lớp Gate/Executor/Verifier phía sau model; baseline phải là *phương pháp* AIHS, không phải các lỗi của prototype. Sáu mã server Alibaba không ánh xạ được sang Moodle. |
+| Nguồn dữ liệu | **Lab Moodle cục bộ** (Docker, cùng bộ cấy lỗi/probe/reset với staging) sinh dữ liệu train/validation/test chính. **AWS staging** dùng cho tập kiểm chứng ngoài và các lượt live C2/C3. Báo riêng lab và staging. | Mỗi lượt staging tốn 10–25 phút và phí AWS; cần vài trăm lượt để học Controller. Theo quy ước chiến dịch, việc chạy > 12 giờ chuyển sang lab cục bộ. |
+| Action chạy live | Được phép: `remove_scoped_db_reject` (DB-01), `recreate_moodle_web_from_reviewed_compose` (NET-01), `remove_named_cpu_load_container` (RES-01), `start_reviewed_compose_service` (CON-01), `restore_fixture_directory_mode` (SEC-02), `restart_moodle_cron_service` (BIZ-02). **Không** chạy live: SEC-01 (human-only), DB-02 (thay cấu hình AWS), BIZ-01 (bật/tắt maintenance ảnh hưởng toàn site), các action `reconcile_*` (chỉ dùng để reset). | Các action được phép đều có phạm vi cố định trong allowlist Executor, chỉ gỡ đúng fixture/rule do drill tạo hoặc khởi động lại dịch vụ từ compose đã review, và có hợp đồng Verifier. Mapping vẫn cần `review_reference` ghi người duyệt. |
+| Hạn nộp | **31/12/2026.** | Giai đoạn 1–2 (thu dữ liệu lab, huấn luyện) phải xong trước khoảng 10/12 để còn thời gian đo staging và viết báo cáo. |
+
+Giới hạn còn mở: nhãn độc lập (Bước 1.4 của [PHAN_CONG](PHAN_CONG_LDA_GBDT.md)) phải do **một người khác** gán,
+không phải agent, Gate hay model. Nếu không có người gán nhãn, các chỉ số cần nhãn độc lập giữ `NOT_MEASURABLE`.
+
+### 11.2. Luật chấm Q2 và xử lý nhãn "Một phần" (chốt ngày 15/11/2026, trước freeze và train)
+
+Luật này được chốt **trước** khi chạy `b2_freeze_dataset.py`, trước khi train/lock model và trước khi xem bất kỳ kết
+quả model nào. Không được đổi sau khi đã thấy kết quả.
+
+**Cách chấm Q2.** Chỉ xét các tín hiệu bất thường trước quyết định **có probe đo sau action**, cộng với tín hiệu mới
+bất thường sau action (mục 4 của tóm tắt). Mỗi tín hiệu thuộc một trong ba loại:
+
+| Loại | Điều kiện trong cửa sổ ổn định |
+| --- | --- |
+| đã hết | bình thường suốt cửa sổ |
+| còn lỗi | vẫn bất thường, chập chờn, hoặc tín hiệu mới bất thường sau action |
+| chưa biết | có probe nhưng không thu được số liệu sau action |
+
+Tín hiệu **không có probe sau action theo thiết kế** (hiện chỉ có "Lỗi 5xx ở load balancer") bị bỏ qua khi chấm Q2.
+Phục hồi của đường đi người dùng đã được đo trực tiếp qua giao dịch tổng hợp và trạng thái target của load balancer.
+
+| Nhãn Q2 | Khi nào |
+| --- | --- |
+| Phục hồi | mọi tín hiệu đều *đã hết*; không có *còn lỗi* hay *chưa biết* |
+| Không phục hồi | không tín hiệu nào *đã hết*, ít nhất một *còn lỗi* |
+| Một phần | ít nhất một *đã hết* **và** ít nhất một *còn lỗi* |
+| Không chắc | không có *còn lỗi* nhưng có *chưa biết*; hoặc không có vòng probe nào sau action |
+| Không áp dụng | không có action nào được thực thi; `wait_and_recheck` vẫn chấm như trên |
+
+**Ánh xạ khi xuất nhãn (phân tích chính).** Phục hồi → `success`; Không phục hồi và **Một phần → `failure`**, vì thành
+công đòi hỏi phục hồi hoàn toàn. Không chắc và Không áp dụng bị loại. Lệnh:
+`label_tool.py export-review --partial-policy failure` (mặc định).
+
+**Phân tích độ nhạy.** Chạy lại toàn bộ pipeline với `--partial-policy exclude` (loại các nhãn Một phần) và báo cả hai
+kết quả cạnh nhau. Kết luận chỉ được coi là vững nếu hai cách cho cùng chiều.
+
+**Công bố quá trình.** Luật được làm rõ khi đã gán khoảng 284/420 episode của `campaign-1`. Trước đó tool hiển thị dòng
+5xx là "không có dữ liệu sau action", và 111 nhãn Một phần rơi vào đúng tình huống này. Từ 15/11/2026 tool hiển thị
+"không đo sau action (bỏ qua khi chấm Q2)", và người gán nhãn xem lại các nhãn cũ chỉ theo luật trên và bằng chứng trong
+tool, không xem kết quả runner. Lịch sử sửa nhãn được giữ trong trường `history` của từng nhãn và bản sao lưu
+`labels-backup/tien-20261115-2206` để kiểm tra lại được.

@@ -258,7 +258,7 @@ PHP
     publish_scenario_marker "$scenario" "$(date -u +%Y%m%dT%H%M%SZ)"
     remote moodle-app-a "
       set -eu
-      sudo docker exec -u 1000 release-moodle-web-1 php /var/www/html/admin/cli/maintenance.php --enable >/dev/null
+      sudo docker exec -u 1000:1999 release-moodle-web-1 php /var/www/html/admin/cli/maintenance.php --enable >/dev/null
       sudo test -f '$moodledata_path/climaintenance.html'
     "
     ;;
@@ -273,7 +273,7 @@ PHP
       set -eu
       sudo docker stop release-moodle-cron-1 >/dev/null
       test "$(sudo docker inspect --format "{{.State.Running}}" release-moodle-cron-1)" = false
-      sudo docker exec -u 1000 release-moodle-web-1 php -r '\''
+      sudo docker exec -u 1000:1999 release-moodle-web-1 php -r '\''
         define("CLI_SCRIPT", true);
         require "/var/www/html/config.php";
         $class = "\\core\\task\\refresh_mod_calendar_events_task";
@@ -282,7 +282,7 @@ PHP
         $task->set_custom_data(["plugins" => ["assign"], "moodle_fault" => "BIZ-02"]);
         $task->set_next_run_time(time() - 900);
         \core\task\manager::queue_adhoc_task($task);
-      '\''
+      '\'' || { rc=$?; echo "BIZ-02 ad-hoc task queueing in release-moodle-web-1 failed (php exit $rc)" >&2; exit "$rc"; }
     '
     ;;
 

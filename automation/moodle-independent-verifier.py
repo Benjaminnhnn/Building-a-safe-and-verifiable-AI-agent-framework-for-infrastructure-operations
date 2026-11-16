@@ -142,13 +142,23 @@ def verify_window(
     observations: list[StabilityObservation] = []
     samples: list[dict[str, bool]] = []
     started = None
+    first_observed = None
     for index in range(sample_count):
         if index:
-            assert started is not None
-            target = started + min(index * interval_seconds, window_seconds)
-            sleep(max(0.0, target - monotonic()))
+            assert started is not None and first_observed is not None
+            offset = min(index * interval_seconds, window_seconds)
+            sleep(max(0.0, started + offset - monotonic()))
+            # The verdict measures the window on the wall clock. A wall clock slewed against the monotonic
+            # schedule (16/11/2026 on WSL: 119.99 s, truncated to 119) must not shorten it: wait until the
+            # wall-clock offset is reached. Bounded, so a frozen clock still ends (and fails closed).
+            for _ in range(50):
+                short = offset - (now() - first_observed).total_seconds()
+                if short <= 0:
+                    break
+                sleep(min(short + 0.01, 1.0))
         observed_at = now()
         if index == 0:
+            first_observed = observed_at
             # Anchor the schedule after recording the first wall-clock sample,
             # so clock-call overhead does not make a 120 s window too short.
             started = monotonic()

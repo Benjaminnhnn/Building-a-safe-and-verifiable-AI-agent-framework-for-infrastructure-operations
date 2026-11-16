@@ -139,6 +139,13 @@ moodle_rds_endpoint="$(jq -r '.endpoint' <<<"$database_json")"
   exit 65
 }
 
+# Optional: limit the run to tagged tasks, e.g. MOODLE_MONITORING_TAGS=moodle_node_probes redeploys only the node probe.
+tag_args=()
+if [[ -n "${MOODLE_MONITORING_TAGS:-}" ]]; then
+  [[ "$MOODLE_MONITORING_TAGS" =~ ^[a-z0-9_,]+$ ]] || { echo "MOODLE_MONITORING_TAGS must be comma-separated tag names." >&2; exit 64; }
+  tag_args=(--tags "$MOODLE_MONITORING_TAGS")
+fi
+
 ansible-playbook \
   -i "$inventory_path" \
   "$playbook_path" \
@@ -147,6 +154,7 @@ ansible-playbook \
   --extra-vars "moodle_synthetic_password_file=$synthetic_password_file" \
   --extra-vars "moodle_agent_enabled=$agent_enabled" \
   --extra-vars "moodle_agent_image=$agent_image" \
+  ${tag_args[@]+"${tag_args[@]}"} \
   "${live_args[@]}" \
   "${shadow_args[@]}" \
   ${telegram_args[@]+"${telegram_args[@]}"}

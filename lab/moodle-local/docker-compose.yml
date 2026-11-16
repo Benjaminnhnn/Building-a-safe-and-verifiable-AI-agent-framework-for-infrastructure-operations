@@ -1,0 +1,199 @@
+# Local Docker lab mirroring the Moodle staging stack (ALB -> two Moodle nodes -> shared dataroot -> PostgreSQL).
+# Use lab.sh (see header there) rather than calling this file directly. No bind mounts are used on purpose:
+# the lab executor and the runner call `docker compose -f` from inside a container, where host paths do not resolve.
+#
+# Staging stand-ins:  ALB = lb (haproxy, active /healthz.php checks)   EFS = volume `moodledata`
+#                     RDS = moodle-db (postgres, TLS off)              monitor-ai-01 = prometheus/blackbox/synthetic
+# Lab credentials are throwaway constants for an isolated local network, never reused anywhere else.
+name: ${LAB_PROJECT:-aihs-lab}
+
+x-moodle-environment: &moodle-environment
+  MOODLE_WWWROOT: http://moodle-lab:8080
+  MOODLE_DB_HOST: moodle-db
+  MOODLE_DB_PORT: "5432"
+  MOODLE_DB_NAME: moodle
+  MOODLE_DB_USER: moodle_app
+  MOODLE_DB_SSLMODE: disable
+  MOODLE_DATA_ROOT: /var/moodledata
+  MOODLE_REVERSE_PROXY: "false"
+  MOODLE_SSL_PROXY: "false"
+  MOODLE_CRON_INTERVAL_SECONDS: "20"
+  MOODLE_DB_PASSWORD_FILE: /run/moodle-secrets/moodle-db-password
+  PGSSLMODE: disable
+
+x-moodle-node: &moodle-node
+  image: ${MOODLE_IMAGE:-aihs-lab/moodle:lab}
+  restart: unless-stopped
+  user: "1000:1999"
+  environment: *moodle-environment
+  volumes:
+    - moodledata:/var/moodledata
+  configs:
+    - source: db_password
+      target: /run/moodle-secrets/moodle-db-password
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+configs:
+  db_password:
+    content: ${LAB_DB_PASSWORD:-lab-only-db-password}
+  admin_password:
+    content: ${LAB_ADMIN_PASSWORD:-LabAdmin#2026pw}
+
+volumes:
+  moodledata:
+  pgdata:
+  synthetic-textfiles:
+
+networks:
+  app-net: {}
+  mon-net: {}
+
+services:
+  moodle-db:
+    image: postgres:16-alpine
+    container_name: ${LAB_PREFIX:-lab}-moodle-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: moodle_app
+      POSTGRES_DB: moodle
+      POSTGRES_PASSWORD: ${LAB_DB_PASSWORD:-lab-only-db-password}
+    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "max_connections=200"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moodle_app -d moodle"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      app-net: {aliases: [moodle-db]}
+      mon-net: {aliases: [moodle-db]}
+
+  init-perms:
+    image: alpine:3.20
+    container_name: ${LAB_PREFIX:-lab}-init-perms
+    restart: "no"
+    command: ["sh", "-c", "chown 1000:1999 /var/moodledata && chmod 0770 /var/moodledata && install -d -o 1000 -g 1999 -m 0770 /var/moodledata/synthetic-fixtures"]
+    volumes:
+      - moodledata:/var/moodledata
+
+  moodle-install:
+    <<: *moodle-node
+    container_name: ${LAB_PREFIX:-lab}-moodle-install
+    restart: "no"
+    profiles: ["installer"]
+    command: ["/usr/local/bin/moodle-install.sh"]
+    environment:
+      <<: *moodle-environment
+      MOODLE_ADMIN_PASSWORD_FILE: /run/moodle-secrets/moodle-admin-password
+      MOODLE_SITE_FULLNAME: Moodle Lab
+      MOODLE_SITE_SHORTNAME: Lab
+      MOODLE_SITE_SUMMARY: Local AIHS data-collection lab
+      MOODLE_ADMIN_USER: admin
+      MOODLE_ADMIN_EMAIL: admin@example.com
+    configs:
+      - source: db_password
+        target: /run/moodle-secrets/moodle-db-password
+      - source: admin_password
+        target: /run/moodle-secrets/moodle-admin-password
+    depends_on:
+      moodle-db: {condition: service_healthy}
+      init-perms: {condition: service_completed_successfully}
+    networks: [app-net]
+
+  moodle-web-a:
+    <<: *moodle-node
+    container_name: ${LAB_PREFIX:-lab}-moodle-web-a
+    hostname: moodle-app-a
+    depends_on:
+      moodle-db: {condition: service_healthy}
+      init-perms: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/healthz.php"]
+      interval: 10s
+      timeout: 5s
+      retries: 2
+      start_period: 15s
+    networks: [app-net]
+
+  moodle-web-b:
+    <<: *moodle-node
+    container_name: ${LAB_PREFIX:-lab}-moodle-web-b
+    hostname: moodle-app-b
+    depends_on:
+      moodle-db: {condition: service_healthy}
+      init-perms: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/healthz.php"]
+      interval: 10s
+      timeout: 5s
+      retries: 2
+      start_period: 15s
+    networks: [app-net]
+
+  # Cron runs on node A only, like staging.
+  moodle-cron-a:
+    <<: *moodle-node
+    container_name: ${LAB_PREFIX:-lab}-moodle-cron-a
+    hostname: moodle-app-a-cron
+    profiles: ["cron"]
+    command: ["/usr/local/bin/cron-runner.sh"]
+    networks: [app-net]
+
+  lb:
+    image: aihs-lab/lb:lab
+    build: {context: images/lb}
+    container_name: ${LAB_PREFIX:-lab}-lb
+    restart: unless-stopped
+    networks:
+      app-net: {}
+      mon-net: {aliases: [moodle-lab]}
+
+  probe-a: &probe
+    image: aihs-lab/tools:lab
+    container_name: ${LAB_PREFIX:-lab}-probe-a
+    restart: unless-stopped
+    command: ["python", "/app/lab/moodle-local/node_probe.py"]
+    environment:
+      LAB_NODE: a
+      LAB_NODE_VCPUS: "2"
+      LAB_PROJECT: ${LAB_PROJECT:-aihs-lab}
+      LAB_PREFIX: ${LAB_PREFIX:-lab}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [app-net, mon-net]
+  probe-b:
+    <<: *probe
+    container_name: ${LAB_PREFIX:-lab}-probe-b
+    environment:
+      LAB_NODE: b
+      LAB_NODE_VCPUS: "2"
+      LAB_PROJECT: ${LAB_PROJECT:-aihs-lab}
+      LAB_PREFIX: ${LAB_PREFIX:-lab}
+
+  synthetic:
+    image: aihs-lab/tools:lab
+    container_name: ${LAB_PREFIX:-lab}-synthetic
+    restart: unless-stopped
+    environment:
+      LAB_ADMIN_PASSWORD: ${LAB_ADMIN_PASSWORD:-LabAdmin#2026pw}
+      LAB_SYNTHETIC_INTERVAL: ${LAB_SYNTHETIC_INTERVAL:-10}
+    command: ["python", "/app/lab/moodle-local/synthetic_service.py"]
+    networks: [mon-net]
+
+  blackbox:
+    image: aihs-lab/blackbox:lab
+    build: {context: images/blackbox}
+    container_name: ${LAB_PREFIX:-lab}-blackbox
+    restart: unless-stopped
+    networks: [mon-net]
+
+  prometheus:
+    image: aihs-lab/prometheus:lab
+    build: {context: images/prometheus}
+    container_name: ${LAB_PREFIX:-lab}-prometheus
+    restart: unless-stopped
+    ports: ["127.0.0.1:${LAB_PROM_PORT:-19090}:9090"]
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus", "--storage.tsdb.retention.time=2d"]
+    networks: [mon-net]

@@ -320,7 +320,7 @@ case "$scenario" in
       remote moodle-app-a 'test "$(sudo docker inspect --format "{{.State.Running}}" release-moodle-cron-1 2>/dev/null)" = "true"'
     run_check overdue_adhoc_tasks_zero \
       'Prometheus reports overdue Moodle adhoc tasks count is zero' \
-      remote monitor-ai-01 'curl --fail --silent --get --data-urlencode '''query=moodle_adhoc_tasks_overdue_count{job="moodle_node"} == 0''' http://127.0.0.1:9090/api/v1/query | jq -e '''.data.result | length > 0''' >/dev/null'
+      remote monitor-ai-01 'curl --fail --silent --get --data-urlencode '\''query=max(moodle_adhoc_tasks_overdue_count{job="moodle_node"}) == 0'\'' http://127.0.0.1:9090/api/v1/query | jq -e '\''.data.result | length > 0'\'' >/dev/null'
     ;;
 esac
 

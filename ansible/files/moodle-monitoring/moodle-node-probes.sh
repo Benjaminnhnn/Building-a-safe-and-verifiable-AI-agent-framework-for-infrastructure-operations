@@ -35,6 +35,14 @@ cron_running=0
 cron_stopped=0
 adhoc_probe_success=0
 adhoc_overdue=""
+# AIHS schema alignment: same names/semantics as lab/moodle-local/node_probe.py.
+# Optional values stay empty so the series is omitted (missing evidence, never a fake zero).
+db_dns_success=0
+db_dns_matches_expected=0
+fixture_dir_exists=""
+fixture_dir_mode=""
+cron_heartbeat_age=""
+cpu_percent=""
 
 if docker inspect "$container" >/dev/null 2>&1; then
   web_exists=1
@@ -102,6 +110,43 @@ if (( web_running == 1 )); then
     db_tcp_success=1
     db_tcp_duration="$duration"
   fi
+
+  # DNS answer of the DB alias inside the web container (honours /etc/hosts) versus the
+  # approved endpoint resolved by the host resolver, which a container-scoped hosts
+  # override cannot change. No credentials; a mismatch is a pre-decision observation.
+  if [[ "$db_host" =~ ^[A-Za-z0-9.-]{1,253}$ ]]; then
+    container_ip="$(timeout 7 docker exec "$container" php -r 'echo gethostbyname(getenv("MOODLE_DB_HOST"));' 2>/dev/null || true)"
+    if [[ "$container_ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+      db_dns_success=1
+      expected_ips="$(timeout 5 getent ahostsv4 "$db_host" 2>/dev/null | awk '{print $1}' | sort -u || true)"
+      if [[ -n "$expected_ips" ]] && grep -Fxq -- "$container_ip" <<<"$expected_ips"; then
+        db_dns_matches_expected=1
+      fi
+    fi
+  fi
+
+  # Synthetic fixture directory seen on the shared moodledata mount (same value on both
+  # nodes). Mode is the numeric `stat %a` string (e.g. 770, 0), as in the lab probe.
+  if [[ "$(findmnt --noheadings --output FSTYPE --target "$moodledata_path" 2>/dev/null || true)" =~ ^(nfs4|efs)$ ]]; then
+    fixture_mode="$(stat -c '%a' "$moodledata_path/synthetic-fixtures" 2>/dev/null || true)"
+    if [[ "$fixture_mode" =~ ^[0-7]{1,4}$ ]]; then
+      fixture_dir_exists=1
+      fixture_dir_mode=$((10#$fixture_mode))
+    else
+      fixture_dir_exists=0
+    fi
+  fi
+fi
+
+# Node CPU: sum of docker CPU% of this node's Moodle containers divided by vCPUs, capped at 100
+# (same definition as the lab probe; node_exporter host CPU is deliberately not used).
+node_vcpus="$(nproc 2>/dev/null || echo 1)"
+[[ "$node_vcpus" =~ ^[1-9][0-9]*$ ]] || node_vcpus=1
+if cpu_stats="$(timeout 15 docker stats --no-stream --format '{{.Name}} {{.CPUPerc}}' 2>/dev/null)" && [[ -n "$cpu_stats" ]]; then
+  cpu_percent="$(awk -v vcpus="$node_vcpus" -v a="$container" -v b="$cron_container" -v c="moodle-fault-res-01" '
+    $1 == a || $1 == b || $1 == c { v = $2; sub(/%$/, "", v); if (v ~ /^[0-9]+(\.[0-9]+)?$/) total += v }
+    END { p = total / vcpus; if (p > 100) p = 100; printf "%.2f\n", p }' <<<"$cpu_stats")"
+  [[ "$cpu_percent" =~ ^[0-9]+\.[0-9]{2}$ ]] || cpu_percent=""
 fi
 
 # BIZ-01: the CLI maintenance flag is a file in the shared dataroot. Reading
@@ -140,11 +185,17 @@ if (( web_running == 1 )); then
   overdue="$(timeout 10 docker exec "$container" php -r '
     define("CLI_SCRIPT", true);
     require "/var/www/html/config.php";
-    echo (int) $DB->count_records_select("task_adhoc", "nextruntime < :cutoff", ["cutoff" => time() - 600]);
+    echo (int) $DB->count_records_select("task_adhoc", "nextruntime < :cutoff", ["cutoff" => time() - 600]), " ",
+      (int) $DB->get_field("config", "value", ["name" => "lastcronstart"]);
   ' 2>/dev/null || true)"
-  if [[ "$overdue" =~ ^[0-9]+$ ]]; then
+  if [[ "$overdue" =~ ^([0-9]+)\ ([0-9]+)$ ]]; then
     adhoc_probe_success=1
-    adhoc_overdue="$overdue"
+    adhoc_overdue="${BASH_REMATCH[1]}"
+    last_cron_start="${BASH_REMATCH[2]}"
+    now_epoch="$(date -u +%s)"
+    if (( last_cron_start > 0 )); then
+      cron_heartbeat_age=$(( now_epoch > last_cron_start ? now_epoch - last_cron_start : 0 ))
+    fi
   fi
 fi
 
@@ -194,6 +245,12 @@ printf '%s\n' \
   '# HELP moodle_node_rds_tcp_duration_seconds TCP connect duration from the Moodle web container to RDS.' \
   '# TYPE moodle_node_rds_tcp_duration_seconds gauge' \
   "moodle_node_rds_tcp_duration_seconds $db_tcp_duration" \
+  '# HELP moodle_node_db_dns_success Whether the DB alias resolved to an IPv4 address inside the web container.' \
+  '# TYPE moodle_node_db_dns_success gauge' \
+  "moodle_node_db_dns_success $db_dns_success" \
+  '# HELP moodle_node_db_dns_matches_expected Whether the in-container DB alias answer equals the host-resolved approved endpoint.' \
+  '# TYPE moodle_node_db_dns_matches_expected gauge' \
+  "moodle_node_db_dns_matches_expected $db_dns_matches_expected" \
   '# HELP moodle_node_web_restart_count Docker restart count for the Moodle web container.' \
   '# TYPE moodle_node_web_restart_count gauge' \
   "moodle_node_web_restart_count $restart_count" \
@@ -221,6 +278,30 @@ if (( adhoc_probe_success == 1 )); then
     '# HELP moodle_adhoc_tasks_overdue_count Moodle ad-hoc tasks whose next run is more than 10 minutes overdue.' \
     '# TYPE moodle_adhoc_tasks_overdue_count gauge' \
     "moodle_adhoc_tasks_overdue_count $adhoc_overdue" >> "$temporary_file"
+fi
+if [[ -n "$fixture_dir_exists" ]]; then
+  printf '%s\n' \
+    '# HELP moodle_node_fixture_dir_exists Whether the synthetic fixture directory exists on the moodledata mount.' \
+    '# TYPE moodle_node_fixture_dir_exists gauge' \
+    "moodle_node_fixture_dir_exists $fixture_dir_exists" >> "$temporary_file"
+fi
+if [[ -n "$fixture_dir_mode" ]]; then
+  printf '%s\n' \
+    '# HELP moodle_node_fixture_dir_mode Numeric stat %a of the synthetic fixture directory (octal digits read as decimal).' \
+    '# TYPE moodle_node_fixture_dir_mode gauge' \
+    "moodle_node_fixture_dir_mode $fixture_dir_mode" >> "$temporary_file"
+fi
+if [[ -n "$cron_heartbeat_age" ]]; then
+  printf '%s\n' \
+    '# HELP moodle_node_cron_heartbeat_age_seconds Seconds since Moodle config lastcronstart.' \
+    '# TYPE moodle_node_cron_heartbeat_age_seconds gauge' \
+    "moodle_node_cron_heartbeat_age_seconds $cron_heartbeat_age" >> "$temporary_file"
+fi
+if [[ -n "$cpu_percent" ]]; then
+  printf '%s\n' \
+    '# HELP moodle_node_cpu_percent Moodle container CPU percent of node vCPUs (docker stats, capped at 100).' \
+    '# TYPE moodle_node_cpu_percent gauge' \
+    "moodle_node_cpu_percent $cpu_percent" >> "$temporary_file"
 fi
 chmod 0644 "$temporary_file"
 mv -- "$temporary_file" "$output_dir/moodle_node_probes.prom"

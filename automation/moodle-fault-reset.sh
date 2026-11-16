@@ -195,7 +195,7 @@ case "$scenario" in
   BIZ-01)
     remote moodle-app-a "
       set -eu
-      sudo docker exec -u 1000 release-moodle-web-1 php /var/www/html/admin/cli/maintenance.php --disable >/dev/null
+      sudo docker exec -u 1000:1999 release-moodle-web-1 php /var/www/html/admin/cli/maintenance.php --disable >/dev/null
       sudo test ! -e '$moodledata_path/climaintenance.html'
     "
     wait_for_prometheus_query 'max(moodle_cli_maintenance_mode_enabled{job="moodle_node"}) == 0' 120
@@ -203,6 +203,23 @@ case "$scenario" in
 
   BIZ-02)
     remote moodle-app-a "sudo docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml --profile cron up -d --wait moodle-cron"
+    # Stopping cron (inject) can kill it in the middle of another ad-hoc task; that task keeps its "running" claim
+    # (timestarted/hostname/pid) and is never retried, so the queue stays overdue (16/11/2026, seq 2). Only cron runs
+    # ad-hoc tasks, so any claim older than the current cron container start is orphaned: release just those claims.
+    remote moodle-app-a '
+      set -eu
+      started="$(date -u -d "$(sudo docker inspect --format "{{.State.StartedAt}}" release-moodle-cron-1)" +%s)"
+      sudo docker exec -u 1000:1999 release-moodle-web-1 php -r '\''
+        define("CLI_SCRIPT", true);
+        require "/var/www/html/config.php";
+        $before = (int) $argv[1];
+        $ids = $DB->get_fieldset_select("task_adhoc", "id", "timestarted IS NOT NULL AND timestarted < :t", ["t" => $before]);
+        foreach ($ids as $id) {
+            $DB->update_record("task_adhoc", (object) ["id" => $id, "timestarted" => null, "hostname" => null, "pid" => null]);
+        }
+        echo "BIZ-02 reset: released ", count($ids), " orphaned ad-hoc task claim(s)\n";
+      '\'' "$started"
+    '
     wait_for_prometheus_query 'max(moodle_adhoc_tasks_overdue_count{job="moodle_node"}) == 0' 300
     ;;
 

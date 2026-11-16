@@ -15,7 +15,9 @@
       "properties": {
         "evidence_mode": {"enum": ["historical_live_staging", "lab", "offline_replay", "synthetic"]},
         "source_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-        "historical_code_version": {"type": "string"}
+        "historical_code_version": {"type": "string"},
+        "environment": {"enum": ["staging", "lab", "offline_replay", "synthetic"], "description": "Optional; set for lab exports."},
+        "campaign_ref": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"}
       }
     },
     "timeline": {
@@ -25,7 +27,8 @@
         "detected_at": {"type": ["string", "null"], "format": "date-time"},
         "decision_at": {"type": ["string", "null"], "format": "date-time"},
         "executed_at": {"type": ["string", "null"], "format": "date-time"},
-        "verified_at": {"type": ["string", "null"], "format": "date-time"}
+        "verified_at": {"type": ["string", "null"], "format": "date-time"},
+        "predicted_at": {"type": ["string", "null"], "format": "date-time"}
       }
     },
     "pre_decision": {
@@ -33,6 +36,10 @@
       "required": ["snapshot_at", "feature_status", "evidence_ref_hashes", "features"],
       "properties": {
         "snapshot_at": {"type": ["string", "null"], "format": "date-time"},
+        "evidence_cutoff_at": {"type": ["string", "null"], "format": "date-time", "description": "Last instant any snapshot evidence was captured; must be <= timeline.decision_at."},
+        "captured_at": {"type": ["string", "null"], "format": "date-time"},
+        "snapshot_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "features_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
         "feature_status": {"enum": ["verified_predecision", "missing_predecision_snapshot", "invalid_or_late_snapshot"]},
         "evidence_ref_hashes": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "uniqueItems": true},
         "features": {"type": "object", "additionalProperties": {"type": ["number", "boolean", "null"]}}
@@ -59,7 +66,19 @@
         "runtime_status": {"type": ["string", "null"]}
       }
     },
-    "outcome": {"enum": ["success", "failure", "not_executed", "denied", "timeout", "missing_evidence"]},
+    "outcome": {"enum": ["success", "failure", "not_executed", "denied", "timeout", "missing_evidence", "cancelled"]},
+    "episode": {
+      "type": "object", "additionalProperties": false,
+      "description": "Audit-only variant metadata; forbidden as a model feature.",
+      "properties": {
+        "kind": {"enum": ["single", "ambiguous_pair"]},
+        "fault_count": {"type": "integer", "minimum": 1},
+        "background_load": {"type": "string"},
+        "transient": {"type": "boolean"},
+        "exploration": {"type": "boolean"},
+        "stability_window_seconds": {"type": ["number", "null"]}
+      }
+    },
     "training_eligible": {"type": "boolean"},
     "exclusion_reasons": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
   }

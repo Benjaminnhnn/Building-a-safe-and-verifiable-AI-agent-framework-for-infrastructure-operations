@@ -3,3 +3,11 @@
 *.yaml text eol=lf
 *.tf text eol=lf
 *.md text eol=lf
+*.py text eol=lf
+*.php text eol=lf
+*.conf text eol=lf
+*.cfg text eol=lf
+*.json text eol=lf
+*.jsonl text eol=lf
+Dockerfile text eol=lf
+lab/** text eol=lf

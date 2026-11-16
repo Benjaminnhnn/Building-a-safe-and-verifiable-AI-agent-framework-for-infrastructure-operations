@@ -12,6 +12,24 @@ MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
 
+def _local_staging_artifacts_present():
+    """The historical staging evidence is Git-ignored (terraform/.artifacts); CI checkouts do not have it."""
+    try:
+        manifest = json.loads(MODULE.MANIFEST.read_text())
+    except (OSError, ValueError):
+        return False
+    paths = [ROOT / s["path"] for s in manifest.get("source_files", [])]
+    base = ROOT / "terraform/.artifacts/moodle-safe-executor" / MODULE.COLLATERAL_STEM
+    paths += [base.with_suffix(".json"), base.with_name(base.name + "-verifier-collateral.json")]
+    return bool(manifest.get("source_files")) and all(p.is_file() for p in paths)
+
+
+REQUIRES_STAGING_ARTIFACTS = unittest.skipUnless(
+    _local_staging_artifacts_present(),
+    "needs the Git-ignored historical staging evidence under terraform/.artifacts (absent in CI checkouts)")
+
+
+@REQUIRES_STAGING_ARTIFACTS
 class B2B3MeasurementTests(unittest.TestCase):
     def test_historical_and_paired_case_keep_distinct_statuses(self):
         result = MODULE.measure()

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from core.evidence.adapters import SafeActionRequest
-from core.moodle.aihs_contract import DecisionContext, MappingDefinition, adapt_aihs_output
+from core.moodle.aihs_contract import AIHSAdapterResult, DecisionContext, MappingDefinition, adapt_aihs_output
 from core.safety.safe_action_audit import SafeActionAuditStore
 from core.safety.safe_execution_gate import SafeExecutionGate
 
@@ -25,13 +25,14 @@ def evaluate_aihs_shadow(
     *,
     context: DecisionContext,
     evidence_db: str | Path,
-    mapping: MappingDefinition,
+    mapping: Any,
     audit_db: str | Path,
     gate_public_key: bytes,
     gate_actors: set[str],
     reviewed_request: SafeActionRequest | None = None,
     trusted_confidence: float | None = None,
     now: datetime | None = None,
+    adapter_result: AIHSAdapterResult | None = None,
 ) -> dict[str, Any]:
     """Record a fail-closed proposal/Gate preview with no Executor call.
 
@@ -39,7 +40,8 @@ def evaluate_aihs_shadow(
     ``trusted_confidence`` is likewise external: the public prototype does not
     emit a calibrated confidence. Neither is silently invented here.
     """
-    adapter = adapt_aihs_output(
+    # ``adapter_result`` lets the C0 adapter reuse this bridge; it is produced by trusted code only.
+    adapter = adapter_result or adapt_aihs_output(
         raw_output, context=context, evidence_db=evidence_db,
         mapping=mapping, now=now,
     )

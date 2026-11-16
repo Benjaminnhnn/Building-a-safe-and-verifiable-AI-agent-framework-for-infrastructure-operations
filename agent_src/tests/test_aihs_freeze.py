@@ -16,6 +16,15 @@ sys.path.insert(0, str(EVAL))
 from b2_freeze_dataset import freeze  # noqa: E402
 
 
+def _local_a2_sources_present():
+    """The A2 manifest pins Git-ignored staging artifacts; without them the real-data check cannot run."""
+    try:
+        manifest = json.loads((EVAL / "a2-export/manifest.json").read_text())
+    except (OSError, ValueError):
+        return False
+    return bool(manifest.get("source_files")) and all((ROOT / s["path"]).is_file() for s in manifest["source_files"])
+
+
 class AIHSFreezeTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -82,6 +91,8 @@ class AIHSFreezeTest(unittest.TestCase):
         }))
         return records, labels, source
 
+    @unittest.skipUnless(_local_a2_sources_present(),
+                         "needs the Git-ignored staging artifacts listed in a2-export/manifest.json (absent in CI checkouts)")
     def test_real_a2_data_blocks_without_fake_test_split(self):
         result = freeze(
             records=EVAL / "a2-export/audit-records.jsonl",
