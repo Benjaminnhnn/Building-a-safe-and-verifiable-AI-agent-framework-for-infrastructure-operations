@@ -5,13 +5,13 @@ Repo-specific guidance for AI agents working in this codebase. Verify against co
 ## Agent model policy
 
 - The main agent must keep the model selected for the current user session. Do not override or replace the main agent's model.
-- Every sub-agent must use `gpt-5.6-luna` with reasoning effort `xhigh`.
-- Whenever spawning a sub-agent, explicitly set `model` to `gpt-5.6-luna` and `reasoning_effort` to `xhigh`; do not rely on inherited defaults.
+- Every sub-agent must use Claude Sonnet 5.5 (`claude-sonnet-5-5`, Agent tool `model: sonnet`) with reasoning effort `xhigh`.
+- Whenever spawning a sub-agent, explicitly set `model` to `sonnet` (Sonnet 5.5) and the effort to `xhigh`; do not rely on inherited defaults.
 - This policy applies to all sub-agent roles and to sub-agents spawned by other sub-agents.
 
 ## Critical: Markdown and sensitive files
 
-`.gitignore` ignores `*.md` by default, but explicitly allows `README.md`, `AGENTS.md`, and files under `docs/` (the four `docs/BAO_CAO_*.md` reports). Keep the allow-list in sync when adding Markdown outside those paths.
+`.gitignore` ignores `*.md` by default, but explicitly allows `README.md`, `AGENTS.md`, files under `docs/`, and the thesis chapters under `thesis/`. Keep the allow-list in sync when adding Markdown outside those paths.
 
 Never commit: `agent_src/vector_db/` (ChromaDB runtime data), any `.env*` file, `terraform.tfstate*`, `*.pem`/`*.pub`/`id_rsa*`.
 
