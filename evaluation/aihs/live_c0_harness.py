@@ -76,6 +76,10 @@ OPERATOR_ACTOR = "operator"
 EVIDENCE_REFRESH_AFTER_S = 100        # < environment profile max_sample_age_seconds (120): refresh before it expires
 TRUSTED_CONFIDENCE = locked_scorer.TRUSTED_CONFIDENCE
 GROUND_TRUTH_PARAMS = frozenset({"scenario", "scenario_id", "fault", "fault_id", "injected", "ground_truth", "label"})
+# Supplementary stress test (report section 16): one controlled SECOND fault injected after the Executor and after the
+# health-only claim, inside the Verifier's stability window. Kind -> primary scenarios whose Verifier contract contains
+# the probe the second fault breaks. Never part of the main sample; C3 only (it exists to exercise the Verifier).
+COLLATERAL_KINDS = {"web_a_stop": {"scenarios": ("CON-01",), "breaks_probe": "both_alb_targets_healthy"}}
 
 OUTCOMES = (
     "SHADOW_C0_RECORDED", "SHADOW_C1_FORWARD", "SHADOW_C1_BLOCKED", "HUMAN_HANDOFF", "OBSERVE_ONLY_NO_ACTION",
@@ -454,12 +458,19 @@ class RunConfig:
     stability_s: float = 120.0
     score_interval_s: float = 15.0
     score_timeout_s: float = 600.0
+    collateral: str | None = None         # supplementary stress test only (COLLATERAL_KINDS); None in the main sample
+    collateral_settle_s: float = 20.0
+    collateral_score_timeout_s: float = 45.0   # the contract cannot pass while the second fault is active
 
     def __post_init__(self) -> None:
         if self.arm not in ARMS:
             raise ValueError(f"unknown arm {self.arm!r}")
         if self.scenario in NEVER_LIVE_SCENARIOS or self.scenario not in LIVE_SCENARIOS:
             raise ValueError(f"scenario {self.scenario!r} is not allowed live")
+        if self.collateral is not None:
+            kind = COLLATERAL_KINDS.get(self.collateral)
+            if kind is None or self.arm != "C3" or self.scenario not in kind["scenarios"]:
+                raise ValueError(f"collateral {self.collateral!r} is not allowed for {self.scenario}/{self.arm}")
         # opaque on purpose: the run id reaches incident ids and evidence references, so it must not encode the fault
         self.run_id = self.run_id or f"live-{self.arm}-s{self.seq:03d}-{uuid.uuid4().hex[:8]}"
 
@@ -476,6 +487,7 @@ _STAGE_TEXT = {
     "t_execute_start": "Executor bắt đầu chạy đúng một hành động đã duyệt",
     "t_execute_end": "Executor chạy xong",
     "t_health_claim": "Health-only view: dịch vụ trông đã khỏe (chưa phải RESOLVED)",
+    "t_collateral_inject": "LƯỢT BỔ SUNG: đã inject lỗi phụ có chủ đích (dừng web node A) để thử Verifier",
     "t_recovered_true": "Probe độc lập xác nhận hệ thống đã hồi phục thật",
     "t_verify_start": "Verifier bắt đầu: 3 mẫu trong 120 s (khoảng 2-3 phút)",
     "t_verify_end": "Verifier đã có kết luận",
@@ -507,6 +519,8 @@ def new_record(cfg: RunConfig, backend_name: str, clock) -> dict:
         "timeline": _Timeline(), "decision": None, "handoff": None, "operator": None, "execution": None,
         "health_only_view": None, "verifier": None, "runtime_status": None, "scoring": {"scenario_ground_truth": cfg.scenario},
         "resolved": False, "resolved_by": None, "outcome": None, "reset_verified": None, "notes": [],
+        "collateral": ({"kind": cfg.collateral, "injected": False, "supplementary": True,
+                        "breaks_probe": COLLATERAL_KINDS[cfg.collateral]["breaks_probe"]} if cfg.collateral else None),
     }
 
 
@@ -665,7 +679,7 @@ def _refresh(cfg, rec, decision, backend, run_dir, incident_id, proposer, mappin
     return fresh if same else None
 
 
-def _score_stream(rec, cfg, backend, clock, run_dir, *, mode: str) -> list[dict]:
+def _score_stream(rec, cfg, backend, clock, run_dir, *, mode: str, timeout_s: float | None = None) -> list[dict]:
     """Independent scoring probes (ground-truth contract of the injected fault), identical for every arm.
 
     mode "stable": sample until the stability window is met (C2: no Verifier follows).
@@ -678,7 +692,7 @@ def _score_stream(rec, cfg, backend, clock, run_dir, *, mode: str) -> list[dict]
         samples.append({"at": iso_ms(clock.now()), "ok": bool(checks) and all(checks.values()), "checks": checks})
         done = (mode == "stable" and stable_recovery(samples, cfg.stability_s)["recovered"]) or (
             mode == "first_ok" and samples[-1]["ok"])
-        if done or (clock.now() - start).total_seconds() >= cfg.score_timeout_s:
+        if done or (clock.now() - start).total_seconds() >= (cfg.score_timeout_s if timeout_s is None else timeout_s):
             return samples
         clock.sleep(cfg.score_interval_s)
 
@@ -717,7 +731,18 @@ def _post_execution(rec, cfg, prepared, backend, agent, clock, run_dir, audit_db
         clock.sleep(5)
         waited += 5
     rec["health_only_view"] = {"claimed_recovered": claimed, "detail": backend.health_only()}
-    pre_samples = _score_stream(rec, cfg, backend, clock, run_dir, mode="stable" if cfg.arm == "C2" else "first_ok")
+    score_timeout = None
+    if cfg.collateral:
+        # Supplementary stress test: the second fault starts after the health-only claim, inside the stability window
+        # the Verifier must cover. Recorded first so the reset in _finish always runs, even if injection fails midway.
+        rec["collateral"]["injected"] = True
+        tl["t_collateral_inject"] = iso_ms(clock.now())
+        backend.inject_collateral(cfg.collateral)
+        clock.sleep(cfg.collateral_settle_s)
+        rec["collateral"]["health_only_after"] = backend.health_only()
+        score_timeout = cfg.collateral_score_timeout_s
+    pre_samples = _score_stream(rec, cfg, backend, clock, run_dir, mode="stable" if cfg.arm == "C2" else "first_ok",
+                                timeout_s=score_timeout)
     if cfg.arm == "C2":
         rec["outcome"] = "EXECUTED_HEALTH_ONLY"            # no Verifier, therefore never RESOLVED
         rec["resolved"], rec["resolved_by"] = False, None
@@ -757,10 +782,13 @@ def _post_execution(rec, cfg, prepared, backend, agent, clock, run_dir, audit_db
 def _finish(rec, cfg, backend, run_dir, work, injected, heartbeat, clock) -> dict:
     """Reset + baseline re-verification + data-loss check + artifact manifest. Never skipped."""
     try:
+        collateral_reset = {"ok": True, "skipped": True}
+        if (rec.get("collateral") or {}).get("injected"):
+            collateral_reset = backend.reset_collateral(cfg.collateral)
         reset = backend.reset(cfg.scenario) if injected else {"ok": True, "skipped": True}
         post = backend.verify_baseline()
-        rec["reset_verified"] = bool(reset.get("ok") and post.get("ok"))
-        write_json(run_dir / "baseline_post.json", {"reset": reset, "baseline": post})
+        rec["reset_verified"] = bool(collateral_reset.get("ok") and reset.get("ok") and post.get("ok"))
+        write_json(run_dir / "baseline_post.json", {"collateral_reset": collateral_reset, "reset": reset, "baseline": post})
     except Exception as exc:  # noqa: BLE001
         rec["reset_verified"] = False
         rec["notes"].append(f"reset_error:{type(exc).__name__}:{str(exc)[:200]}")
@@ -834,6 +862,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--seq", type=int, default=0)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--approval", choices=("console", "telegram"), default="console")
+    p.add_argument("--collateral", choices=tuple(COLLATERAL_KINDS), default=None,
+                   help="SUPPLEMENTARY stress test only (report section 16); never in the main sample")
     p.add_argument("--skip-preflight", action="store_true", help="wrapper already ran it with the live switches OFF")
     args = parser.parse_args(argv)
 

@@ -151,6 +151,15 @@ class CommandBackend:
         done = run_cmd(["bash", str(AUTOMATION / "aihs-live-c0.sh"), "reset-scenario", scenario], env=self.confirm, timeout=900)
         return {"ok": done.returncode == 0, "returncode": done.returncode, "tail": (done.stdout + done.stderr)[-300:]}
 
+    def inject_collateral(self, kind: str) -> None:
+        done = self._script("aihs-collateral.sh", "inject", kind, timeout=300)
+        if done.returncode != 0:
+            raise RuntimeError(f"collateral injection failed (rc={done.returncode}): {(done.stdout + done.stderr)[-200:]}")
+
+    def reset_collateral(self, kind: str) -> dict:
+        done = self._script("aihs-collateral.sh", "reset", kind, timeout=600)
+        return {"ok": done.returncode == 0, "returncode": done.returncode, "tail": (done.stdout + done.stderr)[-300:]}
+
     def start_heartbeat(self) -> None:
         self.heartbeat = Heartbeat(web_container=self.WEB_CONTAINER)
         self.heartbeat.start()
@@ -685,7 +694,7 @@ def run_cli(args) -> int:
     if args.approval == "telegram" and operator_timeout <= 0:
         operator_timeout = 3600.0                 # the Telegram helper needs a finite timeout
     operator = KeyFileOperator(os.environ["MOODLE_OPERATOR_SIGNING_KEY_FILE"], mode=args.approval, timeout_s=operator_timeout)
-    cfg = h.RunConfig(scenario=args.scenario, arm=args.arm, seq=args.seq)
+    cfg = h.RunConfig(scenario=args.scenario, arm=args.arm, seq=args.seq, collateral=getattr(args, "collateral", None))
     rec = h.run_one(cfg, backend=CommandBackend(), agent=ApiAgent(), operator=operator, proposer=h.LockedModelProposer(),
                     mapping=mapping, catalog=catalog, out_dir=args.out, clock=h.RealClock())
     print(json.dumps({k: rec[k] for k in ("run_id", "arm", "outcome", "resolved", "reset_verified", "metrics", "invariants")},

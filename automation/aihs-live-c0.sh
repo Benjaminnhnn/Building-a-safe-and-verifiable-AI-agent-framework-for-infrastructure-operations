@@ -94,8 +94,10 @@ case "$cmd" in
       agent_live=true
       MOODLE_SAFE_ACTION_LIVE_ENABLED=true MOODLE_SAFE_ACTION_LIVE_CONFIRM=staging bash "$script_dir/configure-moodle-monitoring.sh" >/dev/null
     fi
+    collateral_args=()
+    [[ -n "${AIHS_COLLATERAL:-}" ]] && collateral_args=(--collateral "$AIHS_COLLATERAL")   # supplementary runs only
     "$PY" evaluation/aihs/live_c0_harness.py run --scenario "$scenario" --arm "$arm" --seq "$seq" --out "$out" --skip-preflight \
-      --approval "${AIHS_APPROVAL:-console}"
+      --approval "${AIHS_APPROVAL:-console}" "${collateral_args[@]}"
     ;;
   *)
     echo "Usage: $0 preflight | plan OUT.json [REPS] | run SCENARIO ARM SEQ OUTDIR | reset-scenario SCENARIO" >&2

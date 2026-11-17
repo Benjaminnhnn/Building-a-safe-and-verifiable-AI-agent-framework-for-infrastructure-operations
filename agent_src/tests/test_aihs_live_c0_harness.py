@@ -29,7 +29,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey 
 DRAFT = ROOT / "evaluation/aihs/a3-c0-action-mapping-draft.json"
 
 
-def run(tmp_path, scenario, arm, *, chooser=None, operator=None, mapping=None, backend_hook=None, **backend_kw):
+def run(tmp_path, scenario, arm, *, chooser=None, operator=None, mapping=None, backend_hook=None,
+        harness_collateral=None, **backend_kw):
     clock = h.SimClock()
     work = tmp_path / "agent"
     work.mkdir(parents=True, exist_ok=True)
@@ -37,7 +38,8 @@ def run(tmp_path, scenario, arm, *, chooser=None, operator=None, mapping=None, b
     if backend_hook:
         backend_hook(backend)
     proposer = sim.ScriptedProposer(chooser)
-    cfg = h.RunConfig(scenario=scenario, arm=arm, seq=1, run_id=f"t-{arm}-n{abs(hash((arm, scenario, str(tmp_path)))) % 100000}", settle_s=10)
+    cfg = h.RunConfig(scenario=scenario, arm=arm, seq=1, run_id=f"t-{arm}-n{abs(hash((arm, scenario, str(tmp_path)))) % 100000}",
+                      settle_s=10, collateral=harness_collateral)
     rec = h.run_one(cfg, backend=backend, agent=agent, operator=operator, proposer=proposer,
                     mapping=mapping or h.load_c0_mapping(h.REVIEWED_MAPPING),
                     catalog=h.ActionCatalog.load_moodle_7_scenario_catalog(), out_dir=tmp_path / "runs", clock=clock)
@@ -94,6 +96,38 @@ def test_shadow_arms_record_proposal_and_gate_but_never_execute(tmp_path, arm):
 def test_rpo_defined_only_for_database_path_scenarios(tmp_path):
     assert run(tmp_path, "RES-01", "C1")["rpo"] == {"defined": False}
     assert run(tmp_path / "x", "NET-01", "C1")["rpo"]["defined"] is True
+
+
+# ---------------------------------------------------------------------------------------------- supplementary
+def test_main_sample_runs_carry_no_collateral(tmp_path):
+    rec = run(tmp_path, "CON-01", "C3")
+    assert rec["collateral"] is None and rec["outcome"] == "RESOLVED_BY_VERIFIER"
+
+
+def test_supplementary_collateral_is_caught_by_verifier_and_marks_health_only_false_recovery(tmp_path):
+    rec = run(tmp_path, "CON-01", "C3", harness_collateral="web_a_stop")
+    assert rec["collateral"]["injected"] is True and rec["collateral"]["supplementary"] is True
+    tl = rec["timeline"]
+    assert tl["t_execute_end"] <= tl["t_health_claim"] <= tl["t_collateral_inject"] <= tl["t_verify_start"]
+    assert rec["health_only_view"]["claimed_recovered"] is True
+    assert rec["outcome"] == "VERIFIER_NOT_RESOLVED" and rec["resolved"] is False
+    assert rec["scoring"]["false_recovery_health_only"] is True and rec["scoring"]["false_resolved"] is False
+    assert rec["runtime_status"] is None or rec["runtime_status"].get("status") != "resolved"
+    assert rec["reset_verified"] is True and rec["_backend"].collateral is False and all(rec["invariants"].values())
+    assert _summary_module().stop_reasons(rec) == []      # the expected supplementary result does not stop the session
+
+
+def test_collateral_reset_failure_is_not_a_verified_reset(tmp_path):
+    rec = run(tmp_path, "CON-01", "C3", harness_collateral="web_a_stop", reset_ok=False)
+    assert rec["reset_verified"] is False
+    assert "reset không đưa staging về baseline" in _summary_module().stop_reasons(rec)
+
+
+@pytest.mark.parametrize("scenario,arm,kind", [("CON-01", "C2", "web_a_stop"), ("DB-01", "C3", "web_a_stop"),
+                                               ("CON-01", "C3", "drop_database")])
+def test_collateral_is_refused_outside_the_reviewed_supplementary_design(scenario, arm, kind):
+    with pytest.raises(ValueError):
+        h.RunConfig(scenario=scenario, arm=arm, collateral=kind)
 
 
 # ---------------------------------------------------------------------------------------------- fail closed

@@ -155,6 +155,15 @@ class SimBackend:
         self.collateral = False
         return {"ok": True}
 
+    def inject_collateral(self, kind: str) -> None:
+        self.collateral = True                   # harness-driven second fault (supplementary stress test)
+
+    def reset_collateral(self, kind: str) -> dict:
+        if not self.reset_ok:
+            return {"ok": False, "error": "simulated collateral reset failure"}
+        self.collateral = False
+        return {"ok": True}
+
     def start_heartbeat(self) -> None:
         self.heartbeat_started = True
 
