@@ -149,6 +149,26 @@ def test_indefinite_wait_retries_a_telegram_poll_error(tmp_path, capsys, monkeyp
     assert json.loads(output.out)["decision"] == "approved" and attempts == 2
 
 
+def test_bounded_wait_also_retries_a_telegram_poll_error(tmp_path, capsys, monkeypatch) -> None:
+    prepared = tmp_path / "prepared.json"
+    prepared.write_text(json.dumps(PREPARED), encoding="utf-8")
+    client = FakeClient([(ADMIN, int(CHAT), 42, "approve")])
+    original = client.messages
+    attempts = 0
+
+    def interrupted(offset, timeout=20):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise bridge.TelegramError("getUpdates failed: TimeoutError")
+        return original(offset, timeout)
+
+    client.messages = interrupted
+    monkeypatch.setattr(bridge.time, "sleep", lambda _: None)
+    assert bridge.approve(prepared, 5400, client=client) == 0
+    assert json.loads(capsys.readouterr().out)["decision"] == "approved" and attempts == 2
+
+
 def test_reject_stops(tmp_path, capsys) -> None:
     code, out, client = _run(tmp_path, [(ADMIN, int(CHAT), 42, "reject")], capsys)
     assert code == 10 and out["decision"] == "rejected"

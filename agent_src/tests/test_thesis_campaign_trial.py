@@ -115,3 +115,14 @@ def test_every_ai_trial_records_the_fault_active_checkpoint(campaign: Path) -> N
 def test_live_mode_requires_frozen_provenance_and_cost(tmp_path: Path) -> None:
     with pytest.raises(SystemExit):
         runner.parse_args(["--scenario", "BIZ-01", "--method", "ai_agent", "--repetition", "1", "--campaign-id", "c", "--dataset-dir", str(tmp_path)])
+
+
+def test_timed_out_script_runs_its_exit_trap_before_being_killed(tmp_path: Path) -> None:
+    # The live drill turns its live switches off in an EXIT trap; a timeout
+    # must deliver SIGTERM to the group so that trap runs.
+    marker = tmp_path / "cleanup-ran"
+    script = tmp_path / "drill.sh"
+    script.write_text(f"trap 'echo done > {marker}' EXIT\nsleep 30 &\nwait\n", encoding="utf-8")
+    with pytest.raises(runner.subprocess.TimeoutExpired):
+        runner._run(["bash", str(script)], timeout=1)
+    assert marker.read_text(encoding="utf-8").strip() == "done"

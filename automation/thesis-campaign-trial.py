@@ -28,6 +28,7 @@ import argparse
 import hashlib
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -152,8 +153,32 @@ class Trial:
 # ---------------------------------------------------------------------------
 
 
+CLEANUP_GRACE_SECONDS = 300
+
+
 def _run(command: list[str], env: dict[str, str] | None = None, timeout: int = 3600) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, cwd=REPO, env={**os.environ, **(env or {})}, capture_output=True, text=True, timeout=timeout, check=False)
+    """Run a reviewed script; on timeout or interruption, let its cleanup run.
+
+    The script gets its own process group. A timeout (or Ctrl-C) sends SIGTERM
+    to the whole group so bash EXIT traps run (the drill turns the live
+    switches off and resets the fault); SIGKILL follows only after the grace
+    period. subprocess.run would SIGKILL at once and skip that cleanup.
+    """
+    process = subprocess.Popen(
+        command, cwd=REPO, env={**os.environ, **(env or {})}, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True, start_new_session=True,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except BaseException:
+        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            stdout, stderr = process.communicate(timeout=CLEANUP_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            stdout, stderr = process.communicate()
+        raise
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
 def _lib(command: str, timeout: int = 900) -> subprocess.CompletedProcess[str]:

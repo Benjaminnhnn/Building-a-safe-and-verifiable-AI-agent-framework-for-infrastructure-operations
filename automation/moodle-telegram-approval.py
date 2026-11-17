@@ -118,8 +118,8 @@ def approve(prepared_path: Path, timeout_seconds: int, client: TelegramClient | 
             try:
                 messages, offset = client.messages(offset, timeout=poll_timeout)
             except TelegramError as exc:
-                if deadline is not None:
-                    raise
+                # A poll failure is transient (network, Telegram timeout); keep
+                # waiting until the deadline instead of failing the approval.
                 print(f"Telegram polling interrupted ({exc}); retrying in 5 seconds.", file=sys.stderr)
                 time.sleep(5)
                 continue
