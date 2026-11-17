@@ -1,6 +1,6 @@
 # Kế hoạch tích hợp Safety Gate, Executor và Verifier vào AIHS LDA/GBDT
 
-**Cập nhật:** 15/11/2026 · **Trạng thái:** đã chạy prototype LDA/GBDT trên dữ liệu tổng hợp AIHS; chưa huấn luyện model Moodle hoặc đưa AIHS vào đường quyết định live.
+**Cập nhật:** 17/11/2026 · **Trạng thái:** đã huấn luyện và khóa `aihs-paper-repro-moodle-v1` trên lab Moodle, mở tập test offline C0/C1 một lần (15/11), chạy 18 lượt live C3 chính và 4 lượt bổ sung trên AWS staging (16–17/11). Kết quả: [BAO_CAO_KET_QUA_C0_C3](BAO_CAO_KET_QUA_C0_C3.md). Mục 9 và 9.0 bên dưới là **bản chốt ngày 14/11**, giữ lại làm lịch sử.
 **Dành cho:** người thực hiện khoá luận và hội đồng đánh giá.
 
 Tài liệu này lấy pipeline LDA/GBDT của AIHS làm **hệ thống nền**, rồi nghiên cứu tác động của Safety Gate,

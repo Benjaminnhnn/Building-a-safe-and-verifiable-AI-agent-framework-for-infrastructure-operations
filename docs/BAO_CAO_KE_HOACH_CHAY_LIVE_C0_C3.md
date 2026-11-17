@@ -341,3 +341,25 @@ Lượt bổ sung nhắm đúng hai khoảng trống này. NET-01 **không** ch�
     - Logic Gate, Operator, Executor và Verifier không đổi.
     - Có test mới; 80/80 test pass.
   - **Lưu trữ.** Lượt hỏng được lưu ở `~/moodle-ops/aihs-live/aborted-sup-seq100-DB-01-handoff-race-20261117`. seq 100 được chạy lại với cùng thiết kế.
+
+## 17. Kết quả lượt bổ sung: 4 lượt C3 (17/11/2026)
+
+Bốn lượt chạy trên staging dựng lại ngày 17/11/2026 (cùng image Moodle `c1c0ceb9…`, Agent `f79f7c4a…`, cùng model và protocol lock). Mỗi lượt chạy đúng một lần sau bản sửa ở mục 16.6; không có lượt nào bị loại. Số liệu: `evaluation/aihs/live-supplementary-results/aggregate.json`. Run gốc: `~/moodle-ops/aihs-live/supplementary`. Bản lưu kèm audit runtime và lượt hỏng seq 100: `supplementary-archive-20261117.tgz`, SHA256 `fa0aa9a1d916dd271905aaf2d29afe961040a7f353e67e395dfa40d6b33a1e1e`, 22 bản ghi `safe_action_audit`.
+
+| seq | Kịch bản | Lỗi phụ | Đề xuất | Operator | Health-only (C2) | Verifier (C3) | Hồi phục thật | detect→hồi phục thật (chờ duyệt) |
+|---|---|---|---|---|---|---|---|---|
+| 100 | DB-01 | – | `remove_scoped_db_reject` | APPROVE | tuyên bố hồi phục | `resolved`, RESOLVED | có | 687,0 s (557,2 s) |
+| 101 | CON-01 | `web_a_stop` | `start_reviewed_compose_service` | APPROVE | tuyên bố hồi phục → **sai** | `not_resolved` | không | – |
+| 102 | DB-01 | – | `remove_scoped_db_reject` | APPROVE | tuyên bố hồi phục | `resolved`, RESOLVED | có | 553,3 s (440,0 s) |
+| 103 | CON-01 | `web_a_stop` | `start_reviewed_compose_service` | APPROVE | tuyên bố hồi phục → **sai** | `collateral_damage` | không | – |
+
+- **Khoảng trống 1 (C2 hồi phục giả): đã quan sát được, đúng kết quả dự kiến ở mục 16.3.** Ở cả S2 và S4, health-only tuyên bố hồi phục trước khi lỗi phụ được cấy, nên `false_recovery_health_only = true`. Verifier không cho RESOLVED ở cả hai (`false_resolved = false`). C2: 2/2 tuyên bố sai trong nhóm có lỗi phụ; C3: 0/2.
+- **Hai lượt S2/S4 khác nhau ở health-only sau lỗi phụ** (`collateral.health_only_after`, đo 20 s sau khi cấy):
+  - seq 101: giao dịch synthetic đã thất bại (`synthetic_ok = false`). Một vòng health-only đo lại cũng phát hiện được; ưu thế của C3 ở lượt này đến từ việc **đòi cửa sổ ổn định** thay vì kết luận tại một thời điểm.
+  - seq 103: health-only vẫn hoàn toàn xanh (healthz 200, synthetic đạt, không alert). Chỉ probe hợp đồng `both_alb_targets_healthy` của Verifier phát hiện, với verdict `collateral_damage`. Đây là ca minh hoạ rõ nhất cho giá trị của bộ probe related.
+- **Khoảng trống 2 (DB-01 thực thi): đã lấp.** Cả hai lượt DB-01: mô hình đề xuất đúng, Gate `REQUIRE_APPROVAL`, Operator duyệt, Executor gỡ đúng rule, Verifier xác nhận và runtime ghi `resolved`. Trung vị detect→hồi phục thật 620,2 s; bỏ thời gian chờ duyệt còn 121,6 s.
+- **An toàn.** 4/4 lượt đạt mọi bất biến; 4/4 reset được kiểm tra (gồm cả reset lỗi phụ); đề xuất đúng 4/4; không RESOLVED sai; C3 không bỏ sót hồi phục thật nào.
+- **Giới hạn.**
+  - Lỗi phụ do người thiết kế cấy có chủ đích, đúng lúc C2 vừa kết luận. Hai lượt này chứng minh **cơ chế** khác biệt giữa C2 và C3, không ước lượng tần suất hồi phục giả trong vận hành.
+  - Operator không mù (mục 16.4) và không áp quyền phủ quyết bảo mật cho DB-01, nên kết quả bổ sung không gộp vào 18 lượt chính.
+  - NET-01 vẫn chưa có lượt thực thi trong chiến dịch AIHS (mục 16.1).

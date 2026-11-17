@@ -1,0 +1,268 @@
+{
+  "runs": [
+    {
+      "seq": 100,
+      "run_id": "live-C3-s100-86ac6a42",
+      "scenario": "DB-01",
+      "proposed_action": "remove_scoped_db_reject",
+      "gate_reason": "gate_require_approval",
+      "operator": "approved",
+      "outcome": "RESOLVED_BY_VERIFIER",
+      "collateral": null,
+      "C2_claimed": true,
+      "C2_false_recovery": false,
+      "verifier_verdict": "ready_for_runtime_acceptance",
+      "recovered_true": true,
+      "detect_to_true_recovery_s": 687.011
+    },
+    {
+      "seq": 101,
+      "run_id": "live-C3-s101-87438e6c",
+      "scenario": "CON-01",
+      "proposed_action": "start_reviewed_compose_service",
+      "gate_reason": "gate_require_approval",
+      "operator": "approved",
+      "outcome": "VERIFIER_NOT_RESOLVED",
+      "collateral": "web_a_stop",
+      "C2_claimed": true,
+      "C2_false_recovery": true,
+      "verifier_verdict": "not_resolved",
+      "recovered_true": false,
+      "detect_to_true_recovery_s": null
+    },
+    {
+      "seq": 102,
+      "run_id": "live-C3-s102-5a20e267",
+      "scenario": "DB-01",
+      "proposed_action": "remove_scoped_db_reject",
+      "gate_reason": "gate_require_approval",
+      "operator": "approved",
+      "outcome": "RESOLVED_BY_VERIFIER",
+      "collateral": null,
+      "C2_claimed": true,
+      "C2_false_recovery": false,
+      "verifier_verdict": "ready_for_runtime_acceptance",
+      "recovered_true": true,
+      "detect_to_true_recovery_s": 553.326
+    },
+    {
+      "seq": 103,
+      "run_id": "live-C3-s103-d25d7150",
+      "scenario": "CON-01",
+      "proposed_action": "start_reviewed_compose_service",
+      "gate_reason": "gate_require_approval",
+      "operator": "approved",
+      "outcome": "VERIFIER_NOT_RESOLVED",
+      "collateral": "web_a_stop",
+      "C2_claimed": true,
+      "C2_false_recovery": true,
+      "verifier_verdict": "not_resolved",
+      "recovered_true": false,
+      "detect_to_true_recovery_s": null
+    }
+  ],
+  "overall": {
+    "runs": 4,
+    "outcomes": {
+      "RESOLVED_BY_VERIFIER": 2,
+      "VERIFIER_NOT_RESOLVED": 2
+    },
+    "operator": {
+      "approved": 4
+    },
+    "model_proposed_repair_action": 4,
+    "model_proposed_correct_action": {
+      "n": 4,
+      "of": 4,
+      "rate": 1.0
+    },
+    "executed": 4,
+    "true_recovered_of_executed": {
+      "n": 2,
+      "of": 4,
+      "rate": 0.5
+    },
+    "C2_health_only_claims": 4,
+    "C2_false_recovery": {
+      "n": 2,
+      "of": 4,
+      "rate": 0.5
+    },
+    "C3_resolved": {
+      "n": 2,
+      "of": 4,
+      "rate": 0.5
+    },
+    "C3_false_resolved": {
+      "n": 0,
+      "of": 2,
+      "rate": 0.0
+    },
+    "C3_missed_true_recovery": 0,
+    "invariants_all_held": true,
+    "resets_verified": {
+      "n": 4,
+      "of": 4,
+      "rate": 1.0
+    },
+    "median_s": {
+      "inject_to_detect_s": 51.6,
+      "detect_to_proposal_s": 26.2,
+      "approval_wait_s": 498.6,
+      "execute_s": 1.5,
+      "detect_to_health_claim_s": 608.8,
+      "detect_to_true_recovery_s": 620.2,
+      "inject_to_true_recovery_s": 671.8,
+      "verify_s": 133.7,
+      "detect_to_resolved_s": 754.1
+    },
+    "median_detect_to_true_recovery_minus_approval_s": 121.6,
+    "rpo": [
+      {
+        "seq": 100,
+        "acknowledged_writes": 69,
+        "defined": true,
+        "lost_acknowledged_writes": 0,
+        "rpo_seconds": 0.0
+      },
+      {
+        "seq": 102,
+        "acknowledged_writes": 66,
+        "defined": true,
+        "lost_acknowledged_writes": 0,
+        "rpo_seconds": 0.0
+      }
+    ]
+  },
+  "by_scenario": {
+    "CON-01": {
+      "runs": 2,
+      "outcomes": {
+        "VERIFIER_NOT_RESOLVED": 2
+      },
+      "operator": {
+        "approved": 2
+      },
+      "model_proposed_repair_action": 2,
+      "model_proposed_correct_action": {
+        "n": 2,
+        "of": 2,
+        "rate": 1.0
+      },
+      "executed": 2,
+      "true_recovered_of_executed": {
+        "n": 0,
+        "of": 2,
+        "rate": 0.0
+      },
+      "C2_health_only_claims": 2,
+      "C2_false_recovery": {
+        "n": 2,
+        "of": 2,
+        "rate": 1.0
+      },
+      "C3_resolved": {
+        "n": 0,
+        "of": 2,
+        "rate": 0.0
+      },
+      "C3_false_resolved": {
+        "n": 0,
+        "of": 0,
+        "rate": null
+      },
+      "C3_missed_true_recovery": 0,
+      "invariants_all_held": true,
+      "resets_verified": {
+        "n": 2,
+        "of": 2,
+        "rate": 1.0
+      },
+      "median_s": {
+        "inject_to_detect_s": null,
+        "detect_to_proposal_s": null,
+        "approval_wait_s": null,
+        "execute_s": null,
+        "detect_to_health_claim_s": null,
+        "detect_to_true_recovery_s": null,
+        "inject_to_true_recovery_s": null,
+        "verify_s": null,
+        "detect_to_resolved_s": null
+      },
+      "median_detect_to_true_recovery_minus_approval_s": null,
+      "rpo": []
+    },
+    "DB-01": {
+      "runs": 2,
+      "outcomes": {
+        "RESOLVED_BY_VERIFIER": 2
+      },
+      "operator": {
+        "approved": 2
+      },
+      "model_proposed_repair_action": 2,
+      "model_proposed_correct_action": {
+        "n": 2,
+        "of": 2,
+        "rate": 1.0
+      },
+      "executed": 2,
+      "true_recovered_of_executed": {
+        "n": 2,
+        "of": 2,
+        "rate": 1.0
+      },
+      "C2_health_only_claims": 2,
+      "C2_false_recovery": {
+        "n": 0,
+        "of": 2,
+        "rate": 0.0
+      },
+      "C3_resolved": {
+        "n": 2,
+        "of": 2,
+        "rate": 1.0
+      },
+      "C3_false_resolved": {
+        "n": 0,
+        "of": 2,
+        "rate": 0.0
+      },
+      "C3_missed_true_recovery": 0,
+      "invariants_all_held": true,
+      "resets_verified": {
+        "n": 2,
+        "of": 2,
+        "rate": 1.0
+      },
+      "median_s": {
+        "inject_to_detect_s": 51.6,
+        "detect_to_proposal_s": 26.2,
+        "approval_wait_s": 498.6,
+        "execute_s": 1.5,
+        "detect_to_health_claim_s": 608.8,
+        "detect_to_true_recovery_s": 620.2,
+        "inject_to_true_recovery_s": 671.8,
+        "verify_s": 133.7,
+        "detect_to_resolved_s": 754.1
+      },
+      "median_detect_to_true_recovery_minus_approval_s": 121.6,
+      "rpo": [
+        {
+          "seq": 100,
+          "acknowledged_writes": 69,
+          "defined": true,
+          "lost_acknowledged_writes": 0,
+          "rpo_seconds": 0.0
+        },
+        {
+          "seq": 102,
+          "acknowledged_writes": 66,
+          "defined": true,
+          "lost_acknowledged_writes": 0,
+          "rpo_seconds": 0.0
+        }
+      ]
+    }
+  }
+}
