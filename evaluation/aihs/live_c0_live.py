@@ -36,6 +36,8 @@ PROTOCOL_LOCK = h.EVAL / ".artifacts/phase4/protocol-lock-primary.json"
 CLOCK_SKEW_LIMIT_S = 5.0
 REQUIRED_ENV = ("AWS_PROFILE", "AIHS_LIVE_CONFIRM", "AIHS_LIVE_PROM_URL", "AIHS_LIVE_AGENT_URL", "AIHS_LIVE_PUBLIC_URL",
                 "MOODLE_OPERATOR_SIGNING_KEY_FILE", "MOODLE_VERIFIER_SIGNING_KEY_FILE")
+CANDIDATE_WAIT_S = 120.0     # bounded wait for the Agent planner's candidate (alert -> webhook -> worker latency)
+CANDIDATE_POLL_S = 10.0
 SECRET_FILES = ("agent-hmac.key", "safe-action-api-token", "approval-ed25519.pub", "gate-approval-ed25519.pub",
                 "verifier-ed25519.pub")
 
@@ -242,6 +244,21 @@ class ApiAgent:
         if not scenario:
             return None
         since = (clock.now() - h.timedelta(minutes=15)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # 17/11/2026 (supplementary seq 100): the Agent's own planner wrote the DB-01 candidate 5 s AFTER this lookup,
+        # so a single lookup failed closed on a timing race. Wait a bounded time for the Agent's candidate to appear;
+        # an absent candidate after the wait, or an ambiguous answer at any time, still fails closed.
+        deadline = clock.now() + h.timedelta(seconds=CANDIDATE_WAIT_S)
+        while True:
+            ids = self._candidate_ids(scenario, since)
+            if ids or clock.now() >= deadline:
+                break
+            clock.sleep(CANDIDATE_POLL_S)
+        if len(ids) != 1:                          # no candidate from the Agent's own planner: never invent one (fail closed)
+            return None
+        status, payload, _ = self.http("POST", f"{self.base}/api/moodle/remediation/{ids[0]}/prepare?notify=false", token=self.token)
+        return payload if status == 200 else None
+
+    def _candidate_ids(self, scenario: str, since: str) -> list[str]:
         query = ("import sqlite3,sys; db=sqlite3.connect('/app/data/evidence.db'); r=db.execute("
                  "\"select evidence_id from evidence where source='ai_decision' and json_extract(metadata_json,'$.decision_kind')='remediation_candidate' "
                  "and json_extract(json_extract(metadata_json,'$.decision_json'),'$.scenario_id') = ? "
@@ -250,11 +267,7 @@ class ApiAgent:
         done = self.runner(["ssh", "-n", "-F", str(SSH_CONFIG), "-o", "BatchMode=yes", "monitor-ai-01",
                             f"sudo docker exec moodle-ai-agent python -c {shlex.quote(query)} {shlex.quote(scenario)} {shlex.quote(since)}"],
                            timeout=60)
-        ids = [x for x in (done.stdout or "").strip().split(",") if x]
-        if len(ids) != 1:                          # no candidate from the Agent's own planner: never invent one (fail closed)
-            return None
-        status, payload, _ = self.http("POST", f"{self.base}/api/moodle/remediation/{ids[0]}/prepare?notify=false", token=self.token)
-        return payload if status == 200 else None
+        return [x for x in (done.stdout or "").strip().split(",") if x]
 
     def refresh(self, prepared, fresh_decision, *, evidence_db):
         return prepared                            # the Agent refreshes stale evidence itself (refresh_if_stale=True)

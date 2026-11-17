@@ -436,6 +436,39 @@ def test_api_agent_fails_closed_on_ambiguous_candidates_and_http_errors(tmp_path
     assert agent.accept("req-1", {})["status"] == "rejected" and agent.status("i", "req-1")["status"] == "unknown"
 
 
+def test_api_agent_waits_a_bounded_time_for_a_late_planner_candidate(tmp_path):
+    answers = iter(["", "", "cand-late"])
+    lookups, calls = [], []
+
+    class Done:
+        def __init__(self, out):
+            self.stdout, self.returncode = out, 0
+
+    def runner(args, **_):
+        lookups.append(args[-1])
+        return Done(next(answers, "cand-late"))
+
+    def http(method, url, body=None, token=None, timeout=0):
+        calls.append(url)
+        return 200, {"candidate_id": "cand-late"}, {}
+
+    agent = live.ApiAgent({"AIHS_LIVE_AGENT_URL": "http://agent.invalid", "MOODLE_VERIFIER_SIGNING_KEY_FILE": ""},
+                          http=http, runner=runner)
+    clock = h.SimClock()
+    start = clock.now()
+    decision = type("D", (), {"evidence_refs": [], "context": type("C", (), {"scenario_id": "DB-01"})()})()
+    assert agent.prepare(incident_id="i", features={}, decision=decision, evidence_db=None,
+                         audit_db=tmp_path / "a.sqlite3", clock=clock) == {"candidate_id": "cand-late"}
+    assert len(lookups) == 3 and calls[0].endswith("/remediation/cand-late/prepare?notify=false")
+    assert (clock.now() - start).total_seconds() <= live.CANDIDATE_WAIT_S
+    # never appears: still fails closed, and the wait is bounded
+    agent.runner = lambda args, **_: Done("")
+    start = clock.now()
+    assert agent.prepare(incident_id="i", features={}, decision=decision, evidence_db=None,
+                         audit_db=tmp_path / "a.sqlite3", clock=clock) is None
+    assert (clock.now() - start).total_seconds() <= live.CANDIDATE_WAIT_S + live.CANDIDATE_POLL_S
+
+
 def test_locked_model_proposal_is_a_valid_c0_row_when_artifacts_exist():
     if not (h.MODEL_DIR / "model.pkl").is_file():
         pytest.skip("locked C0 artifacts are git-ignored and absent here")
