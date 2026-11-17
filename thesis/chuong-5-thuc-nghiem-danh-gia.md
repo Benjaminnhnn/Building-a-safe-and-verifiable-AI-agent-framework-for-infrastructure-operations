@@ -1,43 +1,44 @@
 # Chương 5. Thực nghiệm và đánh giá
 
-Chương này trả lời câu hỏi nghiên cứu đã nêu ở Chương 1: khi gắn Safety Gate, Safe Executor và Independent Verifier vào phía sau pipeline AIHS LDA/GBDT, hệ thống xử lý sự cố trên Moodle có an toàn và đáng tin cậy hơn AIHS cơ sở không, và phải trả giá gì. Phép đánh giá gồm hai phần bổ sung cho nhau: (1) phép so sánh **offline** C0/C1 trên tập test thu từ lab Moodle cục bộ, dùng để đo chất lượng quyết định của model và tác động của Safety Gate; (2) chiến dịch **live** trên AWS staging, trong đó mỗi lượt cấy một lỗi thật, đi qua đầy đủ chuỗi Gate → Operator → Executor → Verifier, và so sánh kết luận "đã phục hồi" của góc nhìn health-only (C2) với Verifier (C3) trên cùng một lần thực thi. Mọi protocol, ngưỡng và quy tắc dừng đều được đăng ký và khoá trước khi thấy kết quả; các sai lệch trong lúc chạy được ghi lại công khai.
+Chương này trả lời câu hỏi nghiên cứu đã nêu ở Chương 1: khi gắn Safety Gate, Safe Executor và Independent Verifier vào phía sau pipeline AIHS LDA/GBDT, hệ thống xử lý sự cố trên Moodle có an toàn và đáng tin cậy hơn AIHS cơ sở không, và phải trả giá gì. Phép đánh giá gồm hai phần bổ sung cho nhau: (1) phép so sánh **offline** C0/C1 trên tập test thu từ lab Moodle cục bộ, dùng để đo chất lượng quyết định của model và tác động của Safety Gate; (2) chiến dịch **live** trên AWS staging, trong đó mỗi lượt cấy một lỗi thật, đi qua đầy đủ chuỗi Gate → Operator → Executor → Verifier, và so sánh kết luận "đã hồi phục" của góc nhìn health-only (C2) với Verifier (C3) trên cùng một lần thực thi. Mọi protocol, ngưỡng và quy tắc dừng đều được đăng ký và khoá trước khi thấy kết quả; các sai lệch trong lúc chạy được ghi lại công khai.
 
 ## 5.1. Câu hỏi đánh giá
 
-Câu hỏi nghiên cứu được tách thành bốn câu hỏi đánh giá, mỗi câu gắn với một lớp bảo vệ và một loại bằng chứng.
+Câu hỏi nghiên cứu chính được tách thành năm câu hỏi thành phần RQ1–RQ5 như ở Bảng 1.2 (Chương 1); Bảng 5.1 gắn mỗi câu với một lớp bảo vệ và một loại bằng chứng. Hai câu đầu cùng dùng phép so sánh offline C0 với C1, ba câu sau dùng các lượt live.
 
 **Bảng 5.1.** Câu hỏi đánh giá và nguồn bằng chứng
 
 | Mã | Câu hỏi | Lớp được đo | Bằng chứng |
 | --- | --- | --- | --- |
-| RQ1 | Safety Gate có chặn được action sai và chặn nhầm action đúng ở mức nào? | Gate (C0 → C1) | Offline, tập test lab |
-| RQ2 | Action được duyệt có được thực thi đúng action, máy đích và phạm vi không? | Operator + Safe Executor (C2) | Live staging, receipt và audit |
-| RQ3 | Independent Verifier có tránh được kết luận phục hồi sai mà health-only mắc phải không? | Verifier (C2 → C3) | Live staging, ghép cặp trên cùng lượt |
-| RQ4 | Hệ thống có còn hoàn tất được sự cố, và các lớp bảo vệ làm tăng thời gian bao nhiêu? | Toàn chuỗi | Live staging, mốc thời gian |
+| RQ1 | Safety Gate có chặn được action sai hoặc vượt phạm vi không? | Gate (C0 → C1) | Offline, tập test lab |
+| RQ2 | Safety Gate có chặn nhầm action đúng không, và cái giá là gì? | Gate (C0 → C1) | Offline, tập test lab |
+| RQ3 | Action được duyệt có được thực thi đúng action, máy đích và phạm vi không? | Operator + Safe Executor (C2/C3) | Live staging, receipt và audit |
+| RQ4 | Independent Verifier có tránh được kết luận hồi phục sai mà health-only mắc phải không? | Verifier (C2 → C3) | Live staging, ghép cặp trên cùng lượt |
+| RQ5 | Hệ thống có còn hoàn tất được sự cố, và các lớp bảo vệ làm tăng thời gian bao nhiêu? | Toàn chuỗi | Live staging, mốc thời gian |
 
-Nguyên tắc chung (PLANNING §1, §4): giữ nguyên model, snapshot, proposal và mapping giữa các cấu hình; chất lượng model (HitRate, ReverseRate) được báo riêng và không được quy cho các lớp bảo vệ; chỉ số nào thiếu mẫu số hoặc thiếu nhãn được ghi là `NOT_MEASURABLE`, không ghi 0 %. Khoá luận không so sánh trực tiếp với số liệu production của Alibaba trong [AIHS2021] (F1 0,97, giảm 51 % thời gian ngừng phục vụ), vì khác hệ thống, khác loại lỗi và khác định nghĩa.
+Nguyên tắc chung theo kế hoạch ứng dụng LDA/GBDT của khoá luận: giữ nguyên model, snapshot, proposal và mapping giữa các cấu hình; chất lượng model (HitRate, ReverseRate) được báo riêng và không được quy cho các lớp bảo vệ; chỉ số nào thiếu mẫu số hoặc thiếu nhãn được ghi là `NOT_MEASURABLE`, không ghi 0 %. Khoá luận không so sánh trực tiếp với số liệu production của Alibaba trong [AIHS2021] (F1 0,97, giảm 51 % thời gian ngừng phục vụ), vì khác hệ thống, khác loại lỗi và khác định nghĩa.
 <!-- nguồn: docs/PLANNING_UNG_DUNG_LDA_GBDT.md §1, §4; docs/PHAN_CONG_LDA_GBDT.md Bước 6 -->
 
 ## 5.2. Thiết lập thực nghiệm
 
 ### 5.2.1. Model AIHS cơ sở
 
-Model C0 là `aihs-paper-repro-moodle-v1`: bản tái hiện **phương pháp** của bài báo AIHS trên dữ liệu Moodle, không phải prototype công khai giữ nguyên lỗi. Khác với prototype, Predictor chỉ học từ ca sửa thành công và Controller thực sự thử các action theo chi phí tăng dần trước khi chuyển người. LDA dùng `sklearn` (batch, α = 0,1, β = 0,01) thay cho Gibbs sampling; khác biệt này được công bố. Lớp đầu ra của Predictor là sáu action an toàn trong catalog Moodle cộng `call_human`. Số chủ đề K = 20 được chọn trên tập validation. Model được khoá (`LOCKED_C0`, `model_content_sha256` bắt đầu bằng `0da82b58`) trước khi mở tập test và được dùng nguyên byte cho cả phép đo offline lẫn live.
+Model C0 là `aihs-paper-repro-moodle-v1`: bản tái hiện **phương pháp** của bài báo AIHS trên dữ liệu Moodle, không phải prototype công khai giữ nguyên lỗi. Khác với prototype, Predictor chỉ học từ ca sửa thành công và Controller thực sự thử các action theo chi phí tăng dần trước khi chuyển người. LDA dùng `sklearn` (batch, α = 0,1, β = 0,01) thay cho Gibbs sampling; khác biệt này được công bố. Lớp đầu ra của Predictor là các action an toàn trong catalog Moodle (sáu action thay đổi hệ thống và `wait_and_recheck`, chỉ quan sát) cộng `call_human`. Số chủ đề K = 20 được chọn trên tập validation. Model được khoá (`LOCKED_C0`, `model_content_sha256` bắt đầu bằng `0da82b58`) trước khi mở tập test và được dùng nguyên byte cho cả phép đo offline lẫn live.
 <!-- nguồn: docs/PLANNING_UNG_DUNG_LDA_GBDT.md §11.1; docs/BAO_CAO_PROTOCOL_C0_C3_OFFLINE.md §1 -->
 
 ### 5.2.2. Dữ liệu và nhãn
 
-Dữ liệu huấn luyện và test offline được sinh trong **lab Moodle cục bộ** (Docker Compose, cùng bộ cấy lỗi, probe và reset với staging), vì mỗi lượt trên AWS tốn 10–25 phút và chi phí NAT/RDS. Chiến dịch lab `campaign-1` thu khoảng 420 episode; mỗi episode lưu snapshot metric/log **trước** mốc quyết định, action đã thực thi, receipt và probe sau action. Công cụ freeze chia dữ liệu theo thời gian và theo nhóm incident/phiên (freeze `17efc7b6…`): train 277, validation 57, test 59 dòng; test gồm 8 nhóm độc lập.
+Dữ liệu huấn luyện và test offline được sinh trong **lab Moodle cục bộ** (Docker Compose, cùng bộ cấy lỗi, probe và reset với staging), vì mỗi lượt chính trên AWS tốn khoảng 20–25 phút và hạ tầng (NAT Gateway, ALB, RDS) tính tiền theo giờ. Chiến dịch lab `campaign-1` thu khoảng 420 episode; mỗi episode lưu snapshot metric/log **trước** mốc quyết định, action đã thực thi, receipt và probe sau action. Công cụ freeze chia dữ liệu theo thời gian và theo nhóm incident/phiên (freeze `17efc7b6…`): train 277, validation 57, test 59 dòng; test gồm 8 nhóm độc lập.
 
 Mỗi dòng có hai nhãn do người đánh giá gán từ bằng chứng gốc, không xem verdict của Gate hay dự đoán của model:
 
 - **Q1 (an toàn):** action lab đã chạy có an toàn và đúng phạm vi không (`yes/no/unsure`).
-- **Q2 (phục hồi):** sau action, hệ thống có phục hồi hoàn toàn không. Luật chấm Q2 và cách xử lý nhãn "Một phần" được chốt ngày 15/11/2026, trước khi freeze và huấn luyện: ở phân tích chính, "Một phần" được tính là `failure`; phân tích độ nhạy loại bỏ các nhãn này và chạy lại toàn bộ pipeline (freeze, model và split riêng).
-<!-- nguồn: docs/PLANNING_UNG_DUNG_LDA_GBDT.md §6, §11.1, §11.2; docs/BAO_CAO_PROTOCOL_C0_C3_OFFLINE.md §1, §3 (D4) -->
+- **Q2 (hồi phục):** sau action, hệ thống có hồi phục hoàn toàn không. Luật chấm Q2 và cách xử lý nhãn "Một phần" được chốt ngày 15/11/2026, trước khi freeze và huấn luyện: ở phân tích chính, "Một phần" được tính là `failure`; phân tích độ nhạy loại bỏ các nhãn này và chạy lại toàn bộ pipeline (freeze, model và split riêng).
+<!-- nguồn: docs/PLANNING_UNG_DUNG_LDA_GBDT.md §6, §11.1, §11.2; docs/BAO_CAO_PROTOCOL_C0_C3_OFFLINE.md §1, §3 (D4); docs/BAO_CAO_KE_HOACH_CHAY_LIVE_C0_C3.md §2, §8 -->
 
 ### 5.2.3. Kịch bản lỗi
 
-Đánh giá dùng sáu kịch bản có action được phép chạy live; SEC-01 (chỉ người xử lý), DB-02 (thay cấu hình AWS) và BIZ-01 (bật/tắt bảo trì toàn site) bị loại khỏi phạm vi thực thi theo quyết định giai đoạn 0.
+Đánh giá dùng sáu kịch bản có action được phép chạy live (Bảng 5.2); SEC-01 (chỉ người xử lý), DB-02 (thay cấu hình AWS) và BIZ-01 (bật/tắt bảo trì toàn site) bị loại khỏi phạm vi thực thi theo quyết định giai đoạn 0.
 
 **Bảng 5.2.** Kịch bản và action sửa tương ứng
 
@@ -62,7 +63,7 @@ Mỗi dòng có hai nhãn do người đánh giá gán từ bằng chứng gốc
 | C2: + Operator + Safe Executor, kết luận bằng health-only | Bằng C1 theo cấu trúc | Lấy từ `health_only_view` của chính lượt C3 |
 | C3: + Independent Verifier | Bằng C1 theo cấu trúc | Mọi lượt thi hành live là C3 |
 
-C0 và C1 không thi hành live vì biên bản duyệt mapping yêu cầu mọi lượt live phải có Gate, chữ ký Operator và Safe Executor; thi hành nguyên trạng một action không qua Gate trên staging sẽ vi phạm chính nguyên tắc an toàn đang được nghiên cứu. Ngày 16/11/2026, chủ miền chọn phương án không chạy nhánh C2 riêng: C2 được tính khi phân tích từ góc nhìn health-only (healthz 200, giao dịch synthetic đạt, không còn alert) của chính lượt C3, nên so sánh C2/C3 là **so sánh cặp trên cùng một lần thực thi**. Hệ quả cần ghi nhận: không đo được hành vi riêng của C2 khi Operator biết không có Verifier.
+Bảng 5.3 cho thấy C0 và C1 không thi hành live, vì biên bản duyệt mapping yêu cầu mọi lượt live phải có Gate, chữ ký Operator và Safe Executor; thi hành nguyên trạng một action không qua Gate trên staging sẽ vi phạm chính nguyên tắc an toàn đang được nghiên cứu. Ngày 16/11/2026, chủ miền chọn phương án không chạy nhánh C2 riêng: C2 được tính khi phân tích từ góc nhìn health-only (healthz 200, giao dịch synthetic đạt, không còn alert) của chính lượt C3, nên so sánh C2/C3 là **so sánh cặp trên cùng một lần thực thi**. Hệ quả cần ghi nhận: không đo được hành vi riêng của C2 khi Operator biết không có Verifier.
 <!-- nguồn: docs/BAO_CAO_PROTOCOL_C0_C3_OFFLINE.md §2; docs/BAO_CAO_KE_HOACH_CHAY_LIVE_C0_C3.md §1 -->
 
 ### 5.2.5. Đăng ký trước và khoá protocol
@@ -91,12 +92,12 @@ Hai protocol được viết và khoá trước khi có kết quả:
 | Thời gian | detect→hồi phục thật (chỉ số so sánh chính), chờ duyệt, thực thi, xác minh, detect→`RESOLVED` | Live |
 | Bất biến | `resolved_only_via_verifier`, `shadow_arms_never_execute`, `no_execution_without_approval`, `approval_bound_to_prepared_digest`, `c2_never_resolved`; một vi phạm là dừng chiến dịch | Live |
 
-Nhãn Q1 chấm action lab đã thi hành, nên chỉ áp dụng được khi proposal của model trùng action đó; dòng có proposal khác action lab được đếm riêng là "không nhãn" và không đưa vào tử số hay mẫu số. Khoảng tin cậy offline là bootstrap 95 % theo nhóm (B = 2000, seed `20261116`, percentile); chỉ số có mẫu số dưới 5 bị gắn `INSUFFICIENT_DENOMINATOR` và không được dùng làm bằng chứng. Với live, ba lặp mỗi kịch bản không đủ cho kiểm định thống kê, nên kết quả được báo **mô tả** (đếm, trung vị, khoảng) kèm khoảng tin cậy Wilson 95 % cho các tỷ lệ.
+Các chỉ số ở Bảng 5.4 có thêm vài quy ước. Nhãn Q1 chấm action lab đã thi hành, nên chỉ áp dụng được khi proposal của model trùng action đó; dòng có proposal khác action lab được đếm riêng là "không nhãn" và không đưa vào tử số hay mẫu số. Khoảng tin cậy offline là bootstrap 95 % theo nhóm (B = 2000, seed `20261116`, percentile); chỉ số có mẫu số dưới 5 bị gắn `INSUFFICIENT_DENOMINATOR` và không được dùng làm bằng chứng. Với live, ba lặp mỗi kịch bản không đủ cho kiểm định thống kê, nên kết quả được báo **mô tả** (đếm, trung vị, khoảng) kèm khoảng tin cậy Wilson 95 % cho các tỷ lệ.
 <!-- nguồn: docs/BAO_CAO_PROTOCOL_C0_C3_OFFLINE.md §4; docs/BAO_CAO_KE_HOACH_CHAY_LIVE_C0_C3.md §2, §4 -->
 
 ## 5.3. Kết quả offline: C0 so với C1
 
-Tập test được mở một lần ngày 15/11/2026 (lock `adb0d194…`). Quy tắc dừng về `stale_evidence` không bị kích hoạt (0 % ở đồng hồ chính).
+Tập test được mở một lần ngày 15/11/2026 (lock `adb0d194…`); Bảng 5.5 là arm chính và Bảng 5.6 là arm độ nhạy. Quy tắc dừng về `stale_evidence` không bị kích hoạt (0 % ở đồng hồ chính).
 
 **Bảng 5.5.** Kết quả test, arm chính (nhãn "Một phần" → `failure`), 59 dòng, 8 nhóm
 
@@ -126,7 +127,7 @@ Tập test được mở một lần ngày 15/11/2026 (lock `adb0d194…`). Quy 
 **Nhận xét.**
 
 1. **Chất lượng model.** C0 đạt HitRate 0,905 và OverallRate 0,885 ở arm chính. Đây là chất lượng của model đã khoá, không phải đóng góp của các lớp bảo vệ. Con số không được so với HitRate 0,89 trong [AIHS2021] vì khác dữ liệu và không gian action.
-2. **Gate đổi HitRate lấy ReverseRate.** Gate làm HitRate giảm khoảng 0,1 ở cả hai arm (mất 2–3 ca đúng), và ở arm chính làm ReverseRate tăng 0,1 (tránh thêm 3 ca mà action của model đã thất bại trong lab). OverallRate gần như không đổi. Hướng thay đổi của HitRate nhất quán giữa hai arm; hướng của ReverseRate thì không (arm độ nhạy không có ca nào để cải thiện).
+2. **Gate đổi HitRate lấy ReverseRate.** Gate làm HitRate giảm khoảng 0,1 ở cả hai arm (mất 2 trong 21 ca đúng mỗi arm), và ở arm chính làm ReverseRate tăng 0,1 (tránh thêm 3 ca mà action của model đã thất bại trong lab). OverallRate gần như không đổi. Hướng thay đổi của HitRate nhất quán giữa hai arm; hướng của ReverseRate thì không (arm độ nhạy không có ca nào để cải thiện).
 3. **Không đủ bằng chứng để nói Gate giảm action nguy hiểm.** Ở arm chính, tỷ lệ action không an toàn được đi tiếp giảm từ 4/24 xuống 1/24, nhưng mẫu số của "action sai bị chặn" chỉ là 4 (dưới ngưỡng 5 đã đăng ký) và arm độ nhạy không có action không an toàn nào. Theo protocol, kết quả này **không** được trình bày là "Gate giảm hành động nguy hiểm".
 4. **Chi phí của Gate là có thật và vững.** Ở cả hai arm, Gate chặn nhầm khoảng 10 % action đúng (2/20 và 2/21), đều do `scope_mismatch`: ngữ cảnh mà Gate suy ra từ alert trước quyết định không khớp với kịch bản của proposal. Tỷ lệ chuyển người tăng 22 điểm phần trăm ở arm chính. Đây là hệ quả trực tiếp của thiết kế fail-closed: khi ngữ cảnh mơ hồ, Gate không đoán.
 5. **Gate thực sự áp dụng độ tươi bằng chứng.** Ở phép đối chứng dùng đồng hồ batch (thời điểm proposal được sinh hàng loạt, muộn hơn nhiều so với bằng chứng), mọi proposal tới Gate đều bị chặn `stale_evidence` (C1 HitRate = 0). Đây là kiểm tra cơ chế, không phải kết quả chính.
@@ -137,7 +138,7 @@ Tập test được mở một lần ngày 15/11/2026 (lock `adb0d194…`). Quy 
 
 ### 5.4.1. Quá trình chạy và các sai lệch
 
-Trước 18 lượt chính có ba giai đoạn pilot. Mỗi pilot làm lộ ra lỗi tích hợp, được sửa ở phía quan sát hoặc hạ tầng; model, Gate, quy tắc D1, mapping và mọi file trong lock **không** bị thay đổi. Kết quả pilot được giữ nguyên và công bố nhưng không tính vào mẫu chính.
+Trước 18 lượt chính có ba giai đoạn pilot (pilot shadow, pilot 3 và pilot 4). Mỗi pilot làm lộ ra lỗi tích hợp, được sửa ở phía quan sát, planner của Agent, harness hoặc Verifier; model, Gate, quy tắc D1, mapping và mọi file trong lock **không** bị thay đổi. Kết quả pilot được giữ nguyên và công bố nhưng không tính vào mẫu chính. Bảng 5.7 tóm tắt các sai lệch này; nguyên nhân kỹ thuật và bản sửa chi tiết nằm ở Bảng 4.8 (Chương 4).
 
 **Bảng 5.7.** Các sai lệch chính trong lúc chạy và cách xử lý
 
@@ -149,14 +150,14 @@ Trước 18 lượt chính có ba giai đoạn pilot. Mỗi pilot làm lộ ra l
 | Chính, seq 2 lần đầu | Reset thất bại | Cron bị dừng giữa lúc chạy một ad-hoc task, để lại claim mồ côi | Huỷ lượt (không đủ điều kiện reset sạch), sửa reset BIZ-02, chạy lại; giữ làm ca minh hoạ định tính |
 <!-- nguồn: docs/BAO_CAO_KE_HOACH_CHAY_LIVE_C0_C3.md §10–13 -->
 
-Ở pilot 4, Gate chặn hành động đúng của NET-01 do `scope_mismatch`. Nguyên nhân là `derive_context` (file đã khoá) ánh xạ alert `MoodleNodeRdsTcpFailed` sang DB-01, trong khi NET-01 làm hỏng đường tới RDS qua DNS. Alert rule không được chỉnh sau khi thấy kết quả; hiện tượng này được giữ làm giới hạn thật của cách suy ngữ cảnh.
+Ở pilot 4, Gate chặn hành động đúng của NET-01 do `scope_mismatch`. Sau khi probe đổi sang chu kỳ 10 s, alert `MoodleNodeRdsTcpFailed` firing trước khi chụp snapshot, và `derive_context` (file đã khoá) ánh xạ alert này sang DB-01, trong khi NET-01 làm hỏng đường tới RDS qua DNS. Alert rule không được chỉnh sau khi thấy kết quả; hiện tượng này được giữ làm giới hạn thật của cách suy ngữ cảnh, và lặp lại ở một lượt NET-01 của mẫu chính (Bảng 5.8).
 
 Ở mẫu chính, Operator REJECT bốn lượt (seq 0 và 12 với DB-01, seq 2 với BIZ-02, seq 13 với SEC-02). Cả bốn là quyết định có chủ ý với cùng một lý do: action có liên quan và ảnh hưởng đến bảo mật (với DB-01 là gỡ một rule tường lửa trên đường Moodle → RDS, kèm độ tin cậy trên thẻ là 0,65 dưới mức 0,8), nên Operator không cho AI tự thực hiện. Theo protocol, các lượt này được giữ nguyên trong mẫu số và không chạy bù.
 <!-- nguồn: docs/BAO_CAO_KE_HOACH_CHAY_LIVE_C0_C3.md §14 -->
 
 ### 5.4.2. Kết quả tổng hợp
 
-Mười tám lượt (seq 0–17) chạy ngày 16–17/11/2026 với Moodle image `c1c0ceb9…` và Agent image `f79f7c4a…`.
+Mười tám lượt (seq 0–17) chạy ngày 16–17/11/2026 với Moodle image `c1c0ceb9…` và Agent image `f79f7c4a…`. Bảng 5.8 tổng hợp toàn mẫu, Bảng 5.9 tách theo kịch bản và Bảng 5.10 nêu trung vị các mốc thời gian.
 
 **Bảng 5.8.** Kết quả 18 lượt C3 của mẫu chính
 
@@ -188,7 +189,7 @@ Mười tám lượt (seq 0–17) chạy ngày 16–17/11/2026 với Moodle imag
 | SEC-02 | 3 | 3/3 | 2 | 2/2 | 2 (0) | 2 (0) | 146,9 s (107,0 s) |
 | **Tổng** | 18 | 14/14 | 9 | 9/9 | 9 (0) | 9 (0) | 145,0 s (69,1 s) |
 
-\* Ở seq 16 (BIZ-02), Operator chờ duyệt 17 297 s (khoảng 4,8 giờ, phiên giữ qua đêm). Harness làm mới bằng chứng trước khi thực thi, nên Verifier vẫn xác nhận đúng. Vì thời gian chờ người dao động rất lớn, cột so sánh là cột **bỏ thời gian chờ duyệt**.
+\* Ở seq 16 (BIZ-02), Operator chờ duyệt 17.297 s (khoảng 4,8 giờ, phiên giữ qua đêm). Harness làm mới bằng chứng trước khi thực thi, nên Verifier vẫn xác nhận đúng. Vì thời gian chờ người dao động rất lớn, cột so sánh là cột **bỏ thời gian chờ duyệt**.
 <!-- nguồn: docs/BAO_CAO_KE_HOACH_CHAY_LIVE_C0_C3.md §15 -->
 
 **Bảng 5.10.** Trung vị các mốc thời gian, 18 lượt chính (giây)
@@ -225,7 +226,7 @@ Lượt seq 100 đầu tiên bị huỷ do một race tích hợp: harness tra c
 | 103 | CON-01 | `web_a_stop` | APPROVE | tuyên bố hồi phục → **sai** | `collateral_damage` | không | – |
 <!-- nguồn: evaluation/aihs/live-supplementary-results/aggregate.json; docs/BAO_CAO_KE_HOACH_CHAY_LIVE_C0_C3.md §17 -->
 
-Cả bốn lượt cho đúng kết quả dự kiến. Model đề xuất đúng 4/4, mọi bất biến được giữ và 4/4 lượt reset sạch (kể cả reset lỗi phụ). DB-01 lần đầu được thực thi trong chiến dịch AIHS: trung vị detect→hồi phục thật 620,2 s, trong đó phần lớn là thời gian chờ duyệt; bỏ phần này còn 121,6 s.
+Bảng 5.11 cho thấy cả bốn lượt cho đúng kết quả dự kiến. Model đề xuất đúng 4/4, mọi bất biến được giữ và 4/4 lượt reset sạch (kể cả reset lỗi phụ). DB-01 lần đầu được thực thi trong chiến dịch AIHS: trung vị detect→hồi phục thật 620,2 s, trong đó phần lớn là thời gian chờ duyệt; bỏ phần này còn 121,6 s.
 
 Hai lượt có lỗi phụ khác nhau ở điểm đáng chú ý. 20 s sau khi cấy lỗi phụ:
 
@@ -243,38 +244,41 @@ Hai lượt có lỗi phụ khác nhau ở điểm đáng chú ý. 20 s sau khi 
 | Bổ sung CON-01 + `web_a_stop` | Lỗi phụ cấy có chủ đích | 2 | 2 | 0 | 0 |
 | seq 2 bị huỷ (ngoài mẫu) | Ảnh hưởng phụ phát sinh | 1 | 1 | 0 | 0 |
 | NET-01 lịch sử 08/11/2026 | Lỗi phụ cấy có kiểm soát | 1 | 1 | 0 | 0 |
-<!-- nguồn: docs/BAO_CAO_KET_QUA_C0_C3.md §4; evaluation/aihs/b2b3-measurement-2026-11-14.json -->
+<!-- nguồn: docs/BAO_CAO_KET_QUA_C0_C3.md §4; docs/PHAN_CONG_LDA_GBDT.md Bước 6; evaluation/aihs/b2b3-measurement-2026-11-14.json -->
 
-Theo yêu cầu tách ca cấy lỗi khỏi sự cố tự nhiên (PHAN_CONG Bước 6): trên 11 lượt không có lỗi phụ, cả health-only và Verifier đều chưa sai lần nào; cận trên Wilson 95 % của tỷ lệ sai là khoảng 0,26, nên không thể kết luận health-only "đủ tốt" trong vận hành thường. Trên 4 ca có ảnh hưởng phụ, health-only bỏ sót cả 4 còn Verifier chặn cả 4. Kết quả này chứng minh **cơ chế** khác biệt giữa hai cách kết luận, không ước lượng tần suất hồi phục giả trong production.
+Theo yêu cầu của kế hoạch phân công là tách ca cấy lỗi khỏi sự cố tự nhiên, Bảng 5.12 cho thấy trên 11 lượt không có lỗi phụ, cả health-only và Verifier đều chưa sai lần nào; cận trên Wilson 95 % của tỷ lệ sai là khoảng 0,26, nên không thể kết luận health-only "đủ tốt" trong vận hành thường. Trên 4 ca có ảnh hưởng phụ, health-only bỏ sót cả 4 còn Verifier chặn cả 4. Ở hai lượt cấy có chủ đích, health-only kết luận trước khi lỗi phụ xuất hiện, đúng như thiết kế: điểm khác biệt được đo là C3 đòi cửa sổ ổn định 120 s còn health-only kết luận tại một thời điểm. Kết quả này chứng minh **cơ chế** khác biệt giữa hai cách kết luận, không ước lượng tần suất hồi phục giả trong production.
 
 ## 5.7. Chi phí thời gian
 
 Các lớp bảo vệ làm tăng thời gian ở ba điểm:
 
 1. **Chờ người duyệt** là thành phần lớn nhất và biến động nhất: trung vị 40,9 s ở mẫu chính, nhưng có lượt lên tới khoảng 4,8 giờ khi không có người trực. Đây là chi phí của nguyên tắc "phê duyệt khác thi hành" và phụ thuộc vào tổ chức vận hành hơn là vào hệ thống.
-2. **Xác minh**: Verifier cần trung vị 128,1 s (cửa sổ ổn định 120 s cộng thời gian lấy mẫu) sau khi hệ thống đã hồi phục thật mới ký `RESOLVED`. Mốc `RESOLVED` vì thế muộn hơn mốc hồi phục thật khoảng 2 phút. Khoá luận cố ý không rút ngắn cửa sổ này để có số đẹp hơn (PLANNING §8).
-3. **Gate và chuyển người**: thời gian Gate ra quyết định không đáng kể, nhưng các ca bị chặn hoặc chuyển người không có thời gian phục hồi tự động.
+2. **Xác minh**: Verifier cần trung vị 128,1 s (cửa sổ ổn định 120 s cộng thời gian lấy mẫu) sau khi hệ thống đã hồi phục thật mới ký `RESOLVED`. Mốc `RESOLVED` vì thế muộn hơn mốc hồi phục thật khoảng 2 phút. Khoá luận cố ý không rút ngắn cửa sổ này để có số đẹp hơn.
+3. **Gate và chuyển người**: khoá luận không đo riêng thời gian của Gate; mốc detect→proposal (trung vị 26,1 s) gồm cả điều tra bằng chứng và lập đề xuất. Các ca bị chặn hoặc chuyển người không có thời gian hồi phục tự động, nên không xuất hiện trong các trung vị ở trên.
 
-Khoá luận **không** có RTO live của C0 để so sánh, vì C0 không được thi hành live (mục 5.2.4). Làm tham chiếu mô tả, nhánh ablation "Agent không có Gate, Executor và Verifier" chạy ngày 14/11/2026 trên cùng staging (5 lượt mỗi kịch bản, Agent theo luật thay cho AIHS, phục hồi được tính khi có 3 giao dịch synthetic thành công liên tiếp) cho trung vị phát hiện→phục hồi 59,6 s với DB-01 và 80,1 s với NET-01. Con số tương ứng của chuỗi đầy đủ với DB-01 (bỏ thời gian chờ duyệt) là 121,6 s. Vì khác planner, khác định nghĩa "phục hồi" và mẫu rất nhỏ, chênh lệch khoảng 60 s chỉ nên đọc như **ước lượng thô của chi phí xác minh và quy trình**, không phải kết quả so sánh có kiểm soát.
-<!-- nguồn: git 22ed0ba7 docs/DB-01-Analysis.md, docs/NET-01-Analysis.md; docs/BAO_CAO_KE_HOACH_CHAY_LIVE_C0_C3.md §17 -->
+Khoá luận **không** có RTO live của C0 để so sánh, vì C0 không được thi hành live (mục 5.2.4). Làm tham chiếu mô tả, nhánh ablation "Agent không có Gate, Executor và Verifier" chạy ngày 14/11/2026 trên cùng staging (5 lượt mỗi kịch bản, Agent theo luật thay cho AIHS, hồi phục được tính khi có 3 giao dịch synthetic thành công liên tiếp) cho trung vị phát hiện→hồi phục 59,6 s với DB-01 và 80,1 s với NET-01. Con số tương ứng của chuỗi đầy đủ với DB-01 (bỏ thời gian chờ duyệt) là 121,6 s. Vì khác planner, khác định nghĩa "hồi phục" và mẫu rất nhỏ, chênh lệch khoảng 60 s chỉ nên đọc như **ước lượng thô của chi phí xác minh và quy trình**, không phải kết quả so sánh có kiểm soát.
+<!-- nguồn: git 22ed0ba7 docs/DB-01-Analysis.md, docs/NET-01-Analysis.md; docs/BAO_CAO_KE_HOACH_CHAY_LIVE_C0_C3.md §17; docs/PLANNING_UNG_DUNG_LDA_GBDT.md §8 -->
 
 ## 5.8. Trả lời các câu hỏi đánh giá
+
+Mỗi câu hỏi ở Bảng 5.1 được trả lời kèm mức độ chắc chắn của bằng chứng.
 
 **Bảng 5.13.** Tóm tắt câu trả lời
 
 | Mã | Câu trả lời | Mức độ chắc chắn |
 | --- | --- | --- |
-| RQ1 | Gate chặn nhầm khoảng 10 % action đúng và làm tăng chuyển người; có dấu hiệu Gate chặn action sai (3/4 ở arm chính) nhưng mẫu quá nhỏ để kết luận. | Chi phí: vững qua hai arm. Lợi ích: `NOT_MEASURABLE` |
-| RQ2 | 13/13 action được duyệt (9 chính + 4 bổ sung) chạy đúng action, máy đích và phạm vi; 0 lần thực thi khi chưa có chữ ký gắn đúng digest. | Mô tả, mẫu nhỏ |
-| RQ3 | Verifier không ghi `RESOLVED` sai lần nào (0/11) và chặn được cả 4 ca có ảnh hưởng phụ mà health-only bỏ sót. | Cơ chế: có bằng chứng live. Tần suất tự nhiên: `NOT_MEASURABLE` |
-| RQ4 | Hoàn tất an toàn 9/18; mọi lượt không hoàn tất đều dừng ở một điểm kiểm soát có chủ đích. Thời gian tăng chủ yếu do chờ duyệt và cửa sổ xác minh khoảng 2 phút. | Mô tả |
+| RQ1 | Có dấu hiệu Gate chặn action sai: action không an toàn được đi tiếp giảm từ 4/24 xuống 1/24 và 3/4 action sai bị chặn (arm chính), nhưng mẫu số 4 nhỏ hơn ngưỡng 5 và arm độ nhạy không có action không an toàn nào. | Lợi ích: `NOT_MEASURABLE` |
+| RQ2 | Gate chặn nhầm khoảng 10 % action đúng (2/20 và 2/21) và tăng tỷ lệ chuyển người từ 8,5 % lên 30,5 % ở arm chính. | Chi phí: vững qua hai arm |
+| RQ3 | 13/13 action được duyệt (9 chính + 4 bổ sung) chạy đúng action, máy đích và phạm vi; 0 lần thực thi khi chưa có chữ ký gắn đúng digest. | Mô tả, mẫu nhỏ |
+| RQ4 | Verifier không ghi `RESOLVED` sai lần nào (0/11) và chặn được cả 4 ca có ảnh hưởng phụ mà health-only bỏ sót. | Cơ chế: có bằng chứng live. Tần suất tự nhiên: `NOT_MEASURABLE` |
+| RQ5 | Hoàn tất an toàn 9/18; mọi lượt không hoàn tất đều dừng ở một điểm kiểm soát có chủ đích. Thời gian tăng chủ yếu do chờ duyệt và cửa sổ xác minh khoảng 2 phút. | Mô tả |
 
-Từ đó, câu trả lời cho câu hỏi nghiên cứu được phát biểu đúng phạm vi: *trên Moodle staging và lab, với cùng một model AIHS LDA/GBDT đã khoá, việc thêm Safety Gate, Safe Executor và Independent Verifier đã loại bỏ hoàn toàn các kết luận `RESOLVED` sai và các lần thực thi ngoài phạm vi trong mọi lượt đã chạy, và phát hiện được hồi phục giả mà kiểm tra health-only bỏ sót; đổi lại, khoảng 10 % action đúng bị chuyển người, một nửa số sự cố cần người xử lý, và mốc xác nhận phục hồi chậm hơn khoảng 2 phút.* Chỉ số nào không có mẫu số đủ hoặc không có đối chứng cùng điều kiện (giảm action nguy hiểm, RTO C0 so với C3, tần suất hồi phục giả tự nhiên) được giữ là `NOT_MEASURABLE`.
+Từ Bảng 5.13, câu trả lời cho câu hỏi nghiên cứu chính được phát biểu đúng phạm vi: *trên Moodle staging và lab, với cùng một model AIHS LDA/GBDT đã khoá, khi có Safety Gate, Safe Executor và Independent Verifier phía sau model, không quan sát thấy kết luận `RESOLVED` sai hay lần thực thi ngoài phạm vi nào trong mọi lượt đã chạy, và phát hiện được hồi phục giả mà kiểm tra health-only bỏ sót; đổi lại, khoảng 10 % action đúng bị chuyển người, một nửa số sự cố ở mẫu chính cần người xử lý, và mốc xác nhận hồi phục chậm hơn khoảng 2 phút.* Chỉ phép ghép cặp health-only với Verifier có đối chứng trên cùng lượt thi hành; "không quan sát thấy" ở các tiêu chí còn lại không phải là "giảm so với C0", vì C0 không được thi hành live. Chỉ số nào không có mẫu số đủ hoặc không có đối chứng cùng điều kiện (giảm action nguy hiểm, RTO C0 so với C3, tần suất hồi phục giả tự nhiên) được giữ là `NOT_MEASURABLE`.
 
 ## 5.9. Các mối đe doạ đối với tính hợp lệ
 
 **Tính hợp lệ nội tại.**
-- Người thiết kế, người gán nhãn và Operator là cùng một người. Nhãn Q1/Q2 chưa có người gán thứ hai độc lập như PLANNING §11.1 yêu cầu, nên không có độ đồng thuận giữa người gán. Các quyết định REJECT phản ánh chính sách bảo mật của người này.
+- Người thiết kế, người gán nhãn và Operator là cùng một người. Nhãn Q1/Q2 chưa có người gán thứ hai độc lập như kế hoạch khoá luận yêu cầu, nên không có độ đồng thuận giữa người gán. Các quyết định REJECT phản ánh chính sách bảo mật của người này.
 - Operator ở các lượt bổ sung không mù về kịch bản; đây là lý do kết quả bổ sung được báo riêng.
 - Quy tắc D1 được chỉnh sau khi xem validation. Việc chỉnh diễn ra trước khi khoá và mở test, và đã được công bố cùng số liệu trước chỉnh.
 - Lỗi phụ ở S2/S4 được cấy đúng lúc health-only vừa kết luận, tức là trường hợp bất lợi nhất cho C2 theo thiết kế.
@@ -282,7 +286,7 @@ Từ đó, câu trả lời cho câu hỏi nghiên cứu được phát biểu �
 **Tính hợp lệ cấu trúc.**
 - C2 được suy ra từ góc nhìn health-only của lượt C3, không phải một nhánh chạy riêng; không đo được việc Operator có hành xử khác khi biết không có Verifier.
 - "Hồi phục thật" được chấm bằng bộ probe hợp đồng của chính lỗi đã cấy. Một lỗi chưa có probe sẽ không được phát hiện bởi cả phép chấm lẫn Verifier.
-- Nhãn Q1 chỉ áp dụng khi proposal trùng action lab đã chạy; 30/59 dòng ở arm chính không có nhãn an toàn.
+- Nhãn Q1 chỉ áp dụng khi proposal trùng action lab đã chạy; ở arm chính, 30 trong 54 dòng có proposal thay đổi hệ thống không có nhãn an toàn vì proposal khác action lab (8 dòng trong số đó bị Gate chặn, 22 dòng được đi tiếp).
 
 **Tính hợp lệ bên ngoài.**
 - Một môi trường (Moodle), sáu loại lỗi được cấy có kiểm soát, mỗi kịch bản một action. Kết quả không suy rộng cho production hay cho hệ thống khác.
@@ -295,7 +299,7 @@ Từ đó, câu trả lời cho câu hỏi nghiên cứu được phát biểu �
 
 ## 5.10. Tiểu kết chương
 
-Chương này đã đánh giá khung an toàn trên hai mặt: offline với tập test lab mở một lần sau khi khoá protocol, và live trên AWS staging với 18 lượt chính cùng 4 lượt bổ sung đăng ký trước. Kết quả nhất quán với mục tiêu thiết kế: không lượt nào có kết luận `RESOLVED` sai hay thực thi ngoài phạm vi đã ký, và Independent Verifier chặn được các ca hồi phục giả mà health-only bỏ sót. Kết quả cũng cho thấy rõ cái giá phải trả: Gate chặn nhầm khoảng một phần mười action đúng, một nửa số sự cố dừng lại ở các điểm kiểm soát của con người, và việc xác nhận phục hồi chậm thêm khoảng hai phút. Các giới hạn về mẫu, nhãn và môi trường được nêu rõ để Chương 6 rút ra kết luận và hướng phát triển đúng phạm vi.
+Chương này đã đánh giá khung an toàn trên hai mặt: offline với tập test lab mở một lần sau khi khoá protocol, và live trên AWS staging với 18 lượt chính cùng 4 lượt bổ sung đăng ký trước. Kết quả nhất quán với mục tiêu thiết kế: không lượt nào có kết luận `RESOLVED` sai hay thực thi ngoài phạm vi đã ký, và Independent Verifier chặn được các ca hồi phục giả mà health-only bỏ sót. Kết quả cũng cho thấy rõ cái giá phải trả: Gate chặn nhầm khoảng một phần mười action đúng, một nửa số sự cố dừng lại ở các điểm kiểm soát của con người, và việc xác nhận hồi phục chậm thêm khoảng hai phút. Các giới hạn về mẫu, nhãn và môi trường được nêu rõ để Chương 6 rút ra kết luận và hướng phát triển đúng phạm vi.
 
 ## Tài liệu tham khảo của chương
 

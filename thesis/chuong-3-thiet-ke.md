@@ -8,9 +8,11 @@ Chương này chuyển bài toán ở Chương 1 và nền tảng ở Chương 2
 
 Hệ thống cần bảo vệ là Moodle [Moodle] chạy trên AWS EC2: một ALB, hai node ứng dụng, RDS PostgreSQL, EFS dùng chung và một máy giám sát chạy Prometheus, Alertmanager và Agent. Khi có cảnh báo, Agent điều tra bằng chứng và đề xuất một hành động sửa; hệ thống phải quyết định hành động đó có được chạy không, ai cho phép, chạy thế nào và làm sao biết đã hồi phục thật. Mọi thao tác thay đổi hệ thống chỉ diễn ra ở staging; không có đường thi hành cho production. <!-- nguồn: AGENTS.md "Architecture and thesis scope"; docs/BAO_CAO_KIEN_TRUC_HA_TANG.md §1-§2 -->
 
-Khó khăn nằm ở việc *giới hạn hậu quả khi chọn sai* và *không tin nhầm vào tín hiệu hồi phục*. AIHS tự động hoá việc chọn hành động bằng LDA và GBDT [AIHS2021] nhưng, theo phân tích của đồ án, không có Safety Gate độc lập và không có xác minh độc lập. Báo cáo của Google về agent AI trong SRE yêu cầu agent có danh tính và quyền được gán rõ, giải thích được hành động và đáp ứng yêu cầu bảo mật như con người [GoogleSRE-AI]; một bài viết CNCF cũng đòi mỗi tác nhân có danh tính riêng, quyền giới hạn và dấu vết kiểm toán [PlatformEng-Agentic]. Khung an toàn của đồ án là lớp *sau mô hình* đáp ứng các yêu cầu đó. <!-- nguồn: docs/PLANNING_UNG_DUNG_LDA_GBDT.md §2; Brainstorm/Google-SRE-AI.pdf (Design considerations); Brainstorm/Platform-Engineering.pdf -->
+Khó khăn nằm ở việc *giới hạn hậu quả khi chọn sai* và *không tin nhầm vào tín hiệu hồi phục*. AIHS tự động hoá việc chọn hành động bằng LDA và GBDT [AIHS2021] nhưng, theo phân tích của khoá luận, không có Safety Gate độc lập và không có xác minh độc lập. Báo cáo của Google về agent AI trong SRE yêu cầu agent có danh tính và quyền được gán rõ, giải thích được hành động và đáp ứng yêu cầu bảo mật như con người [GoogleSRE-AI]; một bài viết CNCF cũng đòi mỗi tác nhân có danh tính riêng, quyền giới hạn và dấu vết kiểm toán [PlatformEng-Agentic]. Khung an toàn của khoá luận là lớp *sau mô hình* đáp ứng các yêu cầu đó. <!-- nguồn: docs/PLANNING_UNG_DUNG_LDA_GBDT.md §2; Brainstorm/Google-SRE-AI.pdf (Design considerations); Brainstorm/Platform-Engineering.pdf -->
 
 ### 3.1.2. Các bên liên quan
+
+Bảng 3.1 liệt kê các bên liên quan, vai trò của họ và mức tin cậy mà thiết kế gán cho từng bên.
 
 **Bảng 3.1.** Các bên liên quan và vai trò trong thiết kế
 
@@ -27,6 +29,8 @@ Khó khăn nằm ở việc *giới hạn hậu quả khi chọn sai* và *khôn
 <!-- nguồn: docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md §2-§5; docs/BAO_CAO_KIEN_TRUC_HA_TANG.md §9; docs/BAO_CAO_A3_MAPPING_REVIEW_RECORD.md -->
 
 ### 3.1.3. Yêu cầu chức năng và phi chức năng
+
+Từ các bên liên quan và các bất biến an toàn ở Chương 1, thiết kế rút ra chín yêu cầu chức năng (Bảng 3.2) và tám yêu cầu phi chức năng (Bảng 3.3).
 
 **Bảng 3.2.** Yêu cầu chức năng (FR)
 
@@ -63,9 +67,9 @@ Khó khăn nằm ở việc *giới hạn hậu quả khi chọn sai* và *khôn
 
 ### 3.2.1. Tài sản, ranh giới tin cậy và giả định
 
-Tài sản cần bảo vệ: tính khả dụng và toàn vẹn của Moodle (RDS, EFS), tính đúng của kết luận "đã hồi phục", và chuỗi bằng chứng/audit. Hệ thống chia thành các vùng tin cậy khác nhau (Hình 3.3). Vùng **không tin cậy** gồm đầu ra mọi mô hình (AIHS, Gemini) và văn bản của cảnh báo, log. Vùng **Agent** được tin ở việc *chuẩn bị*, không ở việc *quyết định quyền*. Vùng **máy Operator** giữ hai khoá riêng (ký phê duyệt, ký attestation) và chạy Verifier. **Safe Executor** chỉ nghe trên loopback và chỉ nói được với hai node qua forced-command.
+Tài sản cần bảo vệ: tính khả dụng và toàn vẹn của Moodle (RDS, EFS), tính đúng của kết luận "đã hồi phục", và chuỗi bằng chứng/audit. Hệ thống chia thành các vùng tin cậy khác nhau (Hình 3.3). Vùng **không tin cậy** gồm đầu ra mọi mô hình (AIHS, Gemini) và văn bản của cảnh báo, log. Vùng **Agent** được tin ở việc *chuẩn bị*, không ở việc *quyết định quyền*. Vùng **máy Operator** giữ hai khoá riêng (ký phê duyệt, ký attestation) và chạy Verifier. **Safe Executor** chỉ nghe trên địa chỉ cầu Docker riêng của máy giám sát (mặc định của mã là `127.0.0.1`) và chỉ nói được với hai node qua forced-command.
 
-Thiết kế dựa trên các giả định: (1) khoá riêng của Operator và Verifier chỉ nằm trên máy Operator; (2) máy Operator không bị chiếm và Operator ký có chủ ý; (3) catalog, bảng phạm vi và hợp đồng probe do chủ miền duyệt, và mã Gate/Executor/Verifier là mã đã duyệt; (4) telemetry không bị làm giả có chủ đích (đồ án chống *sai sót* và *thiếu bằng chứng*, không chống kẻ điều khiển được telemetry); (5) tài khoản và role AWS không bị chiếm, quyền AWS và quyền SSH vào máy giám sát là hai lớp độc lập; (6) chỉ xét staging. <!-- nguồn: docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md §3-§5; docs/BAO_CAO_KIEN_TRUC_HA_TANG.md §9; agent_src/core/environment_profile.py -->
+Thiết kế dựa trên các giả định: (1) khoá riêng của Operator và Verifier chỉ nằm trên máy Operator; (2) máy Operator không bị chiếm và Operator ký có chủ ý; (3) catalog, bảng phạm vi và hợp đồng probe do chủ miền duyệt, và mã Gate/Executor/Verifier là mã đã duyệt; (4) telemetry không bị làm giả có chủ đích (khoá luận chống *sai sót* và *thiếu bằng chứng*, không chống kẻ điều khiển được telemetry); (5) tài khoản và role AWS không bị chiếm, quyền AWS và quyền SSH vào máy giám sát là hai lớp độc lập; (6) chỉ xét staging. <!-- nguồn: docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md §3-§5; docs/BAO_CAO_KIEN_TRUC_HA_TANG.md §9; agent_src/core/environment_profile.py -->
 
 ### 3.2.2. Mối đe doạ và cơ chế đối phó
 
@@ -85,15 +89,15 @@ Báo cáo kiến trúc an toàn của repo mô tả cơ chế kiểm soát nhưn
 | T8 | Sửa hoặc xoá dấu vết | Audit append-only (trigger chặn `UPDATE`/`DELETE`), chuỗi băm; kiểm chuỗi trước khi xác minh | Ai ghi được CSDL có thể thay audit, nhưng không giả được chữ ký Verifier |
 | T9 | Rò đáp án (ground truth) vào quyết định | Alert không mang mã kịch bản; marker chỉ trong tệp root của host; image Agent không chứa ground truth; hàm quyết định không nhận tham số đáp án | Phụ thuộc kỷ luật kiểm thử; có test và kiểm tra CI |
 | T10 | Lộ bí mật | Secret ở tệp mount; che thông tin trong log, audit, đề xuất mô hình | Người đọc được tệp trên host vẫn thấy secret |
-| T11 | Operator sai hoặc mệt mỏi | Thẻ duyệt tóm tắt 8 kiểm tra; từ chối là kết cục hợp lệ; chính sách duyệt cố định giữa các nhánh đối chứng | Một người vừa thiết kế, duyệt và gán nhãn (mục 3.8) |
+| T11 | Operator sai hoặc mệt mỏi | Thẻ duyệt tóm tắt 8 kiểm tra; từ chối là kết cục hợp lệ; chính sách duyệt cố định giữa các nhánh đối chứng | Một người vừa thiết kế, duyệt và gán nhãn (Mục 3.8) |
 
 <!-- nguồn: docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md §3-§5; agent_src/core/safety/safe_execution_gate.py; agent_src/core/safety/safe_action_audit.py; agent_src/core/moodle/planner.py; agent_src/core/moodle/ai_shadow_proposal.py; automation/moodle-safe-executor-api.py; docs/BAO_CAO_KIEN_TRUC_HA_TANG.md §8.2; docs/BAO_CAO_KE_HOACH_CHAY_LIVE_C0_C3.md §4 -->
 
-T3 và T9 gặp nhau ở một nguyên tắc: mô hình, ground truth và văn bản bên ngoài *không bao giờ* là đầu vào cấp quyền; ground truth chỉ dùng để chấm điểm sau quyết định. Khung không chống kẻ điều khiển telemetry, máy Operator bị chiếm, tấn công chuỗi cung ứng, từ chối dịch vụ lên Telegram, hay sự cố của chính RDS (RDS chạy Single-AZ nên failover nằm ngoài phạm vi đánh giá); các giới hạn này được nhắc lại ở Chương 6. <!-- nguồn: docs/BAO_CAO_KIEN_TRUC_HA_TANG.md §6.1, §11 -->
+T3 và T9 gặp nhau ở một nguyên tắc: mô hình, ground truth và văn bản bên ngoài *không bao giờ* là đầu vào cấp quyền; ground truth chỉ dùng để chấm điểm sau quyết định. Khung không chống kẻ điều khiển telemetry, máy Operator bị chiếm, tấn công chuỗi cung ứng, từ chối dịch vụ lên Telegram, hay sự cố của chính RDS (RDS chạy Single-AZ nên failover nằm ngoài phạm vi đánh giá); các giới hạn này được nhắc lại ở Mục 6.4. <!-- nguồn: docs/BAO_CAO_KIEN_TRUC_HA_TANG.md §6.1, §11 -->
 
 ## 3.3. Kiến trúc hạ tầng Moodle trên AWS
 
-Hạ tầng được thiết kế vừa giống một hệ thống Moodle thật vừa *đo được phần khắc phục của Agent*: không có Auto Scaling Group, nên một node dừng sẽ không được AWS tự thay và phần phục hồi quan sát được là phần Agent và Executor làm. Hạ tầng chạy ở region `ap-southeast-1`, hai Availability Zone. <!-- nguồn: docs/BAO_CAO_KIEN_TRUC_HA_TANG.md §2, §5 -->
+Hạ tầng được thiết kế vừa giống một hệ thống Moodle thật vừa *đo được phần khắc phục của Agent*: không có Auto Scaling Group, nên một node dừng sẽ không được AWS tự thay và phần hồi phục quan sát được là phần Agent và Executor làm. Hạ tầng chạy ở region `ap-southeast-1`, hai Availability Zone (Hình 3.1). <!-- nguồn: docs/BAO_CAO_KIEN_TRUC_HA_TANG.md §2, §5 -->
 
 ```mermaid
 flowchart TB
@@ -154,7 +158,7 @@ Các quyết định chính. **Phân tầng mạng:** tầng ứng dụng ra Int
 
 ### 3.4.1. Luồng tổng quát
 
-Hình 3.2 là luồng tổng quát theo sơ đồ sơ bộ của đồ án: từ người dùng và Moodle, qua giám sát, tới Agent điều tra, rồi ba lớp kiểm soát (Safety Gate, Operator + Executor, Independent Verifier) và hai kết cục (đánh dấu khôi phục, hoặc dừng và báo Operator); nhánh nào cũng kết thúc bằng lưu bằng chứng và báo cáo.
+Hình 3.2 là luồng tổng quát theo sơ đồ sơ bộ của khoá luận: từ người dùng và Moodle, qua giám sát, tới Agent điều tra, rồi ba lớp kiểm soát (Safety Gate, Operator + Executor, Independent Verifier) và hai kết cục (đánh dấu hồi phục, hoặc dừng và báo Operator); nhánh nào cũng kết thúc bằng lưu bằng chứng và báo cáo.
 
 ```mermaid
 flowchart TD
@@ -167,13 +171,13 @@ flowchart TD
     AG --> INV["Điều tra sự cố: đọc trạng thái và bằng chứng"]
     INV --> CH["Chọn cách xử lý phù hợp"]
     CH --> SG{"Safety Gate: kiểm tra quy tắc và quyền hạn"}
-    SG -->|"Cần duyệt"| OP["Người vận hành xem xét"]
-    SG -->|"Không an toàn hoặc chưa rõ"| STOP["Dừng và báo người vận hành"]
-    OP -->|"Đồng ý"| EX["Executor thực hiện hành động được phép"]
+    SG -->|"Cần duyệt"| OP["Operator xem xét"]
+    SG -->|"Không an toàn hoặc chưa rõ"| STOP["Dừng và báo Operator"]
+    OP -->|"Đồng ý"| EX["Safe Executor thực hiện hành động được phép"]
     OP -->|"Từ chối hoặc hết hạn"| STOP
     EX --> M
     EX --> VER["Independent Verifier kiểm tra Moodle sau khi sửa"]
-    VER -->|"Tất cả kiểm tra đạt và ổn định đủ lâu"| REC["Đánh dấu đã khôi phục"]
+    VER -->|"Tất cả kiểm tra đạt và ổn định đủ lâu"| REC["Đánh dấu đã hồi phục"]
     VER -->|"Kiểm tra chưa đạt"| STOP
     REC --> EVD["Lưu bằng chứng và báo cáo"]
     STOP --> EVD
@@ -205,7 +209,7 @@ flowchart LR
         OP["Operator: ký Ed25519 gắn digest"]
         VF["Independent Verifier: ký attestation"]
     end
-    subgraph ex["Safe Executor trên máy giám sát, chỉ loopback"]
+    subgraph ex["Safe Executor trên máy giám sát, chỉ nghe trên cầu Docker riêng"]
         API["Executor API: HMAC, nonce, allowlist, idempotency"]
     end
     subgraph nd["Node Moodle"]
@@ -225,13 +229,15 @@ flowchart LR
 
 **Hình 3.3.** Các vùng tin cậy và đường đi của quyền
 
+Bảng 3.6 tóm tắt phân vai của ba lớp kiểm soát: mỗi lớp nhận gì, được quyết định gì và bị cấm quyết định gì.
+
 **Bảng 3.6.** Phân vai Safety Gate, Safe Executor và Independent Verifier
 
 | Thành phần | Nhận đầu vào | Được quyết định | Không được quyết định |
 | --- | --- | --- | --- |
 | Safety Gate | Action có kiểu, bằng chứng, catalog, phạm vi, môi trường, approval | `DENY`, `REQUIRE_APPROVAL`, `ALLOW` | Không chạy lệnh; không tuyên bố đã sửa xong |
-| Safe Executor | Yêu cầu đã ký và Gate cho phép | Chạy đúng action trong allowlist trên đúng node; ghi receipt | Không tự chọn action khác; không xác nhận phục hồi |
-| Independent Verifier | Receipt và trạng thái *sau* khi sửa | Chấm probe, ký kết quả | Không sửa hệ thống; không dùng điểm mô hình làm bằng chứng phục hồi |
+| Safe Executor | Yêu cầu đã ký và Gate cho phép | Chạy đúng action trong allowlist trên đúng node; ghi receipt | Không tự chọn action khác; không xác nhận hồi phục |
+| Independent Verifier | Receipt và trạng thái *sau* khi sửa | Chấm probe, ký kết quả | Không sửa hệ thống; không dùng điểm mô hình làm bằng chứng hồi phục |
 
 <!-- nguồn: docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md §2 -->
 
@@ -309,6 +315,8 @@ stateDiagram-v2
     EXECUTED --> FAILED
     VERIFYING --> FAILED
     RESOLVED --> [*]
+    VERIFIED_DRY_RUN --> [*]
+    FAILED --> [*]
 ```
 
 **Hình 3.5.** Máy trạng thái incident (mọi trạng thái chưa kết thúc đều có thể chuyển sang `FAILED`)
@@ -347,13 +355,13 @@ Gate còn có hàm `diagnose` chạy *mọi* quy tắc, không dừng và không
 
 Phê duyệt được thiết kế để *gắn với đúng một action*. Operator xem thẻ duyệt trên Telegram [TelegramBot] (kịch bản, action, phạm vi, tài nguyên, 8 kiểm tra) và gửi `approve` hoặc `reject`. Bot chỉ nhận tin từ đúng nhóm và đúng danh sách người dùng quản trị; tin cũ, tin trả lời nhầm yêu cầu khác hoặc hai yêu cầu đồng thời trên một nhóm đều không duyệt được. Tin chat *không phải* chữ ký: sau `approve`, cầu nối dùng khoá riêng Ed25519 *trên máy Operator* ký thông điệp `digest:actor:expires_at`, với `digest` là SHA-256 của JSON chuẩn tắc gồm môi trường, kịch bản, action, phạm vi và khoá idempotency; hạn tối đa 15 phút (script mặc định 5 phút). Vì khoá idempotency nằm trong digest, một chữ ký không dùng lại được cho yêu cầu khác. <!-- nguồn: automation/moodle-telegram-approval.py; automation/moodle-safe-approval.py; agent_src/core/safety/safe_executor_client.py (action_digest); docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md §3 -->
 
-Triển khai staging dùng chế độ `operator` (`AIOPS_APPROVAL_MODE=operator`, khớp hồ sơ staging): *một* chữ ký được cả Gate và Executor kiểm (Gate dùng digest của Executor), phù hợp với một người vận hành. Chế độ `two_person`, cũng là mặc định của mã khi không cấu hình, đòi hai chữ ký của hai actor khác nhau và bắt buộc với hồ sơ không phải staging. Chữ ký gắn với *danh tính action* (kịch bản, action, phạm vi, khoá idempotency), không gắn với danh sách ID bằng chứng, vì Operator có thể duyệt rất muộn; do đó ngay trước khi thi hành Agent tái thu bằng chứng nếu bằng chứng đã cũ và chỉ tiếp tục khi bằng chứng mới vẫn ủng hộ *cùng* action và mục tiêu. <!-- nguồn: agent_src/config/environment_profiles/staging.json; agent_src/core/moodle/live_handoff.py; ansible/playbooks/configure-moodle-monitoring.yml (AIOPS_APPROVAL_MODE) -->
+Triển khai staging dùng chế độ `operator` (`AIOPS_APPROVAL_MODE=operator`, khớp hồ sơ staging): *một* chữ ký được cả Gate và Executor kiểm (Gate dùng digest của Executor), phù hợp với một Operator duy nhất. Chế độ `two_person`, cũng là mặc định của mã khi không cấu hình, đòi hai chữ ký của hai actor khác nhau và bắt buộc với hồ sơ không phải staging. Chữ ký gắn với *danh tính action* (kịch bản, action, phạm vi, khoá idempotency), không gắn với danh sách ID bằng chứng, vì Operator có thể duyệt rất muộn; do đó ngay trước khi thi hành Agent tái thu bằng chứng nếu bằng chứng đã cũ và chỉ tiếp tục khi bằng chứng mới vẫn ủng hộ *cùng* action và mục tiêu. <!-- nguồn: agent_src/config/environment_profiles/staging.json; agent_src/core/moodle/live_handoff.py; ansible/playbooks/configure-moodle-monitoring.yml (AIOPS_APPROVAL_MODE) -->
 
 ### 3.5.4. Safe Executor
 
-Executor là API HTTP nhỏ trên máy giám sát (chỉ loopback), mặc định *tắt* (`EXECUTOR_LIVE_ENABLED=false`). Một yêu cầu phải vượt lần lượt: (1) **xác thực truyền tải** bằng HMAC (phương thức, đường dẫn, timestamp lệch ≤ 30 s, nonce, băm thân); khoá này là khoá *truyền tải*, không phải khoá phê duyệt; (2) **schema và môi trường** `staging`; (3) **allowlist**: bộ ba (kịch bản, action, phạm vi) phải nằm trong bảng cố định, bảng này quyết định danh sách node, và digest phải khớp digest tính lại; (4) **chữ ký Operator**, Executor tự kiểm bằng khoá công khai [OpenSSL], actor trong danh sách, hạn ≤ 15 phút; (5) **kill switch**: nếu tắt trả `423` và `mutated = false` *trước* khi giữ khoá và trước mọi lệnh SSH; (6) **chống phát lại và idempotency bền vững**: nonce và khoá idempotency được giữ nguyên tử trong SQLite trước mọi thay đổi; (7) **thi hành** lần lượt từng node qua SSH forced-command, giới hạn 45 s mỗi node. <!-- nguồn: automation/moodle-safe-executor-api.py; docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md §4 -->
+Executor là API HTTP nhỏ trên máy giám sát, chỉ nghe trên địa chỉ cầu Docker riêng (mặc định của mã là `127.0.0.1`), mặc định *tắt* (`EXECUTOR_LIVE_ENABLED=false`). Một yêu cầu phải vượt lần lượt: (1) **xác thực truyền tải** bằng HMAC (phương thức, đường dẫn, timestamp lệch ≤ 30 s, nonce, băm thân); khoá này là khoá *truyền tải*, không phải khoá phê duyệt; (2) **schema và môi trường** `staging`; (3) **allowlist**: bộ ba (kịch bản, action, phạm vi) phải nằm trong bảng cố định, bảng này quyết định danh sách node, và digest phải khớp digest tính lại; (4) **chữ ký Operator**, Executor tự kiểm bằng khoá công khai [OpenSSL], actor trong danh sách, hạn ≤ 15 phút; (5) **kill switch**: nếu tắt trả `423` và `mutated = false` *trước* khi giữ khoá và trước mọi lệnh SSH; (6) **chống phát lại và idempotency bền vững**: nonce và khoá idempotency được giữ nguyên tử trong SQLite trước mọi thay đổi; (7) **thi hành** lần lượt từng node qua SSH forced-command, giới hạn 45 s mỗi node. <!-- nguồn: automation/moodle-safe-executor-api.py; docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md §4 -->
 
-Receipt gồm `status` (`executed`, `partial_failure`, `failed`), node đã hoàn tất và `mutated`; khi một lệnh lỗi mà không biết đã đổi trạng thái chưa thì `mutated` là *chưa biết* (`mutation_state = unknown`). Phản hồi được ký HMAC; Agent xác thực và chuẩn hoá nghiêm ngặt, trường không nhất quán thì không tin và leo thang. Rollback chỉ được yêu cầu khi receipt chứng minh thay đổi một phần hoặc chưa biết, chỉ bằng action *đối ứng* đã duyệt cùng đích, với request và khoá idempotency mới. `executed` chỉ chứng minh action đã chạy, không bao giờ là bằng chứng phục hồi. Thiết kế này đối lập với các agent cho mô hình ra lệnh shell trực tiếp, như KubeLLM dùng lệnh shell Linux làm công cụ của agent [KubeLLM2025]: ở khung này mô hình chỉ chọn một *tên action* trong catalog, và tên đó phải qua Gate, chữ ký và allowlist. <!-- nguồn: agent_src/core/safety/safe_action_live.py; agent_src/core/safety/safe_executor_client.py; Brainstorm/KubeLLM_CameraReady.pdf (tóm tắt) -->
+Receipt gồm `status` (`executed`, `partial_failure`, `failed`), node đã hoàn tất và `mutated`; khi một lệnh lỗi mà không biết đã đổi trạng thái chưa thì `mutated` là *chưa biết* (`mutation_state = unknown`). Phản hồi được ký HMAC; Agent xác thực và chuẩn hoá nghiêm ngặt, trường không nhất quán thì không tin và leo thang. Rollback chỉ được yêu cầu khi receipt chứng minh thay đổi một phần hoặc chưa biết, chỉ bằng action *đối ứng* đã duyệt cùng đích, với request và khoá idempotency mới. `executed` chỉ chứng minh action đã chạy, không bao giờ là bằng chứng hồi phục. Thiết kế này đối lập với các agent cho mô hình ra lệnh shell trực tiếp, như KubeLLM dùng lệnh shell Linux làm công cụ của agent [KubeLLM2025]: ở khung này mô hình chỉ chọn một *tên action* trong catalog, và tên đó phải qua Gate, chữ ký và allowlist. <!-- nguồn: agent_src/core/safety/safe_action_live.py; agent_src/core/safety/safe_executor_client.py; Brainstorm/KubeLLM_CameraReady.pdf (tóm tắt) -->
 
 ### 3.5.5. Independent Verifier
 
@@ -369,13 +377,13 @@ Mỗi kịch bản có *hợp đồng probe* gồm ba nhóm. **Allowed**: dịch
 | DB-01 | alert hết; TLS tới DB từ node A và B; cả hai target ALB khoẻ |
 | RES-01 | alert hết; container tải CPU đã biến mất |
 | NET-01 | alert hết; phân giải DB đúng trên node A và B; cả hai target ALB khoẻ |
-| SEC-02 | alert hết; mode thư mục fixture đã khôi phục; EFS đã mount |
+| SEC-02 | alert hết; mode thư mục fixture đã được đặt lại; EFS đã mount |
 | BIZ-01 | alert hết; maintenance đã tắt; trang khoá học HTTP 200 |
 | BIZ-02 | alert hết; cron hoạt động; không còn ad-hoc task quá hạn |
 
 <!-- nguồn: agent_src/core/verification/live_contracts.py; docs/BAO_CAO_KIEN_TRUC_HA_TANG.md §6.1 -->
 
-Agent không tin Verifier một cách mù quáng. Trước khi ghi `RESOLVED`, Agent kiểm: chữ ký Ed25519 bằng khoá công khai của Verifier; attestation còn mới (≤ 120 s) và gắn đúng request; `receipt_event_hash` khớp receipt duy nhất trong audit và audit có một `ALLOW` của Gate *đứng trước* receipt; ≥ 3 mẫu tăng dần, trải ≥ 120 s, hai mẫu liên tiếp cách nhau ≤ 65 s; mỗi mẫu phủ đúng tập probe hợp đồng và đều đạt; mọi mẫu lấy *sau* receipt; kết quả không mô phỏng. Sau đó incident đi qua máy trạng thái ở Hình 3.5. Trạng thái `resolved` về sau được *tính lại* từ chữ ký và receipt; một dòng audit tự khai `resolved` mà không có chữ ký hợp lệ chỉ cho trạng thái `verifying`. Khi một probe lỗi, mẫu chưa đủ hoặc attestation không hợp lệ, incident chưa `RESOLVED` dù `/healthz.php` trả 200. SEC-01 (chỉ người) không có receipt Executor nên không có đường attestation tự động; hợp đồng probe của nó cố ý không có trong Bảng 3.8. <!-- nguồn: agent_src/core/safety/verifier_attestation.py; agent_src/core/safety/safe_action_audit.py (get_live_incident_status); agent_src/config/environment_profiles/staging.json; docs/BAO_CAO_KICH_BAN_LOI.md §4.7 -->
+Agent không tin Verifier một cách mù quáng. Trước khi ghi `RESOLVED`, Agent kiểm: chữ ký Ed25519 bằng khoá công khai của Verifier; attestation còn mới (≤ 120 s) và gắn đúng request; `receipt_event_hash` khớp receipt duy nhất trong audit và audit có một `ALLOW` của Gate *đứng trước* receipt; ≥ 3 mẫu tăng dần, trải ≥ 120 s, hai mẫu liên tiếp cách nhau ≤ 65 s; mỗi mẫu phủ đúng tập probe hợp đồng và đều đạt; mọi mẫu lấy *sau* receipt; kết quả không mô phỏng. Sau đó incident đi qua máy trạng thái ở Hình 3.5. Trạng thái `resolved` về sau được *tính lại* từ chữ ký và receipt; một dòng audit tự khai `resolved` mà không có chữ ký hợp lệ chỉ cho trạng thái `verifying`. Khi một probe lỗi, mẫu chưa đủ hoặc attestation không hợp lệ, incident chưa `RESOLVED` dù `/healthz.php` trả 200. SEC-01 (chỉ người) không có receipt Executor nên không có đường attestation tự động; hợp đồng probe của nó cố ý không có trong Bảng 3.8. BIZ-01 có hợp đồng trong mã nhưng không chạy live trong chiến dịch AIHS (Bảng 3.9). <!-- nguồn: agent_src/core/safety/verifier_attestation.py; agent_src/core/safety/safe_action_audit.py (get_live_incident_status); agent_src/config/environment_profiles/staging.json; docs/BAO_CAO_KICH_BAN_LOI.md §4.7 -->
 
 ### 3.5.6. Chuỗi audit và bằng chứng
 
@@ -383,7 +391,7 @@ Mỗi incident có một chuỗi audit append-only: mỗi sự kiện chứa bă
 
 ## 3.6. Catalog action và các kịch bản lỗi
 
-Bộ đánh giá chuẩn hoá của luận văn gồm bảy kịch bản (BIZ-01, BIZ-02, CON-01, DB-01, RES-01, NET-01, SEC-01), rút từ bộ mười tình huống cũ theo nguyên tắc "quản trị hạ tầng, không quản trị ứng dụng"; BIZ-02 sửa ở mức container cron, không sửa bảng `mdl_task_adhoc`. Chiến dịch AIHS dùng thêm **SEC-02** (thư mục fixture trên EFS bị đổi mode về `0000`), có trong catalog và mapping đã duyệt, nên Bảng 3.9 có tám hàng. <!-- nguồn: docs/BAO_CAO_KICH_BAN_LOI.md §1; docs/PLANNING_UNG_DUNG_LDA_GBDT.md §11.1; agent_src/core/safety/action_catalog.py -->
+Bộ đánh giá chuẩn hoá của khoá luận gồm bảy kịch bản (BIZ-01, BIZ-02, CON-01, DB-01, RES-01, NET-01, SEC-01), rút từ bộ mười tình huống cũ theo nguyên tắc "quản trị hạ tầng, không quản trị ứng dụng"; BIZ-02 sửa ở mức container cron, không sửa bảng `mdl_task_adhoc`. Chiến dịch AIHS dùng thêm **SEC-02** (thư mục fixture trên EFS bị đổi mode về `0000`), có trong catalog và mapping đã duyệt, nên Bảng 3.9 có tám hàng. <!-- nguồn: docs/BAO_CAO_KICH_BAN_LOI.md §1; docs/PLANNING_UNG_DUNG_LDA_GBDT.md §11.1; agent_src/core/safety/action_catalog.py -->
 
 **Bảng 3.9.** Kịch bản lỗi, action trong catalog, mức rủi ro và việc chạy live
 
@@ -412,6 +420,8 @@ Có hai hợp đồng. Hợp đồng thứ nhất dành cho sáu mã server gố
 
 ### 3.7.2. Mapping: bản nháp và bản đã duyệt cho live
 
+Mỗi mục mapping có một trạng thái duyệt quyết định nó được dùng ở đâu (Bảng 3.10).
+
 **Bảng 3.10.** Trạng thái của một mục mapping action
 
 | Trạng thái | Ý nghĩa | Được dùng cho |
@@ -426,6 +436,8 @@ Có hai hợp đồng. Hợp đồng thứ nhất dành cho sáu mã server gố
 Hai bản mapping tồn tại song song. Bản nháp `a3-c0-action-mapping-draft.json` (`draft_pending_domain_review`, không mục nào được duyệt) dùng khi khoá protocol offline và chấm tập test. Bản `a3-c0-action-mapping-reviewed.json` (`reviewed_for_live`) được chủ miền duyệt ngày 16/11/2026 cho sáu action thay đổi hệ thống, giữ nguyên catalog, đích, phạm vi, điều kiện trước, rollback và probe so với bản nháp. Biên bản nêu điều kiện: duyệt mapping *không* phải cho phép chạy; mỗi lượt vẫn cần Gate, chữ ký Operator gắn action, Safe Executor và Independent Verifier; chỉ áp dụng cho staging; action ngoài danh sách vẫn fail-closed. Hệ quả đo lường: kết quả offline chỉ khẳng định "yêu cầu có kiểu hợp lệ trong phạm vi mapping nháp", không khẳng định "action đã được chuyên gia duyệt". <!-- nguồn: docs/BAO_CAO_A3_MAPPING_REVIEW_RECORD.md; docs/BAO_CAO_PROTOCOL_C0_C3_OFFLINE.md §1 -->
 
 ### 3.7.3. Shadow bridge và staging handoff
+
+Hình 3.6 cho thấy đề xuất của model C0 đi qua adapter rồi rẽ thành hai đường: shadow bridge (chỉ xem trước) và staging handoff (chuẩn bị yêu cầu cho Operator).
 
 ```mermaid
 flowchart TD
@@ -449,11 +461,11 @@ flowchart TD
 
 ### 3.7.4. Bốn cấu hình C0–C3
 
-Bốn cấu hình giữ nguyên model, snapshot, proposal và mapping; chỉ lớp bảo vệ phía sau model thay đổi. Nhờ vậy khác biệt về an toàn và khôi phục quy được cho từng lớp, còn chất lượng dự đoán của model được báo riêng (HitRate, ReverseRate…) và không gán cho Gate, Executor hay Verifier.
+Bốn cấu hình (Bảng 3.11, Hình 3.7) giữ nguyên model, snapshot, proposal và mapping; chỉ lớp bảo vệ phía sau model thay đổi. Nhờ vậy khác biệt về an toàn và hồi phục quy được cho từng lớp, còn chất lượng dự đoán của model được báo riêng (HitRate, ReverseRate…) và không gán cho Gate, Executor hay Verifier.
 
 **Bảng 3.11.** Bốn cấu hình so sánh
 
-| Cấu hình | Thành phần | Kết luận phục hồi | Thi hành thật? |
+| Cấu hình | Thành phần | Kết luận hồi phục | Thi hành thật? |
 | --- | --- | --- | --- |
 | C0 | AIHS LDA/GBDT (`aihs-paper-repro-moodle-v1`) | Không áp dụng | Không: phản thực tế "thi hành nguyên trạng" (`would_dispatch_as_is`) |
 | C1 | C0 + Safety Gate | Không áp dụng | Không: Gate chạy shadow trên đề xuất |
@@ -472,7 +484,7 @@ C3:        có            có                    có, thi hành thật          
 
 **Hình 3.7.** Chồng lớp C0–C3 (mỗi cấu hình thêm một lớp lên cấu hình trước)
 
-**Vì sao C0 và C1 không thi hành live.** Bốn lý do, đều là quyết định đã đăng ký trước khi chạy: (1) biên bản duyệt mapping yêu cầu *mọi lượt live có Gate, chữ ký Operator, Safe Executor*, mà C0 thi hành nguyên trạng không qua Gate; (2) đồ án không cho action nguy hiểm hoặc vượt phạm vi chạy thật để lấy số liệu, nên C0 chỉ ghi `would-dispatch` và được chấm bằng nhãn an toàn; (3) prototype AIHS chỉ *trả đề xuất*, không chạy action, nên "C0 live" thực chất là một harness do khoá luận dựng, không phải AIHS production; (4) so sánh thời gian chỉ hợp lệ khi hai nhánh có quy trình duyệt tương đương. C0 và C1 vì thế chạy offline trên tập test của lab và dạng *shadow* trong lượt live (ghi đề xuất và quyết định Gate từ cùng snapshot, không chạm staging). Offline không có Operator, Executor hay probe phục hồi, nên C2 và C3 được ghi `OFFLINE_EQUALS_C1_BY_CONSTRUCTION` và không được trình bày như cải thiện so với C1.
+**Vì sao C0 và C1 không thi hành live.** Bốn lý do, đều là quyết định đã đăng ký trước khi chạy: (1) biên bản duyệt mapping yêu cầu *mọi lượt live có Gate, chữ ký Operator, Safe Executor*, mà C0 thi hành nguyên trạng không qua Gate; (2) khoá luận không cho action nguy hiểm hoặc vượt phạm vi chạy thật để lấy số liệu, nên C0 chỉ ghi `would-dispatch` và được chấm bằng nhãn an toàn; (3) prototype AIHS chỉ *trả đề xuất*, không chạy action, nên "C0 live" thực chất là một harness do khoá luận dựng, không phải AIHS production; (4) so sánh thời gian chỉ hợp lệ khi hai nhánh có quy trình duyệt tương đương. C0 và C1 vì thế chạy offline trên tập test của lab và dạng *shadow* trong lượt live (ghi đề xuất và quyết định Gate từ cùng snapshot, không chạm staging). Offline không có Operator, Executor hay probe hồi phục, nên C2 và C3 được ghi `OFFLINE_EQUALS_C1_BY_CONSTRUCTION` và không được trình bày như cải thiện so với C1.
 
 **C2 được lấy từ C3, không chạy riêng.** Để so sánh *kết luận health-only* với *kết luận Verifier trên cùng một lần thi hành*, mọi lượt live là C3, còn C2 là *góc nhìn* `health_only_view` ghi từ chính lượt đó (cùng action, cùng thời điểm), trả lời câu "nếu chỉ dựa vào health-only thì kết luận gì". Cách này loại biến nhiễu giữa hai lượt khác nhau nhưng không quan sát được hành vi riêng của C2 khi không có Verifier (ví dụ Operator xử lý khác đi); đó là một giới hạn đã ghi. <!-- nguồn: docs/BAO_CAO_KE_HOACH_CHAY_LIVE_C0_C3.md §1 (quyết định phương án b); docs/BAO_CAO_PROTOCOL_C0_C3_OFFLINE.md §2; docs/PLANNING_UNG_DUNG_LDA_GBDT.md §1, §8 -->
 
@@ -488,10 +500,10 @@ Chương 5 trình bày số liệu; mục này chỉ nêu nguyên tắc để k�
 
 **Bảng 3.12.** Loại bằng chứng và phạm vi kết luận
 
-| Loại bằng chứng | Ví dụ trong đồ án | Được kết luận | Không được kết luận |
+| Loại bằng chứng | Ví dụ trong khoá luận | Được kết luận | Không được kết luận |
 | --- | --- | --- | --- |
 | Kiểm thử đơn vị và hợp đồng | Bộ test của Agent; schema, fail-closed, chữ ký | Logic đúng trên đầu vào đã định nghĩa | Hiệu quả trên sự cố thật |
-| Replay offline | Replay 15 kịch bản trong CI; replay C0 shadow | Quyết định đúng trên dữ liệu mẫu | Phục hồi live, RTO |
+| Replay offline | Replay 15 kịch bản trong CI; replay C0 shadow | Quyết định đúng trên dữ liệu mẫu | Hồi phục live, RTO |
 | Lab cục bộ | Lab Docker mô phỏng staging; train/validation/test | Chất lượng model và chi phí của Gate trên lab | Hành vi trên AWS |
 | Live staging | Lượt C3 và lượt bổ sung trên AWS | Cơ chế và kết quả quan sát ở staging | Tỷ lệ ở production |
 
@@ -516,10 +528,9 @@ Về AIHS, chương mô tả hợp đồng đề xuất fail-closed, hai trạng
 ## Tài liệu tham khảo của chương
 
 - **[AIHS2021]** Rui Li và cs., "Automated Intelligent Healing in Cloud-Scale Data Centers", IEEE International Symposium on Reliable Distributed Systems (SRDS), 2021. DOI: 10.1109/SRDS53918.2021.00032.
-- **[GoogleSRE-AI]** Stevan Malesevic, Christopher Heiser, "AI in SRE: Where and how Google is deploying agentic AI to improve operations", DevOps & SRE, Google, 29/05/2026. Tệp lưu: `A:/KLTN/Brainstorm/Google-SRE-AI.pdf`.
-- **[AIOpsLab2025]** Yinfang Chen, Manish Shetty, Gagan Somashekar, Minghua Ma, Yogesh Simmhan, Jonathan Mace, Chetan Bansal, Rujia Wang, Saravan Rajmohan, "AIOpsLab: A Holistic Framework to Evaluate AI Agents for Enabling Autonomous Clouds", arXiv:2501.06706v1 [cs.AI], 12/01/2025.
-- **[KubeLLM2025]** Mario De Jesus, Perfect Sylvester, William Clifford, Aaron Perez, Palden Lama, "LLM-Based Multi-Agent Framework For Troubleshooting Distributed Systems", Proc. of the 2025 IEEE Cloud Summit (bản camera-ready). Tệp lưu: `A:/KLTN/Brainstorm/KubeLLM_CameraReady.pdf`.
-- **[PlatformEng-Agentic]** Lakmal Warusawithana (WSO2), "Platform engineering for the agentic enterprise: Managing applications, resources, and AI agents", blog thành viên CNCF, đăng 21/07/2026. Tệp lưu: `A:/KLTN/Brainstorm/Platform-Engineering.pdf`.
+- **[GoogleSRE-AI]** Stevan Malesevic, Christopher Heiser, "AI in SRE: Where and how Google is deploying agentic AI to improve operations", DevOps & SRE, Google, 29/05/2026.- **[AIOpsLab2025]** Yinfang Chen, Manish Shetty, Gagan Somashekar, Minghua Ma, Yogesh Simmhan, Jonathan Mace, Chetan Bansal, Rujia Wang, Saravan Rajmohan, "AIOpsLab: A Holistic Framework to Evaluate AI Agents for Enabling Autonomous Clouds", arXiv:2501.06706v1 [cs.AI], 12/01/2025.
+- **[KubeLLM2025]** Mario De Jesus, Perfect Sylvester, William Clifford, Aaron Perez, Palden Lama, "LLM-Based Multi-Agent Framework For Troubleshooting Distributed Systems", Proc. of the 2025 IEEE Cloud Summit (bản camera-ready).
+- **[PlatformEng-Agentic]** Lakmal Warusawithana (WSO2), "Platform engineering for the agentic enterprise: Managing applications, resources, and AI agents", blog thành viên CNCF, đăng 21/07/2026.
 - **[Terraform]** HashiCorp, tài liệu Terraform. https://developer.hashicorp.com/terraform
 - **[Ansible]** Red Hat, tài liệu Ansible. https://docs.ansible.com/
 - **[Docker]** Docker Inc., tài liệu Docker. https://docs.docker.com/

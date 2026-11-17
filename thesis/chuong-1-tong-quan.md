@@ -8,7 +8,7 @@ Chương này đặt vấn đề cho toàn bộ khoá luận. Trước hết, ch
 
 Một dịch vụ trực tuyến ngày nay chạy trên nhiều lớp: bộ cân bằng tải, các máy chủ ứng dụng, cơ sở dữ liệu, lưu trữ dùng chung và hệ thống giám sát. Hệ thống càng phân tán thì càng có nhiều điểm hỏng, và một lỗi ở thành phần này có thể lan sang thành phần khác, thậm chí thành sự cố quy mô lớn [AIOpsLab2025]. Vòng đời của một sự cố thường gồm bốn việc: phát hiện, khoanh vùng (triage), chẩn đoán nguyên nhân gốc và giảm thiểu hoặc khắc phục [AIOpsLab2025]. Đội kỹ sư độ tin cậy (SRE) của Google nhận xét rằng độ phức tạp của hệ thống đang tăng nhanh vì kiến trúc vi dịch vụ, vì tính đa dạng của sản phẩm và vì dòng thay đổi liên tục từ các đường ống triển khai; công cụ sinh mã bằng AI còn làm tăng khối lượng mã mới, tức là tăng cơ hội xuất hiện lỗi về độ tin cậy [GoogleSRE-AI].
 
-Trong thực tế, người vận hành (Operator) phải đọc cảnh báo, thu thập bằng chứng, quyết định cách xử lý, thi hành và kiểm tra lại. Mỗi bước tốn thời gian và dễ sai khi áp lực cao. Hai nhu cầu đo lường đi kèm là thời gian khôi phục (RTO, Recovery Time Objective) và lượng dữ liệu có thể mất (RPO, Recovery Point Objective); định nghĩa và cách khoá luận đo hai đại lượng này nằm ở Mục 2.1.
+Trong thực tế, người vận hành (Operator) phải đọc cảnh báo, thu thập bằng chứng, quyết định cách xử lý, thi hành và kiểm tra lại. Mỗi bước tốn thời gian và dễ sai khi áp lực cao. Hai nhu cầu đo lường đi kèm là thời gian hồi phục (RTO, Recovery Time Objective) và lượng dữ liệu có thể mất (RPO, Recovery Point Objective); định nghĩa và cách khoá luận đo hai đại lượng này nằm ở Mục 2.1.
 
 <!-- nguồn: tài liệu AIOpsLab (mục 1, hình 1), Google SRE AI (phần mở đầu); các định nghĩa RTO/RPO của đề tài ở docs/PLANNING_UNG_DUNG_LDA_GBDT.md §8 -->
 
@@ -16,13 +16,13 @@ Trong thực tế, người vận hành (Operator) phải đọc cảnh báo, th
 
 AIOps (Artificial Intelligence for IT Operations) nhằm tự động hoá các tác vụ vận hành phức tạp như định vị lỗi và phân tích nguyên nhân gốc, để giảm khối lượng việc cho con người và hạn chế ảnh hưởng tới khách hàng [AIOpsLab2025]. Mục tiêu dài hạn thường được gọi là "tự chữa lành": hệ thống tự phát hiện, định vị và giảm thiểu lỗi với ít can thiệp của con người [AIOpsLab2025].
 
-Một ví dụ tiêu biểu là hệ thống AIHS do Rui Li và cộng sự công bố tại IEEE SRDS 2021, triển khai ở các trung tâm dữ liệu quy mô lớn [AIHS2021]. AIHS dùng ba tầng học máy nối tiếp: một bộ ánh xạ LDA (Latent Dirichlet Allocation) biến dữ liệu giám sát thành vector chủ đề, một bộ dự đoán GBDT (Gradient Boosted Decision Trees) chọn hành động sửa lỗi, và một bộ điều khiển GBDT kiểm tra hành động đó có khả năng thất bại hay không. Theo bài báo, trong 7 tháng vận hành với 33,7 triệu lỗi, tỉ lệ sửa thành công đạt 92,4 % so với 65,3 % của bộ luật cũ [AIHS2021]. Đây là số liệu của môi trường và định nghĩa riêng của bài báo; khoá luận dùng chúng làm bối cảnh, không dùng làm đích so sánh trực tiếp (xem Mục 1.5 và Chương 2).
+Một ví dụ tiêu biểu là hệ thống AIHS do Rui Li và cộng sự công bố tại IEEE SRDS 2021, triển khai ở các trung tâm dữ liệu quy mô lớn [AIHS2021]. AIHS dùng ba tầng học máy nối tiếp: một bộ ánh xạ LDA (Latent Dirichlet Allocation) biến dữ liệu giám sát thành vector chủ đề, một bộ dự đoán GBDT (Gradient Boosted Decision Trees) chọn hành động sửa lỗi, và một bộ điều khiển GBDT kiểm tra hành động đó có khả năng thất bại hay không. Theo bài báo, trong 7 tháng vận hành với 33,7 triệu lỗi, tỷ lệ sửa thành công đạt 92,4 % so với 65,3 % của bộ luật cũ [AIHS2021]. Đây là số liệu của môi trường và định nghĩa riêng của bài báo; khoá luận dùng chúng làm bối cảnh, không dùng làm đích so sánh trực tiếp (xem Mục 1.5 và Chương 2).
 
 <!-- nguồn: docs/PLANNING_UNG_DUNG_LDA_GBDT.md §1–§2 (bảng chỉ số AIHS, mục B.3 của bài báo) -->
 
 ### 1.1.3. Xu hướng dùng AI agent để tự xử lý sự cố
 
-Sự xuất hiện của mô hình ngôn ngữ lớn (LLM) mở rộng ý tưởng trên. Một AI agent là hệ thống bao quanh LLM bằng vòng lặp suy luận, khả năng gọi công cụ bên ngoài (API, giao diện dòng lệnh, thực thi mã) và bộ nhớ, để diễn giải yêu cầu, ra quyết định và tác động lên môi trường [CloudAgents2025]. Nhóm tác giả AIOpsLab gọi hướng này là AgentOps: các agent quản lý toàn bộ vòng đời sự cố chứ không chỉ một tác vụ riêng lẻ [AIOpsLab2025]. Nhóm của Yang và cộng sự lập luận rằng quản lý hạ tầng đám mây có tính cấu trúc và lặp lại cao, kết quả tương đối dễ kiểm tra so với các bài toán sinh mã, nên rất phù hợp với agent [CloudAgents2025]. Nhiều nghiên cứu đã hiện thực hoá ý tưởng đó, chẳng hạn KubeLLM dùng hai agent (một agent tri thức dùng RAG, một agent công cụ chạy lệnh `kubectl` và sửa tệp) để tự chẩn đoán và sửa lỗi cấu hình Kubernetes [KubeLLM2025]. Ở phía thực hành, Google SRE mô tả việc đưa agent vào điều tra sự cố, giảm thiểu tự động và quản lý cảnh báo, nhưng nhấn mạnh việc dùng AI như một yếu tố nhân hiệu quả (force multiplier) đồng thời vẫn duy trì quyền kiểm soát [GoogleSRE-AI]. Cộng đồng nền tảng (platform engineering) cũng bắt đầu coi agent là một loại "người dùng" của nền tảng, bên cạnh kỹ sư, và đòi hỏi agent phải có danh tính riêng, quyền được giới hạn và vết kiểm toán rõ ràng [PlatformEng-Agentic].
+Sự xuất hiện của mô hình ngôn ngữ lớn (LLM) mở rộng ý tưởng trên. Một AI agent là hệ thống bao quanh LLM bằng vòng lặp suy luận, khả năng gọi công cụ bên ngoài (API, giao diện dòng lệnh, thực thi mã) và bộ nhớ, để diễn giải yêu cầu, ra quyết định và tác động lên môi trường [CloudAgents2025]. Nhóm tác giả AIOpsLab gọi hướng này là AgentOps: các agent quản lý toàn bộ vòng đời sự cố chứ không chỉ một tác vụ riêng lẻ [AIOpsLab2025]. Nhóm của Yang và cộng sự lập luận rằng quản lý hạ tầng đám mây có tính cấu trúc và lặp lại cao, kết quả tương đối dễ kiểm tra so với các bài toán sinh mã, nên rất phù hợp với agent [CloudAgents2025]. Nhiều nghiên cứu đã hiện thực hoá ý tưởng đó, chẳng hạn KubeLLM dùng hai agent (một agent tri thức dùng RAG (Retrieval-Augmented Generation, sinh văn bản có tăng cường truy xuất), một agent công cụ chạy lệnh `kubectl` và sửa tệp) để tự chẩn đoán và sửa lỗi cấu hình Kubernetes [KubeLLM2025]. Ở phía thực hành, Google SRE mô tả việc đưa agent vào điều tra sự cố, giảm thiểu tự động và quản lý cảnh báo, nhưng nhấn mạnh việc dùng AI như một yếu tố nhân hiệu quả (force multiplier) đồng thời vẫn duy trì quyền kiểm soát [GoogleSRE-AI]. Cộng đồng nền tảng (platform engineering) cũng bắt đầu coi agent là một loại "người dùng" của nền tảng, bên cạnh kỹ sư, và đòi hỏi agent phải có danh tính riêng, quyền được giới hạn và vết kiểm toán rõ ràng [PlatformEng-Agentic].
 
 Tuy nhiên, độ tin cậy của agent chưa đủ để giao toàn quyền. Trên bộ đánh giá AIOpsLab gồm 48 bài toán, độ chính xác tổng thể của các agent được thử chỉ nằm trong khoảng 15,25 % đến 59,32 %; bài toán giảm thiểu (mitigation) và phân tích nguyên nhân gốc là khó nhất, và một agent dùng GPT-3.5 không khắc phục được lỗi nào ở tác vụ giảm thiểu [AIOpsLab2025]. Trong KubeLLM, các mô hình nhanh và rẻ có thể thất bại hoàn toàn (độ chính xác 0 %) ở một số loại lỗi, dù độ chính xác trung bình trông chấp nhận được [KubeLLM2025].
 
@@ -34,22 +34,22 @@ Khi đầu ra của mô hình được nối thẳng vào công cụ thi hành, 
 
 **Hành động sai phạm vi.** Đề xuất của mô hình có thể không nằm trong tập hành động đã được kiểm duyệt, nhắm sai máy hoặc sai thành phần, hoặc dựa trên bằng chứng đã cũ. Nhóm của Yang nhấn mạnh rằng thao tác trên đám mây mang tính an toàn tới hạn: sự lệch giữa ý định của người dùng và hành động của agent có thể gây hư hại hạ tầng nghiêm trọng, ví dụ đổi loại máy ảo trên Azure thực chất đòi hỏi huỷ và tạo lại máy, trong khi người dùng có thể tưởng đó là cập nhật tại chỗ [CloudAgents2025]. Cũng nhóm này cho rằng bản chất ngẫu nhiên của agent bảo đảm sẽ có lúc thất bại, vì vậy cần hàng rào kiểm soát (guardrail), kiểm soát truy cập, vết kiểm toán, cơ chế hoàn tác và leo thang cho con người [CloudAgents2025]. Trong chính hệ thống của đề tài, hiện tượng này đã xuất hiện ở mức thử nghiệm: trong các lượt diễn tập staging tháng 11/2026, một agent Gemini chạy ở chế độ chỉ đề xuất (shadow) đã tự đề xuất khởi động lại cơ sở dữ liệu (kịch bản DB-01) và `RESTART_SERVICE` (kịch bản NET-01), hai hành động nằm ngoài danh mục đã duyệt; Safety Gate đã từ chối cả hai (`DENY`) và không có gì được thi hành. Đó chỉ là một mẫu cho mỗi kịch bản, không đủ để suy ra tần suất.
 
-**Báo hồi phục giả.** Hệ thống có thể tuyên bố "đã sửa xong" trong khi dịch vụ chưa phục hồi hoặc một thành phần liên quan đã bị hỏng. Nguyên nhân thường là tiêu chí thành công quá hẹp. Trong KubeLLM, thành công được xác nhận bằng cách kiểm tra tệp cấu hình cuối cùng và việc pod đạt trạng thái Running [KubeLLM2025]. Trong AIHS, bài báo coi một lần sửa là thành công khi server ổn định hơn 20 phút sau sửa, dựa trên bản ghi sửa lỗi chứ không qua một bên xác minh độc lập [AIHS2021]. AIOpsLab chủ động đánh giá trạng thái của toàn hệ thống sau khi giảm thiểu, vì các dịch vụ hoặc tài nguyên khác có thể bị ảnh hưởng ngoài ý muốn [AIOpsLab2025]. Trong hệ thống của đề tài, một diễn tập NET-01 ngày 08/11/2026 cho thấy điểm kiểm tra sức khoẻ (health check) vẫn trả HTTP 200 trong khi lỗi DNS/kết nối cơ sở dữ liệu ở node B và target liên quan của bộ cân bằng tải vẫn hỏng; chỉ các probe liên quan của bên xác minh (Verifier) mới phát hiện được và trả kết luận `collateral_damage`. Một lần nữa, đây là một ca được cấy có kiểm soát.
+**Báo hồi phục giả.** Hệ thống có thể tuyên bố "đã sửa xong" trong khi dịch vụ chưa hồi phục hoặc một thành phần liên quan đã bị hỏng. Nguyên nhân thường là tiêu chí thành công quá hẹp. Trong KubeLLM, thành công được xác nhận bằng cách kiểm tra tệp cấu hình cuối cùng và việc pod đạt trạng thái Running [KubeLLM2025]. Trong AIHS, bài báo coi một lần sửa là thành công khi server hoạt động bình thường hơn 20 phút sau sửa, dựa trên bản ghi sửa lỗi chứ không qua một bên xác minh độc lập [AIHS2021]. AIOpsLab chủ động đánh giá trạng thái của toàn hệ thống sau khi giảm thiểu, vì các dịch vụ hoặc tài nguyên khác có thể bị ảnh hưởng ngoài ý muốn [AIOpsLab2025]. Trong hệ thống của đề tài, một diễn tập NET-01 ngày 08/11/2026 cho thấy điểm kiểm tra sức khoẻ (health check) vẫn trả HTTP 200 trong khi lỗi DNS/kết nối cơ sở dữ liệu ở node B và target liên quan của bộ cân bằng tải vẫn hỏng; chỉ các probe liên quan của Independent Verifier mới phát hiện được và trả kết luận `collateral_damage`. Một lần nữa, đây là một ca được cấy có kiểm soát.
 
-Các rủi ro khác, như hiện tượng "ảo giác" khi sinh lệnh hoặc mã [CloudAgents2025], bất định giữa các lần chạy [GoogleSRE-AI] và tấn công nhằm vào agent [CloudAgents2025], làm tăng thêm nhu cầu coi đầu ra của mô hình là đề xuất không đáng tin, không phải quyền thi hành.
+Các rủi ro khác, như hiện tượng "ảo giác" khi sinh lệnh hoặc mã [CloudAgents2025], bất định giữa các lần chạy [GoogleSRE-AI] và tấn công nhằm vào agent [CloudAgents2025], làm tăng thêm nhu cầu coi đầu ra của mô hình là đề xuất không đáng tin, không phải quyền thi hành. Bảng 1.1 tóm tắt hai rủi ro trung tâm và đối sách tương ứng của khoá luận.
 
 **Bảng 1.1.** Hai rủi ro trung tâm và đối sách tương ứng trong khoá luận
 
 | Rủi ro | Biểu hiện | Nguồn minh hoạ | Đối sách trong khoá luận |
 |---|---|---|---|
-| Hành động sai phạm vi | Hành động ngoài danh mục, sai máy đích/phạm vi, bằng chứng cũ; đổi trạng thái hệ thống ngoài ý muốn | Cloud Infrastructure Management; diễn tập DB-01/NET-01 ngày 08/11/2026 | Safety Gate fail closed; Operator ký đúng action; Safe Executor chỉ chạy allowlist |
+| Hành động sai phạm vi | Hành động ngoài danh mục, sai máy đích/phạm vi, bằng chứng cũ; đổi trạng thái hệ thống ngoài ý muốn | Cloud Infrastructure Management; diễn tập DB-01/NET-01 ngày 08/11/2026 | Safety Gate fail-closed; Operator ký đúng action; Safe Executor chỉ chạy allowlist |
 | Báo hồi phục giả | Kết luận "đã sửa" dựa trên tiêu chí hẹp (HTTP 200, pod Running, bản ghi sửa) | KubeLLM; AIHS; diễn tập NET-01 ngày 08/11/2026 | Independent Verifier với probe allowed/forbidden/related và cửa sổ ổn định |
 
 <!-- nguồn: docs/PLANNING_UNG_DUNG_LDA_GBDT.md §3.3 (Gate DENY đề xuất Gemini DB-01, NET-01); docs/BAO_CAO_KIEN_TRUC_AI_AGENT_VA_AN_TOAN.md §6 (NET-01: HTTP 200 nhưng collateral_damage); PDF Cloud Infrastructure Management §3.1, §3.3 -->
 
 ### 1.1.5. AIHS cơ sở và khoảng trống nghiên cứu
 
-AIHS có ưu điểm là dữ liệu huấn luyện lớn, đầu ra đơn giản (một mã hành động) và quyết định rất nhanh: theo bài báo, thời gian ra quyết định khoảng 7 ms [AIHS2021]. Bài báo cũng thận trọng ở chỗ ở môi trường sản xuất chỉ cho tự chạy ba hành động (NOP, MSR, RB) [AIHS2021]. Nhưng theo phân tích của đề tài, kiến trúc AIHS không có một Safety Gate độc lập kiểm tra phạm vi và bằng chứng trước khi chạy, và cũng không có một bên xác minh độc lập quyết định hệ thống đã phục hồi; "sửa thành công" dựa trên bản ghi sửa lỗi [AIHS2021]. Các chỉ số công bố của AIHS (precision, recall, F1, HitRate, ReverseRate, tỉ lệ sửa thành công) đo chất lượng của mô hình và của việc sửa, chứ không đo việc hành động có nằm trong phạm vi cho phép hay kết luận phục hồi có đáng tin hay không. Đó là khoảng trống mà khoá luận nhắm tới.
+AIHS có ưu điểm là dữ liệu huấn luyện lớn, đầu ra đơn giản (một mã hành động) và quyết định rất nhanh: theo bài báo, thời gian ra quyết định khoảng 7 ms [AIHS2021]. Bài báo cũng thận trọng ở chỗ, dù thiết kế cho phép năm trong sáu hành động chạy tự động, môi trường triển khai chỉ cho tự chạy ba hành động (NOP, MSR, RB) [AIHS2021]. Nhưng theo phân tích của đề tài, kiến trúc AIHS không có một Safety Gate độc lập kiểm tra phạm vi và bằng chứng trước khi chạy, và cũng không có một bên xác minh độc lập quyết định hệ thống đã hồi phục; "sửa thành công" dựa trên bản ghi sửa lỗi [AIHS2021]. Các chỉ số công bố của AIHS (precision, recall, F1, HitRate, ReverseRate, tỷ lệ sửa thành công) đo chất lượng của mô hình và của việc sửa, chứ không đo việc hành động có nằm trong phạm vi cho phép hay kết luận hồi phục có đáng tin hay không. Đó là khoảng trống mà khoá luận nhắm tới.
 
 <!-- nguồn: docs/PLANNING_UNG_DUNG_LDA_GBDT.md §2 ("Không có Safety Gate độc lập hay Verifier độc lập; 'sửa thành công' dựa trên bản ghi sửa lỗi"; "Ở production chỉ được tự chạy 3 hành động: NOP, MSR, RB"; "Thời gian ra quyết định 7 ms"); docs/BAO_CAO_AIHS.md §3.1 (điều kiện ổn định hơn 20 phút) -->
 
@@ -59,7 +59,7 @@ Khoá luận không đề xuất một mô hình dự đoán mới. Bài toán l
 
 1. đề xuất *a* chỉ được coi là **đề xuất không đáng tin**, không bao giờ là quyền thi hành;
 2. *a* chỉ được thi hành khi nó thuộc danh mục hành động đã duyệt, đúng máy đích và phạm vi, bằng chứng còn mới, và có một chữ ký của Operator gắn đúng hành động đó (kiểm tra bởi Safety Gate rồi Safe Executor);
-3. kết luận "đã phục hồi" (`RESOLVED`) chỉ do một bên xác minh độc lập đưa ra, dựa trên các probe và một cửa sổ ổn định, không dựa trên điểm tự tin của mô hình hay trên việc health check xanh;
+3. kết luận "đã hồi phục" (`RESOLVED`) chỉ do một bên xác minh độc lập đưa ra, dựa trên các probe và một cửa sổ ổn định, không dựa trên điểm tự tin của mô hình hay trên việc health check xanh;
 4. mọi quyết định, từ chối, thi hành và kiểm chứng đều để lại vết kiểm toán;
 5. hệ thống vẫn xử lý được sự cố an toàn, nghĩa là các lớp bảo vệ không được chặn quá mức đến mức vô dụng.
 
@@ -73,17 +73,17 @@ Năm yêu cầu trên tương ứng với năm bất biến an toàn mà toàn b
 
 **Câu hỏi nghiên cứu chính.** *Khi thêm Safety Gate, Safe Executor và Independent Verifier vào AIHS LDA/GBDT, hệ thống có an toàn và đáng tin cậy hơn AIHS cơ sở trên Moodle không?*
 
-Câu hỏi chính được tách thành năm câu hỏi thành phần, mỗi câu gắn với một chỉ số đo được và một phép so sánh cụ thể.
+Câu hỏi chính được tách thành năm câu hỏi thành phần (Bảng 1.2), mỗi câu gắn với một chỉ số đo được và một phép so sánh cụ thể.
 
 **Bảng 1.2.** Câu hỏi thành phần, chỉ số và nơi trình bày kết quả
 
 | Mã | Câu hỏi | Chỉ số chính | Phép so sánh | Chương |
 |---|---|---|---|---|
-| RQ1 | Safety Gate có chặn được hành động sai/vượt phạm vi không? | Tỉ lệ hành động không an toàn được đi tiếp; tỉ lệ hành động sai bị chặn | C0 so với C1, offline | 5 |
-| RQ2 | Safety Gate có chặn nhầm hành động đúng không, và cái giá là gì? | Tỉ lệ chặn nhầm; tỉ lệ chuyển người | C0 so với C1, offline | 5 |
+| RQ1 | Safety Gate có chặn được hành động sai/vượt phạm vi không? | Tỷ lệ hành động không an toàn được đi tiếp; tỷ lệ hành động sai bị chặn | C0 so với C1, offline | 5 |
+| RQ2 | Safety Gate có chặn nhầm hành động đúng không, và cái giá là gì? | Tỷ lệ chặn nhầm; tỷ lệ chuyển người | C0 so với C1, offline | 5 |
 | RQ3 | Operator và Safe Executor có bảo đảm hành động chạy đúng phạm vi đã duyệt không? | Số lượt thi hành đúng action/máy đích/phạm vi; số lần chạy khi chưa ký; mutation ngoài phạm vi | C2/C3, live staging | 5 |
-| RQ4 | Independent Verifier có tránh được kết luận hồi phục sai mà health-only bỏ sót không? | Tỉ lệ `RESOLVED` sai; tỉ lệ health-only báo hồi phục sai | C2 so với C3 trên cùng lượt thi hành | 5 |
-| RQ5 | Hệ thống còn xử lý được sự cố không và tốn thêm bao nhiêu thời gian? | Tỉ lệ hoàn tất an toàn; trung vị thời gian từ phát hiện đến hồi phục thật; thời gian chờ duyệt; thời gian xác minh | C3 live; offline không đo được | 5 |
+| RQ4 | Independent Verifier có tránh được kết luận hồi phục sai mà health-only bỏ sót không? | Tỷ lệ `RESOLVED` sai; tỷ lệ health-only báo hồi phục sai | C2 so với C3 trên cùng lượt thi hành | 5 |
+| RQ5 | Hệ thống còn xử lý được sự cố không và tốn thêm bao nhiêu thời gian? | Tỷ lệ hoàn tất an toàn; trung vị thời gian từ phát hiện đến hồi phục thật; thời gian chờ duyệt; thời gian xác minh | C3 live; offline không đo được | 5 |
 
 Một điểm cần nói rõ từ đầu: câu hỏi được đặt như một giả thuyết cần kiểm định, nhưng câu trả lời không bắt buộc là "có". Nếu các lớp bảo vệ làm tăng chuyển người hoặc kéo dài thời gian, khoá luận báo đúng phần đánh đổi đó. Các chỉ số thiếu mẫu số hợp lệ được ghi là không đo được (`NOT_MEASURABLE`) chứ không được điền 0 %.
 
@@ -107,7 +107,7 @@ Một điểm cần nói rõ từ đầu: câu hỏi được đặt như một 
 
 Đối tượng nghiên cứu gồm hai phần. Phần thứ nhất là pipeline AIHS (Mapper LDA, Predictor GBDT, Controller GBDT) được tái hiện trên Moodle như hệ thống nền. Phần thứ hai là khung an toàn gồm Safety Gate, Safe Executor, Independent Verifier và quy trình phê duyệt của Operator.
 
-Môi trường thực nghiệm chính là **Moodle trên AWS EC2**: một bộ cân bằng tải ALB phía trước hai node ứng dụng đặt ở hai Availability Zone, cơ sở dữ liệu RDS PostgreSQL, hệ thống tệp dùng chung EFS, và một máy giám sát chạy Prometheus, Alertmanager, Grafana, Blackbox Exporter, giao dịch tổng hợp (synthetic transaction) và AI Agent [Moodle] [AWS] [Prometheus] [Alertmanager]. Hạ tầng được mô tả bằng Terraform và cấu hình máy bằng Ansible; mô tả chi tiết ở Chương 4.
+Môi trường thực nghiệm chính là **Moodle trên AWS EC2**: một bộ cân bằng tải ALB phía trước hai node ứng dụng đặt ở hai Availability Zone, cơ sở dữ liệu RDS PostgreSQL, hệ thống tệp dùng chung EFS, và một máy giám sát chạy Prometheus, Alertmanager, Grafana, Blackbox Exporter, giao dịch synthetic (synthetic transaction, kịch bản đăng nhập và đọc/ghi thử chạy định kỳ qua ALB) và AI Agent [Moodle] [AWS] [Prometheus] [Alertmanager]. Hạ tầng được mô tả bằng Terraform và cấu hình máy bằng Ansible; mô tả chi tiết ở Chương 4.
 
 ```mermaid
 flowchart TD
@@ -137,7 +137,7 @@ Hình 1.1 mô tả sơ đồ tổng thể của đề tài. Chuỗi bắt đầu
 
 ### 1.5.2. Bốn cấu hình so sánh
 
-Để tách tác động của từng lớp, khoá luận so sánh bốn cấu hình, giữ nguyên model, ảnh chụp và đề xuất:
+Để tách tác động của từng lớp, khoá luận so sánh bốn cấu hình (Bảng 1.3), giữ nguyên model, ảnh chụp và đề xuất:
 
 **Bảng 1.3.** Bốn cấu hình so sánh C0–C3
 
@@ -145,12 +145,14 @@ Hình 1.1 mô tả sơ đồ tổng thể của đề tài. Chuỗi bắt đầu
 |---|---|---|
 | C0 | AIHS LDA/GBDT (`aihs-paper-repro-moodle-v1`) đề xuất và "thi hành nguyên trạng" | Chỉ phản thực tế offline; không thi hành thật |
 | C1 | C0 cộng Safety Gate | Offline: chạy lại đúng đề xuất qua Gate thật |
-| C2 | C1 cộng Operator duyệt và Safe Executor; kết luận phục hồi bằng health-only (`healthz` 200, giao dịch tổng hợp thành công, hết alert) | Live: lấy từ `health_only_view` của chính lượt C3 |
+| C2 | C1 cộng Operator duyệt và Safe Executor; kết luận hồi phục bằng health-only (`healthz` 200, giao dịch synthetic thành công, hết alert) | Live: lấy từ `health_only_view` của chính lượt C3 |
 | C3 | C2 cộng Independent Verifier | Live: mỗi lượt thi hành thật là một lượt C3 |
 
 <!-- nguồn: docs/PLANNING_UNG_DUNG_LDA_GBDT.md §7; docs/BAO_CAO_PROTOCOL_C0_C3_OFFLINE.md §2; docs/BAO_CAO_KE_HOACH_CHAY_LIVE_C0_C3.md §1 (quyết định 16/11/2026, phương án b) -->
 
 ### 1.5.3. Trong phạm vi và ngoài phạm vi
+
+Bảng 1.4 nêu những gì khoá luận làm và những gì cố ý để ngoài phạm vi.
 
 **Bảng 1.4.** Phạm vi của khoá luận
 
@@ -163,7 +165,7 @@ Hình 1.1 mô tả sơ đồ tổng thể của đề tài. Chuỗi bắt đầu
 | Báo cáo mô tả: số đếm, trung vị, khoảng tin cậy | Kiểm định giả thuyết thống kê với p-value (mỗi kịch bản chỉ ba lượt lặp) |
 | So sánh C0–C3 trong cùng môi trường | So sánh số tuyệt đối với số liệu của AIHS ở Alibaba (F1 0,97, −51 % thời gian không phục vụ) |
 
-Khung được thiết kế để chuyển sang hệ thống khác qua lớp adapter, nhưng khả năng đó chưa được kiểm chứng. Chủ đề LDA học trên Moodle không dùng được cho ERPNext vì từ vựng khác nhau, nên khi chuyển môi trường phải huấn luyện lại; điều có thể giữ nguyên là kiến trúc Gate/Executor/Verifier, quy trình gán nhãn và cách đánh giá. Kubernetes đáng được xem xét làm môi trường kế tiếp vì đây là nền tảng điều phối phổ biến: khảo sát CNCF ghi nhận Kubernetes được dùng trong sản xuất ở 82 % số tổ chức dùng container, và 66 % tổ chức trong nhóm có chạy khối lượng AI sinh tạo dùng Kubernetes cho việc đó ở mức toàn phần hoặc một phần [CNCF2025]. Chương 6 trở lại hướng phát triển này.
+Khung được thiết kế để chuyển sang hệ thống khác qua lớp adapter, nhưng khả năng đó chưa được kiểm chứng. Chủ đề LDA học trên Moodle không dùng được cho ERPNext vì từ vựng khác nhau, nên khi chuyển môi trường phải huấn luyện lại; điều có thể giữ nguyên là kiến trúc Gate/Executor/Verifier, quy trình gán nhãn và cách đánh giá. Kubernetes đáng được xem xét làm môi trường kế tiếp vì đây là nền tảng điều phối phổ biến: khảo sát của CNCF (Cloud Native Computing Foundation) ghi nhận Kubernetes được dùng trong sản xuất ở 82 % số tổ chức dùng container, và 66 % tổ chức trong nhóm có chạy khối lượng AI sinh tạo dùng Kubernetes cho việc đó ở mức toàn phần hoặc một phần [CNCF2025]. Chương 6 trở lại hướng phát triển này.
 
 <!-- nguồn: docs/PLANNING_UNG_DUNG_LDA_GBDT.md §8 ("Không dùng mức −51 % của Alibaba làm ngưỡng đạt"), §9.3, §11.1 (action được phép chạy live và không chạy live); docs/BAO_CAO_KE_HOACH_CHAY_LIVE_C0_C3.md §2 (6 kịch bản, ba lặp, không kiểm định giả thuyết); docs/BAO_CAO_KET_QUA_C0_C3.md §6 (giới hạn); AGENTS.md; PDF CNCF Annual Cloud Native Survey (lời nói đầu) -->
 
@@ -171,22 +173,22 @@ Khung được thiết kế để chuyển sang hệ thống khác qua lớp ada
 
 ### 1.6.1. Tiếp cận thiết kế – hiện thực – đánh giá
 
-Khoá luận đi theo ba pha nối tiếp. **Thiết kế:** xác định các bất biến an toàn, hợp đồng giữa đề xuất của mô hình và các lớp bảo vệ (adapter ánh xạ mã hành động AIHS sang danh mục hành động của Moodle, fail closed khi không ánh xạ được), và mô hình quyết định của Gate, Executor, Verifier. **Hiện thực:** tái hiện AIHS trên dữ liệu Moodle, xây dựng khung an toàn trên hạ tầng mô tả bằng mã (Terraform, Ansible) và đường ống CI/CD. **Đánh giá:** đo tác động của từng lớp bằng các thí nghiệm có đăng ký trước.
+Khoá luận đi theo ba pha nối tiếp. **Thiết kế:** xác định các bất biến an toàn, hợp đồng giữa đề xuất của mô hình và các lớp bảo vệ (adapter ánh xạ mã hành động AIHS sang danh mục hành động của Moodle, fail-closed khi không ánh xạ được), và mô hình quyết định của Gate, Executor, Verifier. **Hiện thực:** tái hiện AIHS trên dữ liệu Moodle, xây dựng khung an toàn trên hạ tầng mô tả bằng mã (Terraform, Ansible) và đường ống CI/CD. **Đánh giá:** đo tác động của từng lớp bằng các thí nghiệm có đăng ký trước.
 
 ### 1.6.2. Bốn loại bằng chứng
 
-Khoá luận phân biệt nghiêm ngặt bốn loại bằng chứng và không cộng chúng thành một tỉ lệ.
+Khoá luận phân biệt nghiêm ngặt bốn loại bằng chứng (Bảng 1.5) và không cộng chúng thành một tỷ lệ.
 
 **Bảng 1.5.** Các loại bằng chứng và điều chúng chứng minh được
 
 | Loại | Ví dụ trong khoá luận | Chứng minh được | Không chứng minh được |
 |---|---|---|---|
 | Kiểm thử đơn vị/hợp đồng | Test của Safety Gate, adapter AIHS, Verifier | Logic quyết định đúng trên dữ liệu mẫu | Hành vi trên hệ thống thật |
-| Replay offline | Phát lại đề xuất C0 đã khoá qua Gate trên tập test lab | Hành vi của Gate trên cùng đề xuất; chi phí chặn nhầm | Phục hồi thật, RTO/RPO |
+| Replay offline | Phát lại đề xuất C0 đã khoá qua Gate trên tập test lab | Hành vi của Gate trên cùng đề xuất; chi phí chặn nhầm | Hồi phục thật, RTO/RPO |
 | Lab cục bộ | Lab Moodle bằng Docker sinh dữ liệu huấn luyện/kiểm thử | Chất lượng mô hình trong lab | Hành vi trên AWS (lab và staging khác nhau, ví dụ năm đặc trưng `lb_*` chỉ có ở lab) |
-| Live staging | 18 lượt C3 chính và 4 lượt bổ sung trên AWS | Chuỗi Gate → Operator → Executor → Verifier chạy thật; thời gian phục hồi thật | Tỉ lệ ở môi trường sản xuất |
+| Live staging | 18 lượt C3 chính và 4 lượt bổ sung trên AWS | Chuỗi Gate → Operator → Executor → Verifier chạy thật; thời gian hồi phục thật | Tỷ lệ ở môi trường sản xuất |
 
-Quy ước này khớp với nguyên tắc của repo: replay là mô phỏng offline và không chứng minh phục hồi live; dữ liệu ground truth chỉ dùng để chấm điểm sau quyết định, không bao giờ là đầu vào cấp quyền.
+Quy ước này khớp với nguyên tắc của repo: replay là mô phỏng offline và không chứng minh hồi phục live; dữ liệu ground truth chỉ dùng để chấm điểm sau quyết định, không bao giờ là đầu vào cấp quyền.
 
 <!-- nguồn: AGENTS.md ("Evidence and safety invariants", "CI replay is offline simulation"); docs/BAO_CAO_KET_QUA_C0_C3.md §6 (lab khác staging); docs/BAO_CAO_PROTOCOL_C0_C3_OFFLINE.md §5–§6 -->
 
@@ -202,9 +204,9 @@ Quy ước này khớp với nguyên tắc của repo: replay là mô phỏng of
 
 ### 1.6.4. Chỉ số và cách báo cáo
 
-Mỗi tỉ lệ được báo cùng tử số và mẫu số. Khoảng tin cậy offline là bootstrap 95 % theo nhóm sự cố/phiên (B = 2000), vì đơn vị độc lập là nhóm chứ không phải dòng; khoảng tin cậy cho tỉ lệ live dùng khoảng Wilson 95 %. Với mẫu nhỏ (ba lượt mỗi kịch bản) kết quả chỉ mang tính mô tả. Lượt bị Gate chặn, Operator từ chối hoặc hết hạn được giữ trong mẫu số của tỉ lệ hoàn tất. Mẫu số của tỉ lệ "chặn hành động sai" nhỏ hơn 5 thì được ghi `INSUFFICIENT_DENOMINATOR` và không được dùng làm bằng chứng.
+Mỗi tỷ lệ được báo cùng tử số và mẫu số. Khoảng tin cậy offline là bootstrap 95 % theo nhóm sự cố/phiên (B = 2000), vì đơn vị độc lập là nhóm chứ không phải dòng; khoảng tin cậy cho tỷ lệ live dùng khoảng Wilson 95 %. Với mẫu nhỏ (ba lượt mỗi kịch bản) kết quả chỉ mang tính mô tả. Lượt bị Gate chặn, Operator từ chối hoặc hết hạn được giữ trong mẫu số của tỷ lệ hoàn tất. Mẫu số của tỷ lệ "chặn hành động sai" nhỏ hơn 5 thì được ghi `INSUFFICIENT_DENOMINATOR` và không được dùng làm bằng chứng.
 
-Thời gian khôi phục được chấm tại **thời điểm phục hồi thật** do một luồng probe độc lập xác định, dùng chung cho C2 và C3. Thời điểm health-only tuyên bố và thời điểm Verifier ký `RESOLVED` được báo riêng, không so trực tiếp với nhau vì ý nghĩa khác nhau.
+Thời gian hồi phục được chấm tại **thời điểm hồi phục thật** do một luồng probe độc lập xác định, dùng chung cho C2 và C3. Thời điểm health-only tuyên bố và thời điểm Verifier ký `RESOLVED` được báo riêng, không so trực tiếp với nhau vì ý nghĩa khác nhau.
 
 <!-- nguồn: docs/BAO_CAO_PROTOCOL_C0_C3_OFFLINE.md §3 (D5), §4; docs/BAO_CAO_KET_QUA_C0_C3.md §2–§3; docs/BAO_CAO_KE_HOACH_CHAY_LIVE_C0_C3.md §2, §4 -->
 
@@ -218,7 +220,7 @@ Không hành động nguy hiểm nào được thi hành thật để lấy số
 
 Khoá luận có năm đóng góp.
 
-1. **Một khung an toàn đặt sau mô hình học máy** gồm Safety Gate, Safe Executor và Independent Verifier cùng quy trình phê duyệt của Operator, thiết kế quanh năm bất biến: đầu ra mô hình chỉ là đề xuất; fail closed; phê duyệt khác thi hành; chỉ Verifier được chuyển `RESOLVED`; ground truth chỉ để chấm điểm.
+1. **Một khung an toàn đặt sau mô hình học máy** gồm Safety Gate, Safe Executor và Independent Verifier cùng quy trình phê duyệt của Operator, thiết kế quanh năm bất biến: đầu ra mô hình chỉ là đề xuất; fail-closed; phê duyệt khác thi hành; chỉ Verifier được chuyển `RESOLVED`; ground truth chỉ để chấm điểm.
 2. **Một baseline AIHS tái hiện và được khoá trên Moodle** (`aihs-paper-repro-moodle-v1`), cùng hợp đồng ánh xạ đề xuất AIHS sang danh mục hành động Moodle đã review, trong đó hành động không ánh xạ được, thiếu bằng chứng hoặc quá cũ đều chuyển người.
 3. **Một protocol so sánh C0–C3 đăng ký trước** với hai chế độ đo (offline và live), quy tắc khoá và công bố sai lệch.
 4. **Kết quả thực nghiệm**, tóm tắt ở Bảng 1.6 và trình bày đầy đủ ở Chương 5.
@@ -228,15 +230,17 @@ Khoá luận có năm đóng góp.
 
 | Nhóm | Kết quả |
 |---|---|
-| Offline, C0 so với C1 (lab, test 59 dòng thuộc 8 nhóm, mở một lần sau khi khoá protocol) | Gate làm HitRate giảm từ 0,905 xuống 0,810 và ReverseRate tăng từ 0,867 lên 0,967. Gate chặn nhầm 2/20 hành động đúng; tỉ lệ chuyển người tăng từ 8,5 % lên 30,5 %. Mẫu số hành động không an toàn chỉ là 4 nên **chưa đủ** để khẳng định Gate giảm hành động nguy hiểm |
-| Live, 18 lượt C3 chính trên AWS staging | 9 lượt `RESOLVED`, 0 `RESOLVED` sai; 9/9 lượt thi hành đều phục hồi thật; model đề xuất đúng hành động 14/14 (4 lượt còn lại model chọn chuyển người); 18/18 lần reset được kiểm tra; trung vị từ phát hiện đến phục hồi thật là 145 s (69 s nếu bỏ thời gian chờ duyệt) |
+| Offline, C0 so với C1 (lab, test 59 dòng thuộc 8 nhóm, mở một lần sau khi khoá protocol) | Gate làm HitRate giảm từ 0,905 xuống 0,810 và ReverseRate tăng từ 0,867 lên 0,967. Gate chặn nhầm 2/20 hành động đúng; tỷ lệ chuyển người tăng từ 8,5 % lên 30,5 %. Mẫu số hành động không an toàn chỉ là 4 nên **chưa đủ** để khẳng định Gate giảm hành động nguy hiểm |
+| Live, 18 lượt C3 chính trên AWS staging | 9 lượt `RESOLVED`, 0 `RESOLVED` sai; 9/9 lượt thi hành đều hồi phục thật; model đề xuất đúng hành động 14/14 (4 lượt còn lại model chọn chuyển người); 18/18 lần reset được kiểm tra; trung vị từ phát hiện đến hồi phục thật là 145 s (69 s nếu bỏ thời gian chờ duyệt) |
 | Live, 4 lượt bổ sung đăng ký trước | DB-01 hai lượt: cả hai `RESOLVED`. CON-01 hai lượt có lỗi phụ cấy có chủ đích: health-only báo hồi phục sai 2/2, Verifier chặn 2/2 |
 
-Cái giá phải trả cũng được báo: tăng chuyển người ở Gate, hoàn tất an toàn chỉ 9/18 ở mẫu chính (bốn lượt Operator từ chối có chủ ý, bốn lượt model chọn chuyển người, một lượt Gate chặn), và Verifier thêm khoảng hai phút để ký kết luận. Khoá luận không so sánh được thời gian khôi phục C0 với C3 trên live vì C0 không thi hành live theo thiết kế.
+Cái giá phải trả cũng được báo: tăng chuyển người ở Gate, hoàn tất an toàn chỉ 9/18 ở mẫu chính (bốn lượt Operator từ chối có chủ ý, bốn lượt model chọn chuyển người, một lượt Gate chặn), và Verifier thêm khoảng hai phút để ký kết luận. Khoá luận không so sánh được thời gian hồi phục của C0 với C3 trên live vì C0 không thi hành live theo thiết kế.
 
 <!-- nguồn: docs/BAO_CAO_KET_QUA_C0_C3.md §1–§4 (các số liệu trong Bảng 1.6 và đoạn kế tiếp); evaluation/aihs/live-main-results/aggregate.json -->
 
 ## 1.8. Bố cục khoá luận
+
+Khoá luận gồm sáu chương, phần tóm tắt và danh mục tài liệu tham khảo; Bảng 1.7 nêu nội dung từng phần.
 
 **Bảng 1.7.** Bố cục các chương
 
@@ -245,8 +249,8 @@ Cái giá phải trả cũng được báo: tăng chuyển người ở Gate, ho
 | Tóm tắt / Abstract | Tóm lược đề tài, phương pháp và kết quả |
 | Chương 1. Tổng quan | Bối cảnh, bài toán, câu hỏi nghiên cứu, mục tiêu, phạm vi, phương pháp, đóng góp |
 | Chương 2. Cơ sở lý thuyết và công trình liên quan | SRE, giám sát, AIOps, AIHS, LDA và GBDT, LLM agent và rủi ro, nguyên tắc an toàn, hạ tầng dưới dạng mã, so sánh công trình liên quan |
-| Chương 3. Phân tích và thiết kế khung an toàn | Bất biến, kiến trúc, Safety Gate, Safe Executor, Independent Verifier, hợp đồng với AIHS |
-| Chương 4. Hiện thực hệ thống | Hạ tầng AWS, Moodle, giám sát, Agent, tái hiện AIHS, CI/CD |
+| Chương 3. Phân tích và thiết kế khung an toàn | Yêu cầu và mô hình mối đe doạ, kiến trúc hạ tầng và Agent, Safety Gate, phê duyệt của Operator, Safe Executor, Independent Verifier, hợp đồng với AIHS, phương pháp đánh giá |
+| Chương 4. Hiện thực hệ thống | Công nghệ, hạ tầng dưới dạng mã, CI/CD, Agent, bộ cấy lỗi, tái hiện AIHS, kiểm thử |
 | Chương 5. Thực nghiệm và đánh giá | Protocol, kết quả offline và live, phân tích, giới hạn |
 | Chương 6. Kết luận và hướng phát triển | Trả lời câu hỏi nghiên cứu, hạn chế, ERPNext/Kubernetes, người gán nhãn thứ hai |
 | Tài liệu tham khảo | Danh mục gộp từ các chương |

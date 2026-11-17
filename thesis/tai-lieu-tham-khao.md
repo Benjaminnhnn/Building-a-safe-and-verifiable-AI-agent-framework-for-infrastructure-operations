@@ -4,7 +4,7 @@ Danh mục gộp từ các chương. Khoá trong ngoặc vuông là khoá trích
 
 ## Bài báo, báo cáo và bài viết
 
-- **[AIHS2021]** R. Li và cộng sự, "Automated Intelligent Healing in Cloud-Scale Data Centers," trong *Proc. IEEE International Symposium on Reliable Distributed Systems (SRDS)*, 2021. DOI: 10.1109/SRDS53918.2021.00032. Bản PDF của tác giả: https://www.cse.cuhk.edu.hk/~pclee/www/pubs/srds21aihs.pdf
+- **[AIHS2021]** R. Li, Z. Cheng, P. P. C. Lee, P. Wang, Y. Qiang, L. Lan, C. He, J. Lu, M. Wang, X. Ding, "Automated Intelligent Healing in Cloud-Scale Data Centers," trong *Proc. IEEE International Symposium on Reliable Distributed Systems (SRDS)*, 2021. DOI: 10.1109/SRDS53918.2021.00032. Bản PDF của tác giả: https://www.cse.cuhk.edu.hk/~pclee/www/pubs/srds21aihs.pdf
 - **[AIHS-proto]** alibaba-edu, *AIHS_prototype* (kho `dcbrain`), commit `07314287ca0858b9a7d8dba951c96394487e2be2`, giấy phép Apache-2.0. https://github.com/alibaba-edu/dcbrain/tree/07314287ca0858b9a7d8dba951c96394487e2be2/AIHS_prototype
 - **[AIOpsLab2025]** Y. Chen, M. Shetty, G. Somashekar, M. Ma, Y. Simmhan, J. Mace, C. Bansal, R. Wang, S. Rajmohan, "AIOpsLab: A Holistic Framework to Evaluate AI Agents for Enabling Autonomous Clouds," arXiv:2501.06706v1 [cs.AI], 01/2025.
 - **[CloudAgents2025]** Z. Yang, A. Bhatnagar, Y. Qiu, T. Miao, P. T. J. Kon, Y. Xiao, Y. Huang, M. Casado, A. Chen, "Cloud Infrastructure Management in the Age of AI Agents," arXiv:2506.12270v1 [cs.AI], 06/2025.

@@ -256,7 +256,7 @@ Hệ thống **gần như stateless**, không hoàn toàn stateless: session và
 | Node Exporter, cAdvisor | Node A, B | CPU, bộ nhớ, đĩa; container |
 | `moodle-node-probes.sh` (timer) | Node A, B | Web container chạy không, router Apache, kết nối RDS từ node, DNS, EFS, maintenance flag, upgrade đang chạy, cron, số ad-hoc task quá hạn (chỉ đọc) |
 | Blackbox Exporter | Monitor | Trang công khai, trang login (`probe=login`), RDS TCP |
-| Synthetic transaction (timer 30 s) | Monitor | Đăng nhập admin, đọc/ghi fixture qua ALB |
+| Synthetic transaction (timer 60 s) | Monitor | Đăng nhập admin, đọc/ghi fixture qua ALB |
 | `moodle-rds-ingress-audit.sh` | Monitor | Số rule ingress chưa duyệt trong SG của RDS (IAM chỉ đọc) |
 | Prometheus, Alertmanager, Grafana | Monitor | Lưu metric, đánh giá rule, gửi cảnh báo, dashboard `moodle-infrastructure` |
 
