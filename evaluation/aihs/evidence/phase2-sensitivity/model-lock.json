@@ -1,0 +1,223 @@
+{
+  "schema_version": 1,
+  "stage": "phase2_lock",
+  "status": "LOCKED_C0",
+  "dev_notice": null,
+  "baseline_id": "aihs-paper-repro-moodle-v1",
+  "pipeline_version": "moodle-aihs-pipeline-1",
+  "locked_at": "2026-11-15T23:27:23.405Z",
+  "code": {
+    "git_sha": "89cf9bed4112281c335e03ad65f28844daa76e4e",
+    "dirty": true,
+    "dirty_diff_sha256": "03f8ac6f53cebde3a85d0c1d0d0ddcb26e5bb0fdeb69a3811fda21f2fa7c5905",
+    "dirty_paths": [
+      "gent_src/README.md",
+      "agent_src/core/moodle/aihs_contract.py",
+      "agent_src/core/moodle/aihs_shadow.py",
+      "agent_src/core/moodle/aihs_staging_handoff.py",
+      "agent_src/tests/test_aihs_b2b3_measure.py",
+      "agent_src/tests/test_aihs_freeze.py",
+      "agent_src/tests/test_moodle_handoff_check.py",
+      "agent_src/tests/test_moodle_high_risk_safety_demo.py",
+      "agent_src/tests/test_moodle_telegram_approval.py",
+      "evaluation/aihs/a2-export/audit-records.jsonl",
+      "evaluation/aihs/a2-record.schema.json",
+      "evaluation/aihs/a2_export.py",
+      "evaluation/aihs/b2_freeze_dataset.py",
+      "agent_src/core/moodle/aihs_c0.py",
+      "agent_src/tests/test_aihs_a2_export_lab.py",
+      "agent_src/tests/test_aihs_c0_contract.py",
+      "agent_src/tests/test_aihs_lab_collector.py",
+      "agent_src/tests/test_aihs_lab_executor.py",
+      "agent_src/tests/test_aihs_lab_runner.py",
+      "agent_src/tests/test_aihs_label_tool.py",
+      "agent_src/tests/test_aihs_moodle_pipeline.py",
+      "agent_src/tests/test_aihs_score_c0_c3_offline.py",
+      "evaluation/aihs/a2_export_lab.py",
+      "evaluation/aihs/a3-c0-action-mapping-draft.json",
+      "evaluation/aihs/action_ladder.py",
+      "evaluation/aihs/c0-shadow-replay-2026-11-16.json",
+      "evaluation/aihs/c0_shadow_replay.py",
+      "evaluation/aihs/lab_label_form.py",
+      "evaluation/aihs/label_tool.py",
+      "evaluation/aihs/moodle_aihs/",
+      "evaluation/aihs/requirements-moodle-aihs.txt",
+      "evaluation/aihs/run_phase2_after_batch.sh",
+      "evaluation/aihs/score_c0_c3_offline.py",
+      "evaluation/aihs/train_moodle_aihs.py"
+    ],
+    "code_files_sha256": {
+      "evaluation/aihs/action_ladder.py": "248a0f7d7e402fb006b6cae105a63ee79b2018719a20bec99bf1ebe7876ab50e",
+      "evaluation/aihs/a2_split.py": "085d2251b341f74ffe5fbb01fcfd177525eee1953d6e3bb724496c241b484442",
+      "evaluation/aihs/moodle_aihs/__init__.py": "8bbe02d43981dcafeb2917e350b6ef08dcf50f08ea3b75748d11ce8a47ceb683",
+      "evaluation/aihs/moodle_aihs/data.py": "2ad99bc53d28033bee4265a0ebad01ae83a01ce9b8e5d9df017e92510d19b6f8",
+      "evaluation/aihs/moodle_aihs/features.py": "7a5d31fd9ca4e48210485ac118f8e97897a4e6326cfb83e8c590d062959585e2",
+      "evaluation/aihs/moodle_aihs/mapper.py": "5f3540a25a9cd635cd13f3f11cd54ce9b3dd13cca8cb885191fa0470ca09e3c6",
+      "evaluation/aihs/moodle_aihs/metrics.py": "3d4bb4632179fb7c4bd03dbe542b6b49deea1f5c424532ee520aa31146c0dee2",
+      "evaluation/aihs/moodle_aihs/model.py": "297bebd04631c3890fb44a48f6c3622a133c65bb697387aa5a848561b2fadfb1",
+      "evaluation/aihs/moodle_aihs/pipeline.py": "6f7c8c11bfc4977c61cf8b8bc43b1bff078d8f46118d96da4ddf2c94e1e9a120",
+      "evaluation/aihs/moodle_aihs/purge.py": "abe379ce8a98db76d7939be79413c9563cfa8cdef8d78e13aba447a2af4ec884",
+      "evaluation/aihs/train_moodle_aihs.py": "93bdac8ea03e57fa63acbcca856e7f2b24e8796f0c0b8e81e5f1bc153ebffa18"
+    },
+    "code_files_digest": "5386d8cb6eaee4ff0d22006a5a5604057574a9556c398a2554c606a5a8cd0199"
+  },
+  "dependencies": {
+    "python": "3.11.9",
+    "scikit-learn": "1.5.2",
+    "lightgbm": "4.5.0",
+    "numpy": "1.26.4",
+    "scipy": "1.17.1",
+    "joblib": "1.6.0"
+  },
+  "seeds": {
+    "global": 20261115,
+    "lda_random_state": 20261115,
+    "lightgbm_random_state": 20261115
+  },
+  "K": 20,
+  "k_grid": [
+    5,
+    10,
+    20
+  ],
+  "k_selection_on_validation": [
+    {
+      "K": 5,
+      "validation_OverallRate": 0.6486486486486487,
+      "validation_HitRate": 0.48,
+      "validation_ReverseRate": 1.0,
+      "validation_perplexity": 48.52830560384526,
+      "selected": false
+    },
+    {
+      "K": 10,
+      "validation_OverallRate": 0.7499999999999999,
+      "validation_HitRate": 0.6,
+      "validation_ReverseRate": 1.0,
+      "validation_perplexity": 52.22328695380941,
+      "selected": false
+    },
+    {
+      "K": 20,
+      "validation_OverallRate": 0.9795918367346939,
+      "validation_HitRate": 0.96,
+      "validation_ReverseRate": 1.0,
+      "validation_perplexity": 65.4282809672086,
+      "selected": true
+    }
+  ],
+  "lda": {
+    "implementation": "sklearn.decomposition.LatentDirichletAllocation",
+    "learning_method": "batch",
+    "doc_topic_prior": 0.1,
+    "topic_word_prior": 0.01,
+    "max_iter": 100,
+    "deviation_from_paper": "variational Bayes (sklearn) instead of collapsed Gibbs sampling (1024 sweeps)"
+  },
+  "lightgbm_params": {
+    "n_estimators": 200,
+    "learning_rate": 0.05,
+    "num_leaves": 8,
+    "min_child_samples": 2,
+    "reg_lambda": 1.0,
+    "class_weight": "balanced",
+    "random_state": 20261115,
+    "deterministic": true,
+    "force_row_wise": true,
+    "n_jobs": 1,
+    "verbose": -1
+  },
+  "min_controller_rows_per_class": 2,
+  "feature_spec_version": "moodle-snapshot-attribute-documents-v1",
+  "feature_spec": {
+    "version": "moodle-snapshot-attribute-documents-v1",
+    "levels": 6,
+    "document_rule": "attribute name repeated `level` times",
+    "discretization": "train-only quantile edges at i/6 (i=1..5), unique, level = #edges strictly below value",
+    "missing_value": "no word emitted",
+    "token_pattern": "\\S+",
+    "lowercase": false,
+    "forbidden_feature_regex": "scenario|ground.?truth|outcome|verifier|gate|approval|receipt|action|incident|run.?id|fault|answer|label|post.?decision|signature|idempot|episode|marker|injected|reset|baseline|variant|transient|exploration|behavior|policy"
+  },
+  "feature_spec_sha256": "51fa1e4ab5aa76f4870e0401e91c4a23735e8f14816b9b359eb392bb39900034",
+  "feature_names_sha256": "b7b3ccd3a5319611903e037684423a1590275e21f119ea51d6525f922933e384",
+  "feature_name_count": 108,
+  "vocabulary_sha256": "3fc311c4edf5035632a26fc3b3cddff27b5d5f7940bcc20dfdcd131ab337fbfe",
+  "vocabulary_size": 56,
+  "model_file": "model.pkl",
+  "model_file_sha256": "e5cf4d0702b685a6c26b214e5adaf8812ed551f2e2ace4f0342faabebd618659",
+  "model_content_sha256": "bd315cab7bb731ebc9af525478fbafc80e902e62061ab8af6bed1697f21baffa",
+  "split_manifest_sha256": "b457b7c3a89090f8b963c78f3b30ea61de216428bdcb28c9ee2ac1a3209acc56",
+  "split_ids_sha256": "e149cb07975a876877ea0ac2497b7392f2508e7d51d52b74bd9ef17e5d49184c",
+  "records_sha256": "ff32728dce137cb4bfc4ac71e6b88af68d681de610188b1709846592d86b2038",
+  "split_mode": "FROZEN",
+  "freeze_id": "1797fb299b391e16f627",
+  "training_counts": {
+    "train_rows": 214,
+    "predictor_rows": 103,
+    "predictor_class_counts": {
+      "recreate_moodle_web_from_reviewed_compose": 17,
+      "remove_named_cpu_load_container": 20,
+      "remove_scoped_db_reject": 19,
+      "restart_moodle_cron_service": 13,
+      "restore_fixture_directory_mode": 16,
+      "start_reviewed_compose_service": 18
+    },
+    "transient_excluded": 45
+  },
+  "controller_coverage": {
+    "wait_and_recheck": {
+      "executed_success": 0,
+      "executed_failure": 11,
+      "controller": false,
+      "reason_missing": "needs>=2_success_and_2_failure_executed_rows(have success=0,failure=11)"
+    },
+    "restart_moodle_cron_service": {
+      "executed_success": 13,
+      "executed_failure": 8,
+      "controller": true,
+      "reason_missing": null
+    },
+    "start_reviewed_compose_service": {
+      "executed_success": 18,
+      "executed_failure": 9,
+      "controller": true,
+      "reason_missing": null
+    },
+    "recreate_moodle_web_from_reviewed_compose": {
+      "executed_success": 17,
+      "executed_failure": 7,
+      "controller": true,
+      "reason_missing": null
+    },
+    "remove_named_cpu_load_container": {
+      "executed_success": 20,
+      "executed_failure": 10,
+      "controller": true,
+      "reason_missing": null
+    },
+    "remove_scoped_db_reject": {
+      "executed_success": 19,
+      "executed_failure": 11,
+      "controller": true,
+      "reason_missing": null
+    },
+    "restore_fixture_directory_mode": {
+      "executed_success": 16,
+      "executed_failure": 10,
+      "controller": true,
+      "reason_missing": null
+    },
+    "call_human": {
+      "executed_success": 0,
+      "executed_failure": 0,
+      "controller": false,
+      "reason_missing": "terminal_action_never_executed"
+    }
+  },
+  "limitations": [
+    "controller_missing:wait_and_recheck:needs>=2_success_and_2_failure_executed_rows(have success=0,failure=11)"
+  ],
+  "fit_policy": "vocabulary, discretizer edges and LDA fitted on TRAIN only; K chosen on VALIDATION only; test never read",
+  "model_output_policy": "untrusted proposal; no execution; passes the Safety Gate in a later stage"
+}

@@ -1,0 +1,249 @@
+{
+  "stage": "phase2_train",
+  "baseline_id": "aihs-paper-repro-moodle-v1",
+  "mode": "FROZEN",
+  "seed": 20261115,
+  "notice": "Train/validation only; the test split was never scored.",
+  "split": {
+    "train": 214,
+    "validation": 42,
+    "test": 43,
+    "groups": {
+      "train": 37,
+      "validation": 8,
+      "test": 8
+    }
+  },
+  "selected_K": 20,
+  "k_selection_on_validation": [
+    {
+      "K": 5,
+      "validation_OverallRate": 0.6486486486486487,
+      "validation_HitRate": 0.48,
+      "validation_ReverseRate": 1.0,
+      "validation_perplexity": 48.52830560384526,
+      "selected": false
+    },
+    {
+      "K": 10,
+      "validation_OverallRate": 0.7499999999999999,
+      "validation_HitRate": 0.6,
+      "validation_ReverseRate": 1.0,
+      "validation_perplexity": 52.22328695380941,
+      "selected": false
+    },
+    {
+      "K": 20,
+      "validation_OverallRate": 0.9795918367346939,
+      "validation_HitRate": 0.96,
+      "validation_ReverseRate": 1.0,
+      "validation_perplexity": 65.4282809672086,
+      "selected": true
+    }
+  ],
+  "train_in_sample": {
+    "rows": 214,
+    "transient_excluded": 45,
+    "success_rows": 103,
+    "failure_rows": 66,
+    "HitRate": 1.0,
+    "ReverseRate": 1.0,
+    "OverallRate": 1.0,
+    "predictor_only": {
+      "HitRate": 1.0,
+      "ReverseRate": 1.0,
+      "OverallRate": 1.0
+    },
+    "call_human_share": 0.0,
+    "per_class_counts": {
+      "executed_action_x_outcome": {
+        "recreate_moodle_web_from_reviewed_compose|failure": 7,
+        "recreate_moodle_web_from_reviewed_compose|success": 17,
+        "remove_named_cpu_load_container|failure": 10,
+        "remove_named_cpu_load_container|success": 20,
+        "remove_scoped_db_reject|failure": 11,
+        "remove_scoped_db_reject|success": 19,
+        "restart_moodle_cron_service|failure": 8,
+        "restart_moodle_cron_service|success": 13,
+        "restore_fixture_directory_mode|failure": 10,
+        "restore_fixture_directory_mode|success": 16,
+        "start_reviewed_compose_service|failure": 9,
+        "start_reviewed_compose_service|success": 18,
+        "wait_and_recheck|failure": 11
+      },
+      "final_proposed_action": {
+        "recreate_moodle_web_from_reviewed_compose": 24,
+        "remove_named_cpu_load_container": 29,
+        "remove_scoped_db_reject": 20,
+        "restart_moodle_cron_service": 35,
+        "restore_fixture_directory_mode": 32,
+        "start_reviewed_compose_service": 29
+      }
+    },
+    "fallback_paths": {
+      "controller_accepted": 211,
+      "fallback_cheapest_accepted": 2,
+      "fallback_exhausted_call_human": 1
+    }
+  },
+  "validation": {
+    "rows": 42,
+    "transient_excluded": 5,
+    "success_rows": 25,
+    "failure_rows": 12,
+    "HitRate": 0.96,
+    "ReverseRate": 1.0,
+    "OverallRate": 0.9795918367346939,
+    "predictor_only": {
+      "HitRate": 1.0,
+      "ReverseRate": 1.0,
+      "OverallRate": 1.0
+    },
+    "call_human_share": 0.02702702702702703,
+    "per_class_counts": {
+      "executed_action_x_outcome": {
+        "recreate_moodle_web_from_reviewed_compose|failure": 1,
+        "recreate_moodle_web_from_reviewed_compose|success": 6,
+        "remove_named_cpu_load_container|failure": 2,
+        "remove_named_cpu_load_container|success": 5,
+        "remove_scoped_db_reject|failure": 3,
+        "remove_scoped_db_reject|success": 4,
+        "restart_moodle_cron_service|failure": 1,
+        "restart_moodle_cron_service|success": 3,
+        "restore_fixture_directory_mode|failure": 2,
+        "restore_fixture_directory_mode|success": 7,
+        "wait_and_recheck|failure": 3
+      },
+      "final_proposed_action": {
+        "call_human": 1,
+        "recreate_moodle_web_from_reviewed_compose": 6,
+        "remove_named_cpu_load_container": 7,
+        "remove_scoped_db_reject": 5,
+        "restart_moodle_cron_service": 7,
+        "restore_fixture_directory_mode": 8,
+        "start_reviewed_compose_service": 3
+      }
+    },
+    "fallback_paths": {
+      "controller_accepted": 40,
+      "fallback_cheapest_accepted": 1,
+      "fallback_exhausted_call_human": 1
+    }
+  },
+  "training_counts": {
+    "train_rows": 214,
+    "predictor_rows": 103,
+    "predictor_class_counts": {
+      "recreate_moodle_web_from_reviewed_compose": 17,
+      "remove_named_cpu_load_container": 20,
+      "remove_scoped_db_reject": 19,
+      "restart_moodle_cron_service": 13,
+      "restore_fixture_directory_mode": 16,
+      "start_reviewed_compose_service": 18
+    },
+    "transient_excluded": 45
+  },
+  "controller_coverage": {
+    "wait_and_recheck": {
+      "executed_success": 0,
+      "executed_failure": 11,
+      "controller": false,
+      "reason_missing": "needs>=2_success_and_2_failure_executed_rows(have success=0,failure=11)"
+    },
+    "restart_moodle_cron_service": {
+      "executed_success": 13,
+      "executed_failure": 8,
+      "controller": true,
+      "reason_missing": null
+    },
+    "start_reviewed_compose_service": {
+      "executed_success": 18,
+      "executed_failure": 9,
+      "controller": true,
+      "reason_missing": null
+    },
+    "recreate_moodle_web_from_reviewed_compose": {
+      "executed_success": 17,
+      "executed_failure": 7,
+      "controller": true,
+      "reason_missing": null
+    },
+    "remove_named_cpu_load_container": {
+      "executed_success": 20,
+      "executed_failure": 10,
+      "controller": true,
+      "reason_missing": null
+    },
+    "remove_scoped_db_reject": {
+      "executed_success": 19,
+      "executed_failure": 11,
+      "controller": true,
+      "reason_missing": null
+    },
+    "restore_fixture_directory_mode": {
+      "executed_success": 16,
+      "executed_failure": 10,
+      "controller": true,
+      "reason_missing": null
+    },
+    "call_human": {
+      "executed_success": 0,
+      "executed_failure": 0,
+      "controller": false,
+      "reason_missing": "terminal_action_never_executed"
+    }
+  },
+  "predictor_classes_observed": [
+    "recreate_moodle_web_from_reviewed_compose",
+    "remove_named_cpu_load_container",
+    "remove_scoped_db_reject",
+    "restart_moodle_cron_service",
+    "restore_fixture_directory_mode",
+    "start_reviewed_compose_service"
+  ],
+  "predictor_classes_absent": [
+    "call_human",
+    "wait_and_recheck"
+  ],
+  "limitations": [
+    "controller_missing:wait_and_recheck:needs>=2_success_and_2_failure_executed_rows(have success=0,failure=11)"
+  ],
+  "calibration_validation": {
+    "recreate_moodle_web_from_reviewed_compose": {
+      "n": 7,
+      "mean_predicted_p_success": 0.8421859900801648,
+      "observed_success_rate": 0.8571428571428571,
+      "brier": 0.0005352477620476655
+    },
+    "remove_named_cpu_load_container": {
+      "n": 7,
+      "mean_predicted_p_success": 0.5173766467064986,
+      "observed_success_rate": 0.7142857142857143,
+      "brier": 0.1419069855275345
+    },
+    "remove_scoped_db_reject": {
+      "n": 7,
+      "mean_predicted_p_success": 0.5702084837392338,
+      "observed_success_rate": 0.5714285714285714,
+      "brier": 8.074291116332264e-05
+    },
+    "restart_moodle_cron_service": {
+      "n": 4,
+      "mean_predicted_p_success": 0.7452211217316825,
+      "observed_success_rate": 0.75,
+      "brier": 0.0001770059306870939
+    },
+    "restore_fixture_directory_mode": {
+      "n": 9,
+      "mean_predicted_p_success": 0.7549210290569065,
+      "observed_success_rate": 0.7777777777777778,
+      "brier": 0.010847676734910657
+    },
+    "start_reviewed_compose_service": {
+      "n": 0
+    },
+    "note": "Per-action controller reliability on small samples; only indicative. Probabilities are uncalibrated LightGBM outputs with class_weight=balanced (no Platt/isotonic step)."
+  },
+  "model_content_sha256": "bd315cab7bb731ebc9af525478fbafc80e902e62061ab8af6bed1697f21baffa",
+  "model_file_sha256": "e5cf4d0702b685a6c26b214e5adaf8812ed551f2e2ace4f0342faabebd618659"
+}

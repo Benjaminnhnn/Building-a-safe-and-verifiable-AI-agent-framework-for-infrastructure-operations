@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "stage": "B2.1_evaluation_freeze",
+  "created_at_utc": "2026-11-15T18:02:42.337855+00:00",
+  "status": "READY",
+  "freeze_id": "1797fb299b391e16f627",
+  "identity": {
+    "audit_sha256": "ff32728dce137cb4bfc4ac71e6b88af68d681de610188b1709846592d86b2038",
+    "schema_sha256": "9817708e3c569d675066131a7f656c98f499fe160d064503b9b3e084700f815c",
+    "source_manifest_sha256": "82f68412c87fcd42f8969881f4112fe869a080a986a87610c377c4f0df813f98",
+    "freeze_code_sha256": "6e7c3ec6c624b4b09e054eda063190eb8e507e17531a8d8a60e9f0c268fc0040",
+    "split_code_sha256": "085d2251b341f74ffe5fbb01fcfd177525eee1953d6e3bb724496c241b484442",
+    "label_review_sha256": "bc5fe4f71654e84e5864aec1fd89f10d27fc0476af6bb6f4836ae71ec381c509",
+    "allowed_mode": "lab",
+    "min_groups": 10,
+    "purge_overlap": true,
+    "split_policy": "chronological_70_15_15_connected_incident_session"
+  },
+  "total_audit_records": 420,
+  "selected_records": 299,
+  "independent_groups": 53,
+  "by_scenario": {
+    "BIZ-02": 55,
+    "CON-01": 47,
+    "DB-01": 39,
+    "NET-01": 44,
+    "RES-01": 57,
+    "SEC-02": 57
+  },
+  "by_action": {
+    "recreate_moodle_web_from_reviewed_compose": 41,
+    "remove_named_cpu_load_container": 50,
+    "remove_scoped_db_reject": 44,
+    "restart_moodle_cron_service": 35,
+    "restore_fixture_directory_mode": 44,
+    "start_reviewed_compose_service": 36,
+    "wait_and_recheck": 49
+  },
+  "by_outcome": {
+    "failure": 92,
+    "success": 207
+  },
+  "all_record_proposal_sources": {
+    "other": 420
+  },
+  "all_record_by_scenario": {
+    "BIZ-02": 70,
+    "CON-01": 70,
+    "DB-01": 70,
+    "NET-01": 70,
+    "RES-01": 70,
+    "SEC-02": 70
+  },
+  "all_record_by_action": {
+    "call_human": 25,
+    "recreate_moodle_web_from_reviewed_compose": 50,
+    "remove_named_cpu_load_container": 63,
+    "remove_scoped_db_reject": 60,
+    "restart_moodle_cron_service": 53,
+    "restore_fixture_directory_mode": 59,
+    "start_reviewed_compose_service": 53,
+    "unknown": 1,
+    "wait_and_recheck": 56
+  },
+  "all_record_by_outcome": {
+    "failure": 187,
+    "missing_evidence": 1,
+    "not_executed": 25,
+    "success": 207
+  },
+  "excluded": {
+    "missing_independent_label_review": 95,
+    "missing_verified_predecision_features_or_observed_label": 26
+  },
+  "reasons": [],
+  "label_disagreements": {
+    "count": 0,
+    "record_ids": []
+  },
+  "purged_records": [],
+  "model_input_policy": "only_pre_decision_features_no_scenario_or_post_decision_fields",
+  "lda_fit_policy": "fit_train_only_transform_validation_and_test",
+  "test_policy": "held_out_no_tuning_or_refit_after_freeze",
+  "test_labels_storage": "git_ignored_local_output_only",
+  "splits": {
+    "train": {
+      "groups": 37,
+      "records": 214,
+      "outcomes": {
+        "failure": 66,
+        "success": 148
+      },
+      "evidence_modes": {
+        "lab": 214
+      },
+      "historical_code_versions": {
+        "lab-e8a06007eeb819bc": 214
+      },
+      "features_sha256": "19f36395ce6cdff63802790c696ef234aadb2da7c78feb298cba66bb66255605",
+      "labels_sha256": "d223dcf668e44e224bbc98ce34052552bfc430ebedffcea8dbf867006a2ad1a6"
+    },
+    "validation": {
+      "groups": 8,
+      "records": 42,
+      "outcomes": {
+        "failure": 12,
+        "success": 30
+      },
+      "evidence_modes": {
+        "lab": 42
+      },
+      "historical_code_versions": {
+        "lab-e8a06007eeb819bc": 42
+      },
+      "features_sha256": "400b07cdab19a58093f89b766d43c4f120646dd96615d4733f0447aeeff17def",
+      "labels_sha256": "c735fe11c55d6b28d66c303fde8a66950fd20a6c641ea58dab3156f31aaec7ae"
+    },
+    "test": {
+      "groups": 8,
+      "records": 43,
+      "outcomes": {
+        "failure": 14,
+        "success": 29
+      },
+      "evidence_modes": {
+        "lab": 43
+      },
+      "historical_code_versions": {
+        "lab-e8a06007eeb819bc": 43
+      },
+      "features_sha256": "76fff0f3ac978a6680eda4147be548fe2acd14e2e5bbdc05eca3df250a654284",
+      "labels_sha256": "3ec5ace1188050f0bb15e1721f6277526b1eaf14d4c838ca1a07758cb683f26a"
+    }
+  },
+  "frozen_data_local": "evaluation\\aihs\\.artifacts\\b2-freeze\\1797fb299b391e16f627"
+}

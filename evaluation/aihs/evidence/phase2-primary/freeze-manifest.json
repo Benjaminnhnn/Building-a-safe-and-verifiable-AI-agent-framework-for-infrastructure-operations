@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "stage": "B2.1_evaluation_freeze",
+  "created_at_utc": "2026-11-15T17:59:32.328842+00:00",
+  "status": "READY",
+  "freeze_id": "17efc7b6ad13bd7a7b92",
+  "identity": {
+    "audit_sha256": "ff32728dce137cb4bfc4ac71e6b88af68d681de610188b1709846592d86b2038",
+    "schema_sha256": "9817708e3c569d675066131a7f656c98f499fe160d064503b9b3e084700f815c",
+    "source_manifest_sha256": "82f68412c87fcd42f8969881f4112fe869a080a986a87610c377c4f0df813f98",
+    "freeze_code_sha256": "6e7c3ec6c624b4b09e054eda063190eb8e507e17531a8d8a60e9f0c268fc0040",
+    "split_code_sha256": "085d2251b341f74ffe5fbb01fcfd177525eee1953d6e3bb724496c241b484442",
+    "label_review_sha256": "ee494eb282cae22205923040f073e1fe9f69aa3b871ef94559b9b94ca9800de6",
+    "allowed_mode": "lab",
+    "min_groups": 10,
+    "purge_overlap": true,
+    "split_policy": "chronological_70_15_15_connected_incident_session"
+  },
+  "total_audit_records": 420,
+  "selected_records": 393,
+  "independent_groups": 53,
+  "by_scenario": {
+    "BIZ-02": 64,
+    "CON-01": 65,
+    "DB-01": 68,
+    "NET-01": 65,
+    "RES-01": 66,
+    "SEC-02": 65
+  },
+  "by_action": {
+    "recreate_moodle_web_from_reviewed_compose": 50,
+    "remove_named_cpu_load_container": 63,
+    "remove_scoped_db_reject": 60,
+    "restart_moodle_cron_service": 52,
+    "restore_fixture_directory_mode": 59,
+    "start_reviewed_compose_service": 53,
+    "wait_and_recheck": 56
+  },
+  "by_outcome": {
+    "failure": 186,
+    "success": 207
+  },
+  "all_record_proposal_sources": {
+    "other": 420
+  },
+  "all_record_by_scenario": {
+    "BIZ-02": 70,
+    "CON-01": 70,
+    "DB-01": 70,
+    "NET-01": 70,
+    "RES-01": 70,
+    "SEC-02": 70
+  },
+  "all_record_by_action": {
+    "call_human": 25,
+    "recreate_moodle_web_from_reviewed_compose": 50,
+    "remove_named_cpu_load_container": 63,
+    "remove_scoped_db_reject": 60,
+    "restart_moodle_cron_service": 53,
+    "restore_fixture_directory_mode": 59,
+    "start_reviewed_compose_service": 53,
+    "unknown": 1,
+    "wait_and_recheck": 56
+  },
+  "all_record_by_outcome": {
+    "failure": 187,
+    "missing_evidence": 1,
+    "not_executed": 25,
+    "success": 207
+  },
+  "excluded": {
+    "missing_independent_label_review": 1,
+    "missing_verified_predecision_features_or_observed_label": 26
+  },
+  "reasons": [],
+  "label_disagreements": {
+    "count": 0,
+    "record_ids": []
+  },
+  "purged_records": [],
+  "model_input_policy": "only_pre_decision_features_no_scenario_or_post_decision_fields",
+  "lda_fit_policy": "fit_train_only_transform_validation_and_test",
+  "test_policy": "held_out_no_tuning_or_refit_after_freeze",
+  "test_labels_storage": "git_ignored_local_output_only",
+  "splits": {
+    "train": {
+      "groups": 37,
+      "records": 277,
+      "outcomes": {
+        "failure": 129,
+        "success": 148
+      },
+      "evidence_modes": {
+        "lab": 277
+      },
+      "historical_code_versions": {
+        "lab-e8a06007eeb819bc": 277
+      },
+      "features_sha256": "ff30211736e535f16afd7dbbf6ea9a046ff8dec0130c76affd7815ada9565ddc",
+      "labels_sha256": "7526821e2a53b29aa4083eb52896770393ab4dfc2ed1603c6f3048fd89bf98d0"
+    },
+    "validation": {
+      "groups": 8,
+      "records": 57,
+      "outcomes": {
+        "failure": 27,
+        "success": 30
+      },
+      "evidence_modes": {
+        "lab": 57
+      },
+      "historical_code_versions": {
+        "lab-e8a06007eeb819bc": 57
+      },
+      "features_sha256": "440f41401f1c7f49b8e91ccaaca5fc9924eb015e71a7384e941e8b87097763bc",
+      "labels_sha256": "ebdd967b322d3546d994b566536cdaccfa9abfb6ac45b4968947fca44a9d397d"
+    },
+    "test": {
+      "groups": 8,
+      "records": 59,
+      "outcomes": {
+        "failure": 30,
+        "success": 29
+      },
+      "evidence_modes": {
+        "lab": 59
+      },
+      "historical_code_versions": {
+        "lab-e8a06007eeb819bc": 59
+      },
+      "features_sha256": "22403aca5b1cf757e9825add93c74ed59eef797e35110c60f998c03084829e06",
+      "labels_sha256": "08489f989509abdb0989e8100b6bf2bd590fa86af977f7be6c61f41eacadef8b"
+    }
+  },
+  "frozen_data_local": "evaluation\\aihs\\.artifacts\\b2-freeze\\17efc7b6ad13bd7a7b92"
+}

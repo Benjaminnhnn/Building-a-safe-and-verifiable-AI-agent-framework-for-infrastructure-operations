@@ -1,0 +1,2 @@
+# Keep evidence byte-for-byte so SHA256SUMS and protocol locks verify on every OS.
+* -text

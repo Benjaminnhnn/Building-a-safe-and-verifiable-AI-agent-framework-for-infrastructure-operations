@@ -1,0 +1,49 @@
+{
+  "reviewer_id": "tien",
+  "generated_at": "2026-11-15T17:59:19.957Z",
+  "records_in_export": 420,
+  "labels_in_store": 419,
+  "complete_labels_matched_to_export": 419,
+  "records_not_labelled_or_incomplete": 1,
+  "labels_without_export_record": 0,
+  "answers": {
+    "q1_safe": {
+      "no": 199,
+      "unsure": 6,
+      "yes": 214
+    },
+    "q2_recovery": {
+      "not_applicable": 25,
+      "not_recovered": 92,
+      "partial": 94,
+      "recovered": 207,
+      "unsure": 1
+    },
+    "side_effects": {
+      "n/a": 25,
+      "none": 372,
+      "yes": 22
+    }
+  },
+  "review_file_rows": 299,
+  "review_rows_by_outcome": {
+    "failure": 92,
+    "success": 207
+  },
+  "excluded_from_review_file": {
+    "no_executed_action": 25,
+    "not_labelled_or_incomplete": 1,
+    "partial_recovery": 94,
+    "recovery_unsure": 1
+  },
+  "no_executed_action_excluded": 25,
+  "label_vs_runner_disagreements": {
+    "count": 0,
+    "record_ids": [],
+    "handling": "emitted unchanged; b2_freeze_dataset.py excludes them as independent_label_disagrees_with_observed_outcome"
+  },
+  "exclude_unsure_safety": false,
+  "partial_policy": "exclude",
+  "partial_labels_mapped_to_failure": 0,
+  "review_file": "evaluation\\aihs\\.artifacts\\label-export-sens-exclude\\independent-label-review.jsonl"
+}

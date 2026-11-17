@@ -1,0 +1,254 @@
+{
+  "stage": "phase2_train",
+  "baseline_id": "aihs-paper-repro-moodle-v1",
+  "mode": "FROZEN",
+  "seed": 20261115,
+  "notice": "Train/validation only; the test split was never scored.",
+  "split": {
+    "train": 277,
+    "validation": 57,
+    "test": 59,
+    "groups": {
+      "train": 37,
+      "validation": 8,
+      "test": 8
+    }
+  },
+  "selected_K": 20,
+  "k_selection_on_validation": [
+    {
+      "K": 5,
+      "validation_OverallRate": 0.7562862669245648,
+      "validation_HitRate": 0.68,
+      "validation_ReverseRate": 0.8518518518518519,
+      "validation_perplexity": 45.27967535050111,
+      "selected": false
+    },
+    {
+      "K": 10,
+      "validation_OverallRate": 0.7864534336782691,
+      "validation_HitRate": 0.76,
+      "validation_ReverseRate": 0.8148148148148148,
+      "validation_perplexity": 49.79584309638784,
+      "selected": false
+    },
+    {
+      "K": 20,
+      "validation_OverallRate": 0.9583333333333334,
+      "validation_HitRate": 0.92,
+      "validation_ReverseRate": 1.0,
+      "validation_perplexity": 57.486891812109924,
+      "selected": true
+    }
+  ],
+  "train_in_sample": {
+    "rows": 277,
+    "transient_excluded": 46,
+    "success_rows": 103,
+    "failure_rows": 128,
+    "HitRate": 1.0,
+    "ReverseRate": 1.0,
+    "OverallRate": 1.0,
+    "predictor_only": {
+      "HitRate": 1.0,
+      "ReverseRate": 0.8203125,
+      "OverallRate": 0.9012875536480687
+    },
+    "call_human_share": 0.15584415584415584,
+    "per_class_counts": {
+      "executed_action_x_outcome": {
+        "recreate_moodle_web_from_reviewed_compose|failure": 14,
+        "recreate_moodle_web_from_reviewed_compose|success": 17,
+        "remove_named_cpu_load_container|failure": 20,
+        "remove_named_cpu_load_container|success": 20,
+        "remove_scoped_db_reject|failure": 22,
+        "remove_scoped_db_reject|success": 19,
+        "restart_moodle_cron_service|failure": 16,
+        "restart_moodle_cron_service|success": 13,
+        "restore_fixture_directory_mode|failure": 21,
+        "restore_fixture_directory_mode|success": 16,
+        "start_reviewed_compose_service|failure": 20,
+        "start_reviewed_compose_service|success": 18,
+        "wait_and_recheck|failure": 15
+      },
+      "final_proposed_action": {
+        "call_human": 36,
+        "recreate_moodle_web_from_reviewed_compose": 36,
+        "remove_named_cpu_load_container": 30,
+        "remove_scoped_db_reject": 32,
+        "restart_moodle_cron_service": 35,
+        "restore_fixture_directory_mode": 32,
+        "start_reviewed_compose_service": 30
+      }
+    },
+    "fallback_paths": {
+      "controller_accepted": 230,
+      "fallback_cheapest_accepted": 9,
+      "fallback_exhausted_call_human": 38
+    }
+  },
+  "validation": {
+    "rows": 57,
+    "transient_excluded": 5,
+    "success_rows": 25,
+    "failure_rows": 27,
+    "HitRate": 0.92,
+    "ReverseRate": 1.0,
+    "OverallRate": 0.9583333333333334,
+    "predictor_only": {
+      "HitRate": 1.0,
+      "ReverseRate": 0.8518518518518519,
+      "OverallRate": 0.92
+    },
+    "call_human_share": 0.21153846153846154,
+    "per_class_counts": {
+      "executed_action_x_outcome": {
+        "recreate_moodle_web_from_reviewed_compose|failure": 3,
+        "recreate_moodle_web_from_reviewed_compose|success": 6,
+        "remove_named_cpu_load_container|failure": 4,
+        "remove_named_cpu_load_container|success": 5,
+        "remove_scoped_db_reject|failure": 6,
+        "remove_scoped_db_reject|success": 4,
+        "restart_moodle_cron_service|failure": 3,
+        "restart_moodle_cron_service|success": 3,
+        "restore_fixture_directory_mode|failure": 4,
+        "restore_fixture_directory_mode|success": 7,
+        "start_reviewed_compose_service|failure": 3,
+        "wait_and_recheck|failure": 4
+      },
+      "final_proposed_action": {
+        "call_human": 11,
+        "recreate_moodle_web_from_reviewed_compose": 9,
+        "remove_named_cpu_load_container": 8,
+        "remove_scoped_db_reject": 6,
+        "restart_moodle_cron_service": 8,
+        "restore_fixture_directory_mode": 8,
+        "start_reviewed_compose_service": 2
+      }
+    },
+    "fallback_paths": {
+      "controller_accepted": 44,
+      "fallback_cheapest_accepted": 1,
+      "fallback_exhausted_call_human": 12
+    }
+  },
+  "training_counts": {
+    "train_rows": 277,
+    "predictor_rows": 103,
+    "predictor_class_counts": {
+      "recreate_moodle_web_from_reviewed_compose": 17,
+      "remove_named_cpu_load_container": 20,
+      "remove_scoped_db_reject": 19,
+      "restart_moodle_cron_service": 13,
+      "restore_fixture_directory_mode": 16,
+      "start_reviewed_compose_service": 18
+    },
+    "transient_excluded": 46
+  },
+  "controller_coverage": {
+    "wait_and_recheck": {
+      "executed_success": 0,
+      "executed_failure": 15,
+      "controller": false,
+      "reason_missing": "needs>=2_success_and_2_failure_executed_rows(have success=0,failure=15)"
+    },
+    "restart_moodle_cron_service": {
+      "executed_success": 13,
+      "executed_failure": 16,
+      "controller": true,
+      "reason_missing": null
+    },
+    "start_reviewed_compose_service": {
+      "executed_success": 18,
+      "executed_failure": 20,
+      "controller": true,
+      "reason_missing": null
+    },
+    "recreate_moodle_web_from_reviewed_compose": {
+      "executed_success": 17,
+      "executed_failure": 14,
+      "controller": true,
+      "reason_missing": null
+    },
+    "remove_named_cpu_load_container": {
+      "executed_success": 20,
+      "executed_failure": 20,
+      "controller": true,
+      "reason_missing": null
+    },
+    "remove_scoped_db_reject": {
+      "executed_success": 19,
+      "executed_failure": 22,
+      "controller": true,
+      "reason_missing": null
+    },
+    "restore_fixture_directory_mode": {
+      "executed_success": 16,
+      "executed_failure": 21,
+      "controller": true,
+      "reason_missing": null
+    },
+    "call_human": {
+      "executed_success": 0,
+      "executed_failure": 0,
+      "controller": false,
+      "reason_missing": "terminal_action_never_executed"
+    }
+  },
+  "predictor_classes_observed": [
+    "recreate_moodle_web_from_reviewed_compose",
+    "remove_named_cpu_load_container",
+    "remove_scoped_db_reject",
+    "restart_moodle_cron_service",
+    "restore_fixture_directory_mode",
+    "start_reviewed_compose_service"
+  ],
+  "predictor_classes_absent": [
+    "call_human",
+    "wait_and_recheck"
+  ],
+  "limitations": [
+    "controller_missing:wait_and_recheck:needs>=2_success_and_2_failure_executed_rows(have success=0,failure=15)"
+  ],
+  "calibration_validation": {
+    "recreate_moodle_web_from_reviewed_compose": {
+      "n": 9,
+      "mean_predicted_p_success": 0.5756005673088023,
+      "observed_success_rate": 0.6666666666666666,
+      "brier": 0.08317868329143992
+    },
+    "remove_named_cpu_load_container": {
+      "n": 9,
+      "mean_predicted_p_success": 0.5555888826625214,
+      "observed_success_rate": 0.5555555555555556,
+      "brier": 0.00015016821102002226
+    },
+    "remove_scoped_db_reject": {
+      "n": 10,
+      "mean_predicted_p_success": 0.2887453122233024,
+      "observed_success_rate": 0.4,
+      "brier": 0.0702416919820129
+    },
+    "restart_moodle_cron_service": {
+      "n": 6,
+      "mean_predicted_p_success": 0.4661140432523556,
+      "observed_success_rate": 0.5,
+      "brier": 0.010544034852067211
+    },
+    "restore_fixture_directory_mode": {
+      "n": 11,
+      "mean_predicted_p_success": 0.6338708726158869,
+      "observed_success_rate": 0.6363636363636364,
+      "brier": 8.354205283085486e-05
+    },
+    "start_reviewed_compose_service": {
+      "n": 3,
+      "mean_predicted_p_success": 0.12099750194232384,
+      "observed_success_rate": 0.0,
+      "brier": 0.02589689602734536
+    },
+    "note": "Per-action controller reliability on small samples; only indicative. Probabilities are uncalibrated LightGBM outputs with class_weight=balanced (no Platt/isotonic step)."
+  },
+  "model_content_sha256": "0da82b583e8bce3668368a1bd2ddbb5e6213a13981e9909d3cebfaa2291e11bb",
+  "model_file_sha256": "5b907510b33ceec454ae6145b24904a8d28dfec811a90215c46aec32b3b952c7"
+}

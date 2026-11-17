@@ -1,0 +1,2644 @@
+{
+  "schema_version": 1,
+  "evidence_mode": "lab",
+  "source_policy": "complete lab episode directories whose manifest checksums all verify; never merged with staging",
+  "inventory": {
+    "campaigns": [
+      "campaign-1"
+    ],
+    "episode_directories": 420,
+    "skipped": {}
+  },
+  "classifications": {
+    "lab_episode": 420
+  },
+  "source_files": [
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00000-ep-f71fbede25d3/manifest.json",
+      "sha256": "d5fd594dcf09837bc5ef986b7f7e2b519b29db077b29e773bf0ce3a52eae66f5",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00003-ep-7fd40c171819/manifest.json",
+      "sha256": "b7874b231ed816109c0d6a0cdb456922e302ef9d0626b6665806818cde1b1ac8",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00001-ep-66a941126455/manifest.json",
+      "sha256": "3d7b864317fc0b1b9c8fed439fdd3d8598b2a305073ea6161cf92aef30a6e2ec",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00002-ep-0b011541ebac/manifest.json",
+      "sha256": "e998d09f8baa27f1e3eb62f3de118556b0559f1c6d96c844cacdb34cff48d942",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00007-ep-ee3bec8c7393/manifest.json",
+      "sha256": "8756757cce6c11c09777f24cd24a72055e4c04fa52ecce52b89c8b210ed77de8",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00005-ep-4b1afe2826d5/manifest.json",
+      "sha256": "12b97413b9abad351212759f025d80635b2179a0aa67c0148dd5b4345edf1103",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00004-ep-8af80d3d6d18/manifest.json",
+      "sha256": "213b2d60fcda09642e46d45bf5aae097c0d5b0aabefc0d68dca5c259f8384f62",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00006-ep-18b1f241eec6/manifest.json",
+      "sha256": "e8c9dd687daf3007483e71033856379ac441efa8e868168b6b910a307f5d560c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00009-ep-637463db8d7c/manifest.json",
+      "sha256": "614909a5acfa6a7910135538481a38c77ff059a96df5249ae336e5e4dbdc3529",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00008-ep-01222d1d3889/manifest.json",
+      "sha256": "15834f53cf250fabd37db091a295f466cd1eb1e4d0ef757222f4cb9ce67785b8",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00011-ep-974999919b57/manifest.json",
+      "sha256": "5a85784afccf2d8e22ef2f0c00eae2c8626d275af67fdbc49c85600c759b85ca",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00010-ep-b9fd4ee81da0/manifest.json",
+      "sha256": "0ccaa1d5323e9527ee50aeeac8aaaa48b9da2b08dcd0f33dd937ae3ce54ca4d5",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00012-ep-1c4a1adff35d/manifest.json",
+      "sha256": "d0050f73affcca0da6abd9a86b556afd6aabc56d81d757cfc2dc5efa717a0fdc",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00013-ep-685746c8271e/manifest.json",
+      "sha256": "5b7956a28a533057e9df86aaf83139e1e6f6bc40c931ae34ea9515b50c0de9dc",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00014-ep-7eb69bb44c8f/manifest.json",
+      "sha256": "c3f05d1d5789b10446edd2a087c57b81f8e7dccdf93865f4420636427d8b7c74",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00015-ep-ecb5be2a6a2e/manifest.json",
+      "sha256": "ad152b5a87c0495d5f8bb4c72d63a63b9b6daec2ca1c846b7503f4a8f82d8d22",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00016-ep-b4fcdef372c2/manifest.json",
+      "sha256": "93811d7a10f51796897ff2dfcfa478ce9784886d5d35619a36f7f26cfd7fa4e0",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00018-ep-08184586d49e/manifest.json",
+      "sha256": "8e184f247b8f89f795343e55997ff9c0d6e4ee1ef2791c16548473940d5e8362",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00017-ep-fe0454f0cdae/manifest.json",
+      "sha256": "c56d98db25cfb065a52acaa691da223ca0e80a327fa4758b07c05a439e000f2c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00019-ep-255a72b78dce/manifest.json",
+      "sha256": "bafde5aeb4a2de3e07e0edf700adfe6b3c675c424a3fb712932689070fcf49da",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00020-ep-2b65fd15b2fe/manifest.json",
+      "sha256": "d233a57ee739827b5a9e73e128c3627969e9c5862d91043b92f69140e9f84ad3",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00022-ep-1bfe20d55677/manifest.json",
+      "sha256": "68c97ab0971a7084f583ceae6c926383a57c8eaf88157cb59c48e935f851fdba",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00021-ep-1445a466205c/manifest.json",
+      "sha256": "71dee231a343c4079563dd99e41bc016ed4626b8fe5c4830a872c40e615bdc83",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00023-ep-6e5cd63bb3e6/manifest.json",
+      "sha256": "28f565d5554ff182229c64f051c8e28222b99fc162c6bf5878da4e286c611867",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00024-ep-4ae96b55b5ab/manifest.json",
+      "sha256": "1149d7d38e6c5a6e4f59d6b9bc3cb56cdff1ddc9c1d283dcfafcb802e565bfb3",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00027-ep-91870c4c722c/manifest.json",
+      "sha256": "ce3659c2e2c5355ef4276f39c9e0e84278a097a3a33d7b7cdc8c675eb0eca218",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00025-ep-c5931b89e3d4/manifest.json",
+      "sha256": "2ff0e113fdc9e17851f2ffee142e0e79811492b5fa3d047a53dc7fb56d8594eb",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00026-ep-c023ebdb6ae7/manifest.json",
+      "sha256": "96897bad0907563ff7ac8e90d434f9418961f0a6e5c8d282133376cbc1b47326",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00028-ep-de8311254a77/manifest.json",
+      "sha256": "bf460b1c34d0dde0512aefe2bd172821d4ffb0d85ef868520f79e9c1ca899244",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00031-ep-e5cc9ee0262f/manifest.json",
+      "sha256": "af1100cff7a3278b7c438511737695a7843d211c9dd3e30064d13b50e100949a",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00029-ep-bf2e4ff55316/manifest.json",
+      "sha256": "76d4358de3b3cb57820a00eedb56fce5b59ed21006ac574d97de633755b2f8ad",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00030-ep-9d26ba1b52dd/manifest.json",
+      "sha256": "d2f2b8115f8cbf7e4225db32c4af8172ad42878f7a1ce88f4c66c7d7c597ccc3",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00032-ep-a5fbce28bd46/manifest.json",
+      "sha256": "070e458b0dc9a0849b4989414e2b92b7381a17aedd4f84e12a370e0ba7f576f2",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00035-ep-fa1c6df6e46b/manifest.json",
+      "sha256": "e9e3b714632791e5ea166e0c35ea7f4e4618837339cd5b75c78882b7bc845b0a",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00034-ep-d06079c18e98/manifest.json",
+      "sha256": "e20851db3f51b760e8c23121ecf9d89d47d3bfa6afe752dec47bf1597aa3b971",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00039-ep-ec1143f88964/manifest.json",
+      "sha256": "ec287046b3e490d275b05796238183617a03cb044b17faee5a842d68be331a4d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00033-ep-64de8bb73004/manifest.json",
+      "sha256": "8fdd5a8fc5b814fd7bf5b869f6d40eb487c6175b4d003a662f4af939fcfcf449",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00036-ep-128d06df705a/manifest.json",
+      "sha256": "46b70cc013cc339b61e3ed0844ded41d19d470fe64975a1010b2d5dea005e0a3",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00038-ep-035c1c521c40/manifest.json",
+      "sha256": "6596eaac1205e6e275f273a0b9d36e61767d845d3f6b550c8cee226ca4b00a91",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00040-ep-7012e4f0dff2/manifest.json",
+      "sha256": "c886c813d92202848e58a29a0834d8d2a2d5096e865f9fbb2acbfbe5ab0165ed",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00037-ep-002d2aabcb9a/manifest.json",
+      "sha256": "bc9af69163576f152de1498b980381367d2b94522445bbd1c5ccf98c5daaaaa7",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00043-ep-014d05b03256/manifest.json",
+      "sha256": "3098f12ef5438befcdeefbd3e1e85bdb6533cb15c1c2db6006322dcd0c1311e3",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00041-ep-947c01c86745/manifest.json",
+      "sha256": "c0f5aab5f02542c50ecb6837a69f284bd8481eed80f525cb6ff7fcce009a9041",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00042-ep-322e10410f21/manifest.json",
+      "sha256": "995bbef67a3e39b305fc4b90006e2b71141ce20bb56f79d4cea9647aecd44b01",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00044-ep-11026ed1e502/manifest.json",
+      "sha256": "28478a00fd76e9a7034a597aaa927b891a633f700d1e5421bfc3bf5ea3f44f4f",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00047-ep-dd73d62b9dee/manifest.json",
+      "sha256": "2392ea8256a79de0bb813f2efc9ee407a9b4f7cdfaadbe6d0d74d7451859880f",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00045-ep-6d623142be53/manifest.json",
+      "sha256": "f147e0540123eb7c2c45bc6519f7a8f4afa361c4194d2b5cb54ec7b250f81840",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00046-ep-790aaf96a379/manifest.json",
+      "sha256": "161ef6c288a82e114e4c969eb00916e9abc64da7f793dbb35446db7139b01584",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00048-ep-0b764a602fd8/manifest.json",
+      "sha256": "885a78b0359fa4a44d39e6e35f909afad6cae9d023f34bc7b52a4e90d267473b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00050-ep-aa5e991d01d5/manifest.json",
+      "sha256": "525875a0ee2fbea5cab50001bc36a71209c4a07e61e2dd1a6630af8e43a359d0",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00049-ep-4edeff6a40c7/manifest.json",
+      "sha256": "26fc11856d336a1708ea84fb61475d3c87ee31a00e838d9e7f32e4bd8bd093bd",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00051-ep-0546a82dc5b6/manifest.json",
+      "sha256": "8035700f3905371516b3d10e5cf16ddf28d6bcfe8ea9b288bb595c70ad160e83",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00052-ep-82b36fc138c7/manifest.json",
+      "sha256": "ae77fb11eebcc3bb9088143a900a9456f33c98f45a9eaf4802daf49187eab73b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00053-ep-c4a9699462e2/manifest.json",
+      "sha256": "b2ce6551f88d88107ab0f05e699a5aae6a6631b9f70e19bff72c627c683f890a",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00055-ep-1cc1bede3c50/manifest.json",
+      "sha256": "6329e4d7a35a80e08527e899a5cf8fb7b31c41a96e16d2ba49a32ef0e82fbb4b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00054-ep-ccecf1613d30/manifest.json",
+      "sha256": "097f147c205590ce89f8114d41a9ad34a5a8f8a1d4b5fcfa70dfae31fc12280c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00056-ep-59fe8352af58/manifest.json",
+      "sha256": "88398d85e06aab92e1fe270aef4c1a5a7e18dc500150340671839184a3101146",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00058-ep-d198d40942cf/manifest.json",
+      "sha256": "d949d36c5bfb6954ebeed7041c44af90758ed269b525361e819f2f93161ae93d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00059-ep-39d7c2c8f659/manifest.json",
+      "sha256": "16ac6bbe4edd9424027995af48f185a562f17dc3c9e36c2a8754f6e92f1dc1a3",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00057-ep-8443107345c7/manifest.json",
+      "sha256": "a59b18aeca5898cc4699d87775ba258c645ce0e41af51f5a98253320003dc458",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00060-ep-424f6abdab94/manifest.json",
+      "sha256": "796df52d28b690e3bd01912a0cdd64034014a62be18d95718f1736c5642d085a",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00062-ep-d381dcf9105f/manifest.json",
+      "sha256": "1ceea26298ac1c2409f023a96f12018378f3adc942584c5b727697adf20901ae",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00063-ep-f38d2a05929d/manifest.json",
+      "sha256": "627b7d63540cd050b0d0068971434365dc65518dd0147cca72faaa7ab963848b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00061-ep-821f9b99aa81/manifest.json",
+      "sha256": "7e4b4b77b12d3cb97ff17e0181855e1de0d6fe706025605afb3067d79412c349",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00064-ep-c28525cb1c5d/manifest.json",
+      "sha256": "7bfe4119c24ba220dd35ed987224aa44b5a949236a2158a570ac23f494b196ad",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00066-ep-d498e4beb28c/manifest.json",
+      "sha256": "f7cad7edbda644d8eb6a7a67ff373e42dca648a101ffa560331748f8fc66b36c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00067-ep-68cefc6ed039/manifest.json",
+      "sha256": "8ba727392b30ba0a158499a4c16ffad8a6e67076ed918b5ac8135772323a03bd",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00065-ep-be799f538650/manifest.json",
+      "sha256": "31a0b778d4e584f017d1f6d84907a50dd01c3b1eaf64a390baadea03f81fdf4f",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00069-ep-df849dcd6554/manifest.json",
+      "sha256": "3f7cf546d76a2efdcf73a2c217b4e83d9d647c4affdba8c10712555b2d9bd3ef",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00068-ep-e0b3deeb2403/manifest.json",
+      "sha256": "20d029680d5d94274f9478f9d16f0813f57d8b6518127bc490dca408267b13ef",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00070-ep-c9ebdc7577d2/manifest.json",
+      "sha256": "a91b43c26e0790a14b38df8e07cb643dd1008e3d964b33cae9086f6cf666f643",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00071-ep-1f2d03e8e0af/manifest.json",
+      "sha256": "cf6d439d7a8df5a92f4bbffa7ebec35057032ae0b8a8360157dd24615d27e603",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00072-ep-8eb0023946ab/manifest.json",
+      "sha256": "3730428b248b055c0f3ba47f013d6ac10ede1336e3952faa63374a6111e447f4",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00074-ep-07515f32ed5d/manifest.json",
+      "sha256": "9c9c9ee4610956ae80388c0d50083baa56a796e386544b06dad1e046b7e7855e",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00075-ep-195d42151c6f/manifest.json",
+      "sha256": "9a3b5e6213746152351006874b82c01d183feb56a76a2023ca1ccccba6aa2c5e",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00073-ep-03d94312195e/manifest.json",
+      "sha256": "e1d4cb43ce7ea105984b02d1f06ad5a76c867ba655cdfbe4b661b044990a2cea",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00076-ep-8ce561b2f483/manifest.json",
+      "sha256": "6b82b298d2bb589b67cc854d3132d795b403199f2cb613a0c9dbb048bc11c53f",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00078-ep-b33e9e322d9a/manifest.json",
+      "sha256": "83ae26ff91d6a6ab4a0441c97f811cc294d2ab86d502b8f09e457fd46246fbb0",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00079-ep-87edfa21f776/manifest.json",
+      "sha256": "980b03778752acd362a1e15e66ba633f9a678571b276ee477872bf1acd16b7f7",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00077-ep-e853a2728c4e/manifest.json",
+      "sha256": "cfafc651cd7f5b109f76c02bfbc02dd66b5cb842b1092e1c20cf67ebe840fcb8",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00080-ep-f3e6019a68b3/manifest.json",
+      "sha256": "7c19a511a29098f61aa7ff0c950af18cdcbb9d16e028bd070687d24e87bdb0a1",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00081-ep-1af284353f01/manifest.json",
+      "sha256": "b235de279de54d1691be9d21f523d500db70db80a1f330cd6f7caf4d8dfdf624",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00082-ep-d469f1253c39/manifest.json",
+      "sha256": "f1c113212ae3717ba6a86d433bec9b09e3f02afc1752479fd7d309542ba6f5ff",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00083-ep-2d7539a49dca/manifest.json",
+      "sha256": "cab663f3d9c571b885982a9a3df84516b9174a650e44b7acc0dc589a5e79efbc",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00084-ep-5e493256e524/manifest.json",
+      "sha256": "aaed2661777344624d7d0716feb2e74b9901b2211b04fcceebc6e5f4e083bd41",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00085-ep-63853fa009b5/manifest.json",
+      "sha256": "c4b0cd06931ac8c8048f7f4790c73dcffb20f4910aa576a52449d017dbb52e25",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00086-ep-b99d569b902e/manifest.json",
+      "sha256": "5183f435153946ec80819c204a5fc514d3cfdfb4fafcd2e6de5af3696506dd00",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00087-ep-96f1a3a0c8cd/manifest.json",
+      "sha256": "e358d41d7d03ba8829aa04de05ed3afe6cde7b9a9c6252e6885afb42df3eae8a",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00090-ep-8bae33486932/manifest.json",
+      "sha256": "9ced41847f3b910cb33a7763b35dc34d64bc10f0ace45f012bbf13c732b3ed13",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00088-ep-fab5e402e43b/manifest.json",
+      "sha256": "85a411789ee306c180155b20f2907201036af4b83154ef04dbcc17beeee1b787",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00089-ep-49cb2b9bc12c/manifest.json",
+      "sha256": "76c3c2ab9d8bf7fbf675e3c79e6363d1891a09cf2918b1446bd665af5c75a14c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00091-ep-86fca9de3da1/manifest.json",
+      "sha256": "e20c14f8f5696c8674ae79c28f1b8685b6c05f3af92c310d4547a364634c2334",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00094-ep-234a4544d56c/manifest.json",
+      "sha256": "1c9fed5e48ef90c7f8dfd42f865f451165ea4667728c6589a9be3bfe8bdae4ea",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00093-ep-8923f1b6cd48/manifest.json",
+      "sha256": "2c37ddf82bc94bf6ebc10edbb91394d0f24c63d4aaa902a25067557cbd512cb1",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00092-ep-9ca3e0ab56b4/manifest.json",
+      "sha256": "c1c5f9b9f680412ee98c00f8de0377830358df67e7f86f11aab7bbe765d34704",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00095-ep-d35e74d1af06/manifest.json",
+      "sha256": "c9e560b71db77429c79a76e007c5daf9a6d82b15116d05f2d4754b2071b9bc90",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00098-ep-9b87af4cdd13/manifest.json",
+      "sha256": "5c370478df75648d75668249386f4752385d377e38138254b1b517b58db44736",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00097-ep-bf9a0149115f/manifest.json",
+      "sha256": "91ed0b5b7cabe42917c87e7b9e605649278ff3126f9ebfaf50db8d3533fcf308",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00096-ep-52bfc3aee021/manifest.json",
+      "sha256": "09905e5d91476e089e4c1f922a3bc500f93a15e54f8c7e6e6d65aa67dc41d64c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00099-ep-67f0f47de7ff/manifest.json",
+      "sha256": "5dd6d71d2e3ab7c551fea42d4d4e99c89e4c6d1dab601c8ae89c793bd5eee810",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00102-ep-6405822ec8db/manifest.json",
+      "sha256": "7045de52ce1eed6c8e76361774a7518d0ab0c71521ece4a4ef7cf2c63596fcf6",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00101-ep-eb94e12f9325/manifest.json",
+      "sha256": "85e23f8c712cf16953e35adb47780b6b841a099d838682f91df4350b28643760",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00103-ep-1bee09ee2d43/manifest.json",
+      "sha256": "6501051ecb0ad9de13653bb1a7dba743a79a212e202061893563480dc8a3597b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00100-ep-45d411e0d92c/manifest.json",
+      "sha256": "5f552fd33df00ba6e189fc628ee008fca3b28aae49e6f954cc1397caa6f210b5",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00106-ep-2bba49a0ab6f/manifest.json",
+      "sha256": "c59e90aed3d72bf13d6a22d1e5d2f36b1e95ccb13c04461e0fbb98a0338d5a91",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00105-ep-dfeae0624d68/manifest.json",
+      "sha256": "5a60226852b54b79a808efa0f39c507eaef8cc5d2b35b501c13aede2a3d41881",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00107-ep-0336c2a6bb44/manifest.json",
+      "sha256": "a52504454cd05eea23f192c38690c253dd1a4a694ced6a902ecbf75c2674e010",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00104-ep-472e4e56c544/manifest.json",
+      "sha256": "dc16c6005a237aa043787b74a6fa54b270bced11c5b8ccf6a5261a51a6ca5688",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00109-ep-91ad9bb2c9ca/manifest.json",
+      "sha256": "6ce3ac65833c0b86ed8c247fbaa595fc3ac6b5e5d2e370a16ed67ab3ce6f65ef",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00110-ep-119261bcfbcc/manifest.json",
+      "sha256": "a9f3d36c30c6ccf1f40254103ab268d02c8780f40b2bbd9f5c8bbc81b47578c7",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00108-ep-8ffdf503a4ad/manifest.json",
+      "sha256": "6d5d266a4fa72a208669096d96c70d6d4f2665e93246c5b920026f4972b1ed4a",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00111-ep-6c33c0a83e01/manifest.json",
+      "sha256": "cee1cc9e7277ef44a5bf4188953ed47b7e7f98f1d82fc61f29b239d30be0c709",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00114-ep-af80976d81fa/manifest.json",
+      "sha256": "30da1979e0435d40eae7da66ea97cd383b7dd89da056fd7b6f5ec66319681c3f",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00113-ep-663e844dbe31/manifest.json",
+      "sha256": "62e024af263a8a84d922f3ece1666bebf9545a8547d4b1b76d0b8628bf8830e7",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00112-ep-a166544e452d/manifest.json",
+      "sha256": "f823e5aed786af2112779b8f6c500ee6f8a3cab51e1faa41a0d1d2e4deece2c9",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00115-ep-514abdb2a991/manifest.json",
+      "sha256": "9108938fc69ccfcc0d4581d0a456f91a38907ae3ca91e01121350f6269c77e8c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00118-ep-c9991aaa33ef/manifest.json",
+      "sha256": "f189e427ab6720d48181377c94c4e7c09bd776a73e71df0ee25d38cb4969ccb5",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00117-ep-66ebdd8afa77/manifest.json",
+      "sha256": "8e785afd3d4e610813e6c4c3d5b55557eeadfbf5ace96f049b8fc00d7827060f",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00119-ep-40b0608271e5/manifest.json",
+      "sha256": "68efa70464481f8d3ddfcf4df461573d26e4be43d6a92760405d1cf71d92e734",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00116-ep-6806e69c1f11/manifest.json",
+      "sha256": "3de426cad714294347f4192806a24123b2b00a5d767188c188ebc629ed1ee39d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00122-ep-fc1bd1d861c3/manifest.json",
+      "sha256": "b8a774cee7f8f5e5760d7d4eba380ae3b38fcc4d9cd616c0ae72c67c753a3859",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00123-ep-d1a48aff4c9c/manifest.json",
+      "sha256": "29a169f9d7c4b673c21d7b7b4a7fa1260af7997687068dc607131eabe2160691",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00121-ep-02bc804abce7/manifest.json",
+      "sha256": "c3c6d82fed754383042bef3aabeec43607e0330c423911be9249d4e523481f01",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00127-ep-3217df3277e9/manifest.json",
+      "sha256": "9f215c99da5d32e4a50f78668fca6a212abef1acf09bebb3cb5c39cd81cede41",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00120-ep-c36708780e9b/manifest.json",
+      "sha256": "36ec0be6cc7a03072e4cfe6ed20f9bd94b6cf0592111a49a67347d2a1848b49a",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00125-ep-19ee03f48c77/manifest.json",
+      "sha256": "5cfcb9ed4e06e103600ada892f71d41b2c8dbd84fb598dccea651d3236f272b0",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00126-ep-4de9b869ddad/manifest.json",
+      "sha256": "17a838d5fbcf1b252a32013da9f7f85bc7333f1061c25f61c341b44c636a0d06",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00131-ep-c52378a54127/manifest.json",
+      "sha256": "4488d7ce9f39d7658e2f8d1bedc880d52ef2a9645490f8d6b78914c7eac8af21",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00124-ep-726542ed5a4d/manifest.json",
+      "sha256": "d76eed2d99d57ed7b2b683e987fe1c6edddbc4898912e469c6da61f2f23d0d0c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00130-ep-d051739c765d/manifest.json",
+      "sha256": "9afecce43ef425ffe28120105e1d05f9e60e6c8b89824e7f436bf884c71af929",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00129-ep-429716ea495d/manifest.json",
+      "sha256": "ab212adac288e28d085578cf7c7f723b3d4e68687bb2a72f1349e95ace64f333",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00135-ep-2c15b1cbcbbd/manifest.json",
+      "sha256": "9db660636d94de36d3ef2509863d0ebd59c036c09777d23b98a6b9873a656f19",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00128-ep-40773103046b/manifest.json",
+      "sha256": "9b0f6295292edff47429d710fa4ac5432927e5a0a5b792f17595a635ff8d977a",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00134-ep-ec2e49e0f0f6/manifest.json",
+      "sha256": "2477964aeea1681b7665e18f3971f103de70da4d59d29c78259024e7bd2f1269",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00132-ep-8d20605224d0/manifest.json",
+      "sha256": "2b3e58246a79a05f81bc31221993cdaaf24c93c6e6cb669574f626405a8a7305",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00139-ep-85cf6969b68f/manifest.json",
+      "sha256": "8549114f5a0700899255b5b695dbc641202d873d03d16cedcd5246a1b4368d9a",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00133-ep-d1da1fbf92ba/manifest.json",
+      "sha256": "ebfd490709e6ca98858a3e64b59106bb888b26552d5135d7a4404a8097f43832",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00136-ep-c8d935ff7f93/manifest.json",
+      "sha256": "7a7171cc30becc47fb0d212cd4d149349876c0a3d48402ab65780bf57f65424d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00138-ep-384aab411446/manifest.json",
+      "sha256": "f310842c1d554d1237f9d5da63bd01c6a8b4d109e5b53a82035de6344e10b138",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00143-ep-522bc4054058/manifest.json",
+      "sha256": "b73be64b642741c75d7b2382b342641ef9e02fa1ed60cdab414608b1d4505f55",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00137-ep-eed28731e50e/manifest.json",
+      "sha256": "9aebac8c37b7ad2e91e8b73ae4656117ee17dc34887b7402c4ab27cef7e4cb4c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00142-ep-ba7dccb3ceed/manifest.json",
+      "sha256": "89de4dc6b7ceff347d87843946daa91928f50e6abf414d1a7e6e8307447ad386",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00140-ep-75abe85a13ea/manifest.json",
+      "sha256": "00bcad6cc65d6bfe008eac1a27f0220476f4b540e105fec08270a5810744162d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00141-ep-9c4ac4b0b499/manifest.json",
+      "sha256": "874f6d724589ac2f2f53a3e56dcd70f7faaacd94286b40293e4d83f604906ed5",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00146-ep-851a80ab9c53/manifest.json",
+      "sha256": "2cafdf470f548b54b4b2dcb84045e4a36026d073bf934d427a606063fd4fa153",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00147-ep-a57534278d6c/manifest.json",
+      "sha256": "474a920a12f940d22012ad0a058bcd9982f55eb211d4cbaa50b7af49caad8231",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00145-ep-58dbf47eb9e6/manifest.json",
+      "sha256": "943c9756a66615e2ef334a320fde08b822fcbd419fa921e90009945993d96b2d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00144-ep-19113c88147d/manifest.json",
+      "sha256": "52b3ecb69c50e725d7a0eb7ae0f5869702591330177d1c52dc4e1017694b876d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00151-ep-b9e3916ffa52/manifest.json",
+      "sha256": "0d5090acc70f5570e7aeb1935bbc8e31462e6e3868e738dd46622e03495bcb68",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00150-ep-22aeb2134c13/manifest.json",
+      "sha256": "38ec99c13e261c0f12f68e3c130e36a9775cbbb056b51b2018dad1aeb5cc080e",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00149-ep-abce562f3bc4/manifest.json",
+      "sha256": "16fa41938125245c8debe229e6583aaf6ef527fae10db9f14b3e181b26466845",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00148-ep-72ce2e052fef/manifest.json",
+      "sha256": "e0e999ee1ffec85eed109ffa4faddf2df4e3dc5f72ba5df084ef05c1f4893ece",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00155-ep-f30bde33a2a9/manifest.json",
+      "sha256": "267ef6813a2dd1b75e7509edac1f2ba5bd4c198596b70c3376c41f4336da105c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00153-ep-bb643104b838/manifest.json",
+      "sha256": "58d61d9df921962aa529fd9929ada689a12a3526b51ff212a1114832405bfc50",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00154-ep-ac352a5241af/manifest.json",
+      "sha256": "8daa4d363e2094a7e58acf19241ef9ae7835e69611f78d448a176f98aef0a994",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00159-ep-22a4c0070b65/manifest.json",
+      "sha256": "d74854333df20440c60472dcff4fff58ef895d5ce0f9d7528b815de903c613d7",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00152-ep-1dd4ecf4f871/manifest.json",
+      "sha256": "b85cddf419efc047752738f7a7f8fdbbc78957f8d6bd4c74cc33191bd0276abf",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00157-ep-702e2c46d41c/manifest.json",
+      "sha256": "d3c54728990e6c16106a8b9fd2c542af8f5fb853f2a89ba546733384be33ded9",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00158-ep-c3c0e1b06aba/manifest.json",
+      "sha256": "eb347b283c36d2b28fa13db3c04616e1fcd46b186d344b86c41704c3abcab1ba",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00162-ep-ca19751cd656/manifest.json",
+      "sha256": "0afac605f5636f0b4bab8a5dece68d8e54ece52045d79919ff5b8676a131bada",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00163-ep-2586521383a2/manifest.json",
+      "sha256": "6518d3722fed63ca1674c83a073a82716e195e353b9596936a205f79902e9039",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00161-ep-5d03818027cc/manifest.json",
+      "sha256": "7663f7d94c02627f01a5db517611a80637192e5aec309d513acfbbc83a6256bd",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00156-ep-10192b618fec/manifest.json",
+      "sha256": "95af01bb994229b385ff54b34fb9737f61daf5f3633e72cd902ba6d54dcb1776",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00167-ep-5ab929a075fd/manifest.json",
+      "sha256": "798b71b854a23980b0f2bba4f495fceffc8bc1627d5500efd8d493c617c21e82",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00165-ep-12b0545069a6/manifest.json",
+      "sha256": "a907cea1a10ef87803b2261669de34efc18fd05c0336f57fe198ba4d768249e3",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00166-ep-69403c4e313a/manifest.json",
+      "sha256": "2a97fba2bdab2941f544535047836d22d078d0abc87434d24047c9da41a83bd0",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00169-ep-a46af718b7d9/manifest.json",
+      "sha256": "9c9957fee54beae5e4ba9ea589f5af1950aa013ea77f1b27668f68c9fa07cb09",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00171-ep-dc821864b0a9/manifest.json",
+      "sha256": "78af9f7c6bfa9f3ffe57dc5f1486ce45f9f778c80f27c47bde52e353e27da68f",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00160-ep-a4ee8bb3460d/manifest.json",
+      "sha256": "eafca7dc7050c3ab6129af11473d19a149a2a977831d1d40716683a1604add85",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00170-ep-68dcdbba1c17/manifest.json",
+      "sha256": "710a509af9276ecd3479b58cc8ed1e816f669f124f17202708fa998cd2f8368f",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00175-ep-27287b793540/manifest.json",
+      "sha256": "c5d2f08e1ad64cdd1d0500f6dabe5d866e82ca2ec3aee0ac2ebb45528ff5dd38",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00174-ep-f6c42b6bf24c/manifest.json",
+      "sha256": "b4cf52cfd4b8962060bf9d59bbab6b3f879ef803e33d187a2713af4321c60b93",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00164-ep-703e87e34a54/manifest.json",
+      "sha256": "8cf929bbf8d76e8dad854e3fee24f892487ffe1130d91e5d088bd8e63033dfff",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00173-ep-be72537e306f/manifest.json",
+      "sha256": "22c9f07d23aec0839e29034d0b44b1d3b33c1740409e9fe210ec19581de7b291",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00168-ep-106d1ade6166/manifest.json",
+      "sha256": "152a94bde7917dbdb157b717e515a4b4eacb1d86ee8a2779f807b4b7521a5c44",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00178-ep-58d7a132b4ab/manifest.json",
+      "sha256": "f790dc6c748227acb78f0400c0ff8347148fd86e0d7b7cea9250f1d26676950c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00177-ep-fa0e845fc8fa/manifest.json",
+      "sha256": "15beea9b0ae81ab41e6c7df4f0009f5eac972da6094197ceb0a30131ddf6c8aa",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00179-ep-ca8bf53922d5/manifest.json",
+      "sha256": "5f51b8c96c8f72792b217b91a20825b2f89a5fc009f7b85853e70fd0f0e47dea",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00181-ep-ec066a14d199/manifest.json",
+      "sha256": "fdc3dcfe16ced0457d5092303e17daf31ea1c806937065b6c18fda366f6199f6",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00183-ep-8ef0e6223dd4/manifest.json",
+      "sha256": "5e908109c4faf2ced3e30286c30898758325061b08fd89b729bc51a683b6bc14",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00182-ep-acdc48aebabb/manifest.json",
+      "sha256": "4216666878f887ef91069f9f652a2f270ab4b13cc0198e8eff56ba16478cf2c9",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00172-ep-524b2cd4f427/manifest.json",
+      "sha256": "a0b0290378f29ac9e2c7c796d42357d309adfefd23b3276debf831ef73052c68",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00187-ep-bba6238e0c99/manifest.json",
+      "sha256": "b2b80ae6fdf9776eb67f3f87f27a53d64b9f7c3cb3b6b65673eff682a32591ff",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00176-ep-9bc55ca84ab5/manifest.json",
+      "sha256": "750f333f425c9f1b5a8be4a9c5d2f14325f025ecb60259a0cf1ef3e2718900bb",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00185-ep-468b2dde5e58/manifest.json",
+      "sha256": "b6e257da95b5bdf128bd2e737be166661474217047cd48395539961e291c3036",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00186-ep-8ebd8aad6886/manifest.json",
+      "sha256": "dffe3a6cbe21764d7557d3345b7be37b075646217cd3462a10afc2541661325f",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00180-ep-16e26c1b88a4/manifest.json",
+      "sha256": "fb2bada4f302b899cefc9bfe35baf4bc0d5125278359bbb53e3be44d5cd53388",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00189-ep-3b19f36e533c/manifest.json",
+      "sha256": "a69c79bbaee19dc8e3ff018cb4a5e92c2b1843958cf6b0c9524cab83dba0259c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00191-ep-a966d4cd2ba0/manifest.json",
+      "sha256": "8de3e1ad99c68c59122c31c404586dae3055d65f84980be4ff8e02beda0ac1f5",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00190-ep-79e1eab67dfc/manifest.json",
+      "sha256": "2fea5440d7c3c9a6a3108657d0761f31ff0e7385532c295ab0a4e877123c49b1",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00193-ep-ee4a2cedc9bc/manifest.json",
+      "sha256": "aee86a272cc8219cfc64e094de3fac9522af50eda3db1db36c353708083fc67b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00184-ep-26b69a88e749/manifest.json",
+      "sha256": "a43496cc91775e014d6390b85696b8fe932dec4697975489ad393087466881ec",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00194-ep-a40d82b316b9/manifest.json",
+      "sha256": "67db82599c99c2bd2eb13065780cd54ce64611a1e100c6d64a75662b3f2d4db7",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00195-ep-7d33caa5a949/manifest.json",
+      "sha256": "18c0414909e65848cb9e79f13d90868edfefde10739502e24a5154312843db41",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00197-ep-9db90a3f309e/manifest.json",
+      "sha256": "a85ccfa9d114635d886e7e02c8be7d289c457349e14bd3fa79c03de52284392b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00188-ep-cc4dada87468/manifest.json",
+      "sha256": "c9f19852fbca57d125bc2d294749904bb0f4fadff93afc0a396b3d15cc21342d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00198-ep-cf0f773362be/manifest.json",
+      "sha256": "71c3d21b301fb75222d3a1c3b397d3e18134a566fc5f85915caaa2240d24e750",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00201-ep-cf499e92a0ef/manifest.json",
+      "sha256": "3f10755eb183e6557fac4791f5806db4a4de78c324e507c553e88ec88696b273",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00199-ep-42ef6d735016/manifest.json",
+      "sha256": "c3ba2b9ec6f56f02d03e76c63d5b51af9183e798f942d01a9774832b36291d68",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00205-ep-e19cb66e0c45/manifest.json",
+      "sha256": "eb4cdaca4de1a8a515381b9b2a631a57986fbb43d48304e7c0a5d3bf451ce581",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00192-ep-68f199fcb146/manifest.json",
+      "sha256": "415b21b4bb316ec49c1f1afb5537af3c67d4c4591047774362b480c9af9c62da",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00202-ep-da58f6075bbc/manifest.json",
+      "sha256": "6ca752316d88c2fb939b3007eaeec77984f5104a907f6ca74f95f8ae6c3f0960",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00203-ep-6a4602656630/manifest.json",
+      "sha256": "16a6f639835643f27c2589affbc7350c36a77af75a5d76cf69f72ceeb04ef116",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00196-ep-12406b1633ed/manifest.json",
+      "sha256": "c2393ab214f652ea8cce5072e60e885ab0db14af0712c2831118b35f333f5a41",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00209-ep-57948c2f1bc5/manifest.json",
+      "sha256": "afd3b39736d8f390507529d22370b92b7c51522c07aea159c5acf0a9fba5a935",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00206-ep-8f8057cce2cc/manifest.json",
+      "sha256": "5610742344020fb8fca98c35214e8598c6f4a21c3008d5389cceae2bf69b4ac0",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00207-ep-38f22b1daf2d/manifest.json",
+      "sha256": "ca0a0a0024ae6c6590b298bb652cd911f9a8f65211fbd93696023aeb14d37947",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00213-ep-9713d6a375b9/manifest.json",
+      "sha256": "0effcac07330767b7fd9f533f62ebe29269b374dfbf05e4102ecccffcda13fd4",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00200-ep-7e9bae680193/manifest.json",
+      "sha256": "dbd8456a7bd040fb78c13e36b9fc5e2628db4f7b08d106628d43318cddd60dc9",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00211-ep-084da37a717e/manifest.json",
+      "sha256": "0da78a8ac0e2f352be09f66147a9de22120a0be9162bce6cb0aea65c99553bb2",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00210-ep-265ff2d5f350/manifest.json",
+      "sha256": "a640fe348a8212e02b090d78fbf544ab83c7b3dc77b39e388356eda4c903b8ce",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00204-ep-0b9063d44ca3/manifest.json",
+      "sha256": "dc0e98e682eedc10b4bdfcdd9f710f33eb7240d01d4ee49a057f1e03850f2a69",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00217-ep-90af747e16f0/manifest.json",
+      "sha256": "51500aa491add2c6b54fed34c8727ffb5440011026dd7596fb8203d99e18654d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00214-ep-6d3990aa85e6/manifest.json",
+      "sha256": "ccff7bf1c655f715f67e92ecd91a4e6f02c84fa96a66409f85d2bacd226ceade",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00215-ep-6c1d44907bd4/manifest.json",
+      "sha256": "92a3c8f0a1b3a20d948e287f96e6698e2363d8254f3b9591cfc416a33a995ece",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00208-ep-2d49f4822856/manifest.json",
+      "sha256": "806720df6c4927853060e5547019a53d116b15edee94757b4c26e6562e2b5625",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00221-ep-bb8480b47bfe/manifest.json",
+      "sha256": "58bf38ecd370e1c880d3c33bcda638666e0e51c0d140acfdec417a379a4a32e1",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00219-ep-5a1c582167b9/manifest.json",
+      "sha256": "4fff5b31b2cd84530e8d5b8ff17deec07d775d738035f4cfa611e8925f149fb6",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00218-ep-b22507dc3b7d/manifest.json",
+      "sha256": "72749223603ca3d39947ffe330d7c9966722ff598feff41f90904d8af791b1cf",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00223-ep-57e861de8a40/manifest.json",
+      "sha256": "fffdb0bd186f39960004c0e086008f009776bda5b4eed7aca8ef50d0a1b7fd42",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00225-ep-e1978326ec04/manifest.json",
+      "sha256": "419d22da14be83ae99d909470992efd8f89a9b5c63cfbe54e6cbbe0b2b5ce705",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00212-ep-a77fb321bc75/manifest.json",
+      "sha256": "c265598fe4c8be53c925392d2d2c1f1a4c950942794d1e756ac6d0496e2793fd",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00227-ep-2161ece24d6d/manifest.json",
+      "sha256": "906545ab2ffbf2236ff28cb5d11f2fa2aafec19dfecfc378dfbea0ac97f61f8b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00229-ep-2c4b5acf9488/manifest.json",
+      "sha256": "943bc6f72c73bef74d0bdd6761a5a679b02f9bac1e2578d8858deddcbf969fd0",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00222-ep-2243f45e927b/manifest.json",
+      "sha256": "db98dd4fb146dea31aa2fc401d845eec12529e34de84b56c131deacf5904d7a4",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00216-ep-07e535f4dcd1/manifest.json",
+      "sha256": "f988ad5830bdfa6dc0167cc493a3ce412c21bf874f635c2676c62fb17173f157",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00231-ep-cb5f26cbe6bd/manifest.json",
+      "sha256": "0be3b6152de18725c65ae67769933030e6152257225a531c18b1489adcbdba5f",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00233-ep-cc8c8949bddf/manifest.json",
+      "sha256": "02f6b6754ee593d935559ac024f26c5d237922c1a7fb1b1326cef126d0cacdfe",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00226-ep-1eaad9ba90a4/manifest.json",
+      "sha256": "997dcc6ed86df91b91049b61dcbeba1aa4660055c52dc3ee574fc0301b2fad3a",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00220-ep-8eebbf28369f/manifest.json",
+      "sha256": "91856a1175bf17dfa751b3714279dae90a340d01dfd31085210dfbcd61b94640",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00235-ep-20d8bca4a42c/manifest.json",
+      "sha256": "25de57a99dc5822badb291b686186e7bb44365c2ec47a0718bad53403f08358e",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00230-ep-0133810e6107/manifest.json",
+      "sha256": "242db6858d6bf3fb77be3fd066297c768f17426aa3bdd22aa5dd5982dcc06fa8",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00237-ep-06c970c5f512/manifest.json",
+      "sha256": "7d3c3ad043bef01f21b3f51f2777ce7abe3a2ef47749bcb54059b5541a317b01",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00224-ep-c1791e2f3278/manifest.json",
+      "sha256": "6b0d05de60ee1d2735967b362dc6bccf2d111cbde3fd37b9ebbb3ddbbccbc4f2",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00239-ep-98eca1a24473/manifest.json",
+      "sha256": "159a6a7133783e146227a9fd4dfb5901195a41ff0a5839528f6c9b97b903e622",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00241-ep-ff7b3d2e3685/manifest.json",
+      "sha256": "6e5284a6e384f11a7c1a4374524b3ba273621b39d6a0dd90027328fa88fceac3",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00234-ep-72841d938e30/manifest.json",
+      "sha256": "d42e308044373e048bc61aff463d1aaa8d0c4c800fc58c33a2b254e906c1d95d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00228-ep-327ac4502df1/manifest.json",
+      "sha256": "cf3c57278f8801327be3ad2b7a6ce8697003ed5299d434caadff91793a08a80b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00245-ep-27140e37f072/manifest.json",
+      "sha256": "73f57b97268f004ce7b4bbab2b9c1375a18abf95badb3a73c5b1e51ea57e3e1c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00243-ep-54c9abdc3efb/manifest.json",
+      "sha256": "0a55413419d63da51cfc2392d77143e886ec60cab1401afbf6060a83db0833d7",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00232-ep-3a29467aadbc/manifest.json",
+      "sha256": "bdb7a6771b24f316b596727759fcb82f8ebcfd27b129e7c1231e3d7b3c2d6e2e",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00238-ep-e96e407825f5/manifest.json",
+      "sha256": "99d3061bc2a92ee0c4fa18025627fe21883efc7dc345affea801e3bfc6c7be23",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00249-ep-cc7b996615ad/manifest.json",
+      "sha256": "8866cb398e1c933e0f3f9af609df3623ec5ee67a7b61dfda58bac94207851c2e",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00247-ep-aaab3887e069/manifest.json",
+      "sha256": "cd6e21dca68beb9d44dca66dd39ae50db201e27376ee890eb1fd50a1d5895e6e",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00236-ep-1d89ea3e6651/manifest.json",
+      "sha256": "37de10591826b728ea0fd447e02bf2886dfa55747a0bc990e3815ed590177a71",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00242-ep-907da2dab562/manifest.json",
+      "sha256": "81d6af6b46282cd5cc15d850d0c239dd3efc38400635ce0d72e41e8faed55d59",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00253-ep-061a66dfb343/manifest.json",
+      "sha256": "6f3a8986c757ddf7ae861837aa5c1da13ab973dcf5e3e36e13ded96a10ae4605",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00251-ep-19f5954a27f9/manifest.json",
+      "sha256": "b63f4d4f764fdf294a034e23bd773660809a64909110273b5ba3c6c1044e2beb",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00240-ep-8b617a850fc2/manifest.json",
+      "sha256": "fcd70664137151a6fc35b7c141e8a12b456085f75f19720adb48d3e760f7a1b5",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00257-ep-1fd23db3b4b5/manifest.json",
+      "sha256": "1803574034637c84a87f6ca083be4d857544c0009a5b0d1d883944a627091ed2",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00246-ep-6e73e4d34557/manifest.json",
+      "sha256": "42dd6b3d9f8a5e07a81f3274f22a1d3299d6d555ca607b3be68c10d903f491bb",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00244-ep-c5f0b4689c3b/manifest.json",
+      "sha256": "b26540fb5aeefb5fba4e33fb58a7f85ab281e76a5b9eca6127b475dbc83b5baf",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00255-ep-707c9995d89d/manifest.json",
+      "sha256": "bfda150ab00cb1b612a62b2c8bb9404beb838112c3fbf0fe0798be5d49ea3fab",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00261-ep-7dadbddafb3b/manifest.json",
+      "sha256": "4682205f3e982edc3f3a321d93feec160850fcf58aad3350b2113a2c68e9c02e",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00250-ep-7e2dc2e1ef61/manifest.json",
+      "sha256": "3b88cbf464e9f9d9bb80aa5bbcfb9932053a38250161dbd3250b599cf6efcbe3",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00248-ep-572934a679a3/manifest.json",
+      "sha256": "919e94ea1f833a4ed61d988562b9cf926edaf362487834c6d635f132e9881d3a",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00265-ep-7d943fa17ef0/manifest.json",
+      "sha256": "fb8144f9014994ecbb7e6d317229a421248e90c6f4958d42257bacc1ee55008d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00259-ep-d48419956cee/manifest.json",
+      "sha256": "fb6648a3a13ab37d0f23edd1cd2c361b3c30a662f45e97882e00bdddf1533be2",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00252-ep-4dc54591858c/manifest.json",
+      "sha256": "0087fca8b7a97de79b38815dcbc393545c7ccf375d85353c40dd2604d9c8e7e8",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00269-ep-f99ad572794b/manifest.json",
+      "sha256": "b2546942df1ca0138b1b1af60ea616299dcd2556111e419671c583bcdab9556e",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00263-ep-a97d3b4700b6/manifest.json",
+      "sha256": "c92a026a127a6048071ba61469fc121dca0c7035e4955012199ef57c6b7748cb",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00254-ep-2a68c2287670/manifest.json",
+      "sha256": "832562e3cbb84bd59b634867196e97e4362f4ad0c23f415fbb927caf70c68a67",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00258-ep-0f034ae75c82/manifest.json",
+      "sha256": "e156e1272220bef8eba371fce2faaf6d38530a251d39ed86fb1c0c5ca0ae4194",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00256-ep-b9296a8c67b2/manifest.json",
+      "sha256": "94b8525985ae66bd6ca862f7eb39b948738eab39709dced4b9de85263403a88c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00273-ep-f2d070619b54/manifest.json",
+      "sha256": "28a7ac18ff679bda8858b71e7e9180837856f6cd107feede5e25fc33091ccb9b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00267-ep-1eca731a8629/manifest.json",
+      "sha256": "f8ff880eaa30e1fdf6100a850f3f2597af948c9f59667b1a770d73198c7f58ff",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00262-ep-25aaf055f963/manifest.json",
+      "sha256": "07766d6e46d5e0a21a44a8416302a6c7e1f25c4244c026b65bfc2c1eb90b15dd",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00271-ep-aa0bf86f3ea6/manifest.json",
+      "sha256": "134efb906abc71c8635d050ee50fa7ffa38a1494d1f3a8d0dd713d1361f43644",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00260-ep-596facd45d39/manifest.json",
+      "sha256": "bc8833dd98342d5fda313cc78fa62febbef1e16364cf0b2b11e6c3c7e8563485",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00277-ep-60d84fdf9f73/manifest.json",
+      "sha256": "57d2ce8fc9116656d85f09065e3c4504bfb92e9785810aea9ac5230a46d6f4c2",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00275-ep-ccc893bb3374/manifest.json",
+      "sha256": "79c8ea9b343a7824fd59ef444622594c4d6cf69dd616994cf116ccccb951a010",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00266-ep-5f2064221a1f/manifest.json",
+      "sha256": "bf77b7094bc50f68ff08fae7c13e80d10759d9f81939502b860c71fd69e900b4",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00281-ep-586763188b93/manifest.json",
+      "sha256": "6cd6babc28e7757d88cc10a80219866b3f02f86395b461545c86f14348ce1248",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00264-ep-b56f84f9df37/manifest.json",
+      "sha256": "7b03e18964faba781ada3a05be9dfa4f3660dbf42e2ece0b99b1e3f27a0fb350",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00279-ep-65ad0c41da43/manifest.json",
+      "sha256": "d792896860be891154c7d2f3be66e1929584a964e167599152b63a563c647d6b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00285-ep-c1e4cb8fd309/manifest.json",
+      "sha256": "587de1669fa37eabdfe368b38fc48762fb6b824bfaa24fbbd936fd16e60ef780",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00270-ep-2ab870d9840c/manifest.json",
+      "sha256": "bb50d8cfca52e3e8a004e95fa52f6a94f2c2ba9e02e5d5af7afeadea0c21ec6d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00268-ep-60051efbc614/manifest.json",
+      "sha256": "7fb3da1c52fcc8d807803a1a97ad97900c52f5e1e0ccdc83c5673da6be60b243",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00289-ep-894a82d13d51/manifest.json",
+      "sha256": "4617771a6e787f38fa83e262ca72f63b8f9bca1f050160dc01a6a07eaa4af2da",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00274-ep-da36a06ebd35/manifest.json",
+      "sha256": "6e3d3b6fd25b294f0233c8bba3f4cf93bd6a087b29f8b0e63192ead3ba1df8e2",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00283-ep-135c3aa03846/manifest.json",
+      "sha256": "b04e617f8941c6957b5908c63650a269cae0f810124893d9b4c83a0bccfe14ce",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00278-ep-787c975413aa/manifest.json",
+      "sha256": "42d5bfabdc9b6022a8ad52510275f37311e7e92bf7c2ab040a3c6b6b3d2e0fdf",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00272-ep-251ac10cd14b/manifest.json",
+      "sha256": "7a96c199f837a61455ddf238ffbc617c86dfb464b717500dacec4e7b05a9c0b9",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00293-ep-d4a858fdc16c/manifest.json",
+      "sha256": "8b5a315d22f52198cda2608b9a94458c3c973e2c000ffbab7ecc4264ea1bfb23",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00287-ep-6efe57913b53/manifest.json",
+      "sha256": "d456791b5a8254713a45deec71a5fccef0ebcfb56bd2c9c2efcc8d5c148506a7",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00282-ep-ae31c7b828c5/manifest.json",
+      "sha256": "00bad847ceef618d265564b302a709a718561612165524f445cd6898f71df87b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00291-ep-661b9973455f/manifest.json",
+      "sha256": "f5f67bf86fc440a8ca763c19df67c16fe5acbb6eb7b4caade3c37fd9ba9aac0c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00297-ep-4e41bcc624be/manifest.json",
+      "sha256": "d57e8d3255255f87e632842008d1e27fcd06ad3176dffb36f268993feb4774a9",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00276-ep-4ebfcb845519/manifest.json",
+      "sha256": "ee5df2f68c708b7674beeedbb82f54557ea98b0b2d9830daa39db2233a3ff3e8",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00286-ep-9bd78db81300/manifest.json",
+      "sha256": "58014446a413137294c410194d3918e703e9609eec3a3f0819157eaa567b0695",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00295-ep-8153434cc90a/manifest.json",
+      "sha256": "b8cd1ec921726b2491c34a3764feee5a02dbd1527b14afed52407ad1a849fd5f",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00280-ep-78c10fcfb1ad/manifest.json",
+      "sha256": "d31058d79d8793cb15bc32dd442460dead8cd0bbcc24a19807ca3d475f5da2e5",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00290-ep-00a9fc1419b0/manifest.json",
+      "sha256": "65fcf6f3767cedab8e838ef011bca227b532d863605faa8b26c2443b2865dea1",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00299-ep-64d6e116f8ba/manifest.json",
+      "sha256": "bf48ca05d68cc97c9152af8c88dbe41c2192ac914062f148d1c8f2024bcbfde9",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00284-ep-29ba257e8b91/manifest.json",
+      "sha256": "9ef4001a3ff03effb0410e7080132849f6384f899b5ed9a3152ed8c4e092884a",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00301-ep-6bccea551b22/manifest.json",
+      "sha256": "db33d7ea79f981433b4a380a598e96edd2af9d9897ba4efd8420947dde921e9b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00294-ep-5885cf34a3fb/manifest.json",
+      "sha256": "36546cf022e0bf489a110cd99e1b880cf895248fdd1fa2b05fff1f4b74410dc6",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00303-ep-4039810ad1fa/manifest.json",
+      "sha256": "36e52b917bce7ce3e209879762fd546fd29cc370d0e6a213f0aa23115905c5f5",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00288-ep-05559a7bccc6/manifest.json",
+      "sha256": "f251c7ca2ef671351ce4f5c5262796ac68e10c3568834d1c2ee314dd1a8b004d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00305-ep-4395faacd3e0/manifest.json",
+      "sha256": "d0455a9c843b8cdef9494ff41c58a753ce3ef0190de673721c4767c538e7f2ff",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00307-ep-a42e0acd08f9/manifest.json",
+      "sha256": "e9e92a300ef4bf2dcdff53afc6c8615be14477a8783928715e924521fda99e8c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00292-ep-0e26db67883e/manifest.json",
+      "sha256": "76ae4ed20f56841b912cb30a2950f2559a6f73f7f64e5ee211c3ec8ebb01c090",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00298-ep-46e92c4b5a69/manifest.json",
+      "sha256": "c06942b31891b5f323f460c2a93968d1ced74eaf7e6bbc41d266a517bb28e35b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00309-ep-d5410ea13239/manifest.json",
+      "sha256": "b331dc652c0dfe4e382fba9c15620e544642f852a95044369ebc86c2f633cc7f",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00302-ep-a00867045c86/manifest.json",
+      "sha256": "f35603b2da41bbbd10ca6ceb7ebf33a85c8e89cd304b07dc61507ab3c9b9c557",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00311-ep-8135960e8d3e/manifest.json",
+      "sha256": "b8a7fdc008ee0ce94ec83995edbbf5c3c1cdf18eaa9385b722fca06f239de755",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00296-ep-9843a9d9d538/manifest.json",
+      "sha256": "3f1d036ef1e7e802d7c88a4ca566f076a41422e6c5b1336c6916ed75864a6305",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00313-ep-087d1152e427/manifest.json",
+      "sha256": "d9f605a5b1ed13072240bb2c19e7eca2e450e8361aa79cb164dd01cd3ae55055",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00306-ep-33d47506d5c3/manifest.json",
+      "sha256": "907c7cef38be11d8b57da948eee0b79359c38e2f0455a81efa12db394d006547",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00315-ep-a48cdffe68ef/manifest.json",
+      "sha256": "ba3b1d1137abc4187e4503576593a036529364dfcd564068b7e4743de667bb05",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00317-ep-ceda8512dcea/manifest.json",
+      "sha256": "62f2727a2904ee7f58c2c52cd7569cadb290f0341cf89fecd8405b8aa8d3b567",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00310-ep-cfa634a80877/manifest.json",
+      "sha256": "11d28b17006ced0eacec18776c386360c4ee88a8dd00d5ebec6a59bbbbb74049",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00300-ep-30ecb17a7eb3/manifest.json",
+      "sha256": "9e2d1ef05744a30979e90e176af06813ba9bd75a988f55297a0599e56e92ea16",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00321-ep-3f8dab2884aa/manifest.json",
+      "sha256": "f9ce02668230ec3942165a5b1d74644be3b64d69cccb452d2a1e89adad6f46a0",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00314-ep-85876d10bd88/manifest.json",
+      "sha256": "5ea592acdf2a3224eac6631ef315260df5dfe563591c12e52cdedd4826361415",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00319-ep-912d5780bb04/manifest.json",
+      "sha256": "d51aeb4279ed1ac5c70da35c65a179f2c03fa60a03085426cbb2aae08006a0bf",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00304-ep-65277e8a93de/manifest.json",
+      "sha256": "ac336c49cc1dee03ee0611a34b1538d3edeae1e07d520a9bb3c67d13ecd2340d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00325-ep-e3f12dc5f6b8/manifest.json",
+      "sha256": "4d4c808d635a30a15b0e67f8aa29613919888efaaf9427dba3abfcf8544abc77",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00323-ep-107c0b943f34/manifest.json",
+      "sha256": "6b1c768be466832dc1a4014e62e62024ad22d433439d6cefa3de2462a0c3768b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00318-ep-1f90470d4baa/manifest.json",
+      "sha256": "400bd8c57680291a64c6298f24e7444544cde7ba94d0263336b42c59e0cb576d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00329-ep-eb38c13e8adb/manifest.json",
+      "sha256": "237f8ebc50bebba846e6a3611261559c068f8fc977d94ee73da78303248f3d1d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00308-ep-84ef012c451e/manifest.json",
+      "sha256": "ef270a2f574580050f5a8162543c34a2b18e5a77f736e5dd1c940040ea8e1146",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00327-ep-a0594dfec9dc/manifest.json",
+      "sha256": "f41e64d785b8a432daf511a626f9a4435cbb94e2f5deca211cd7a1bfc7de5b72",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00322-ep-05d9d3ae6f6a/manifest.json",
+      "sha256": "67bb47429a2333e4bdad1734a211c6087233419d9867b67a60505f946055e8df",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00312-ep-ae43f9db8ab9/manifest.json",
+      "sha256": "51c006f0bfc688c97c29009c0b53b7c034c794ba7e3e63af5da958f1068791b3",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00333-ep-574f81dc1729/manifest.json",
+      "sha256": "44ab234288ff23732737a74f182d8b909084d34c3de11e0894019ace9846bab5",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00331-ep-cd982b54c0dd/manifest.json",
+      "sha256": "7ca0bf2786e70a441ad71ee66c0c837c2c878753909495430bf297c7d8199935",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00316-ep-55c23e1fb88d/manifest.json",
+      "sha256": "797ee9d3ba4ee5e461bf1c7e847102e580dcf3538467eb1dc0d3e523e8d79483",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00326-ep-6edc5a3d437a/manifest.json",
+      "sha256": "f0b6887b2509987df2cecab34eb1d892a5ac21efc8854d2058e1d8beb5df2d90",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00337-ep-6aeebf1a0ffd/manifest.json",
+      "sha256": "445d872091af066773eb6d075a47446470fbc5d5bd37d31c80fba86dc9902f35",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00335-ep-2d90c2482df2/manifest.json",
+      "sha256": "45d2812adacd7e26a65099103b46bd3ceceba370c05ab19c4735e67a445f4ca8",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00320-ep-e0ca5d68f2f5/manifest.json",
+      "sha256": "099d649309e0b396f9565ced77cbfb672f73b214d01eff452370c2733a634a58",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00330-ep-7b9e08e5027d/manifest.json",
+      "sha256": "a06d0979500e216b0ce245f06daf9cfc6ac3fdb6702ea65842599948a0a7d989",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00339-ep-cf11337d9b4c/manifest.json",
+      "sha256": "a890d9c7863c6ae4c4227954a19861587820583c75d0fa12c26003a3d7725643",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00341-ep-5d8d7538c56c/manifest.json",
+      "sha256": "9d9464afc76454f3d2429e72e912bcd3663df186b5a42f13b9ef21ecf1165a1b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00324-ep-61a65f14963c/manifest.json",
+      "sha256": "84155519e8fbd799fed1e55aa2af79995e6f21f1b9d4079073d8b4a84594c993",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00343-ep-0c3640e2ac22/manifest.json",
+      "sha256": "45d4798fa7c500ab5071fe3bd01ef43ad3c78af00c7057e17896d8ae0c63a8c8",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00334-ep-4081d7d14e2a/manifest.json",
+      "sha256": "79ac0e2203fa5878d71bcdfa770cb4127cc94cc0ff41dd3d6f9667ce94303fa5",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00345-ep-11a48f689b05/manifest.json",
+      "sha256": "1e665fd4a82d8058cffaf1bc305039b922e29705803a9ef7bedd3ca8de5fdaa5",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00328-ep-2f6937e089c6/manifest.json",
+      "sha256": "2dddb780c88678a36308103d0378c3df216c50cda7990f422e66bd846917541b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00347-ep-576ea38c5c1e/manifest.json",
+      "sha256": "80295aaf2112fc598aa9378867b93065f3c4ebb532f6a396fabb9bc313166b65",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00338-ep-9492281238ef/manifest.json",
+      "sha256": "17d1d78e8a54789d2b1869e73df4dc8109885db64d53b54d4e109dae0e66cef4",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00349-ep-f7f4040dfae9/manifest.json",
+      "sha256": "10f53bdb8964abc5243148c94fbb938e52ec650e6990156683f48e687ef60734",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00332-ep-86f511348f82/manifest.json",
+      "sha256": "595fe11973c375054e64e0208b0b10fb2833348a08c7cdaf61a67bf5c5584f2c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00351-ep-1098d96931c2/manifest.json",
+      "sha256": "c1d44d58b28fbdba2e513428a313033919d0cb62341cce65d3e464edfc43f3df",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00342-ep-cb9063420537/manifest.json",
+      "sha256": "55dd6051a0e536b6da9282657ce5d6d4395968d602c33a042005284043c2b94f",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00355-ep-00de838f5302/manifest.json",
+      "sha256": "7f5322fbaae01f0024a421d2b9d9f446bc75b416584f5caf8070f35195652adb",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00353-ep-63783df4d3fc/manifest.json",
+      "sha256": "a5d7a5d25c70d669ef515c79be38a598b8ac65666d155e46a7287aa81b0b7a4b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00336-ep-ed7ef42e20f9/manifest.json",
+      "sha256": "dfbc560df2d0c6057e452bbe556abb1b808a67ea7234e15663d10b205dc384a6",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00359-ep-4963aa3bdcb3/manifest.json",
+      "sha256": "b75c05fefc7616b1ecabfcbecec3b0f6c0bc381a1b9d5e9c0aff7258500303bd",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00346-ep-3602a7a9281d/manifest.json",
+      "sha256": "4e4d8c31cccfd4ba2500e72b19e893d054986072a2f09a9eeecfbbb3d49a7133",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00357-ep-ac50e80c9737/manifest.json",
+      "sha256": "268417aa3bfa36f29959c16fece3986b729804a2065f7b32c33fce241efcf0c1",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00340-ep-d4c5ba3db1a9/manifest.json",
+      "sha256": "5b225dba15916a7c04d898b8e84629670f7c0bb2544fcea263c92e9546ec9214",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00363-ep-fdc588cd4c6f/manifest.json",
+      "sha256": "3051d4de0b38ac11c2b58baeebd915cd14057296b5b690474dd3998050b27466",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00344-ep-332db5f234e6/manifest.json",
+      "sha256": "5abf4cbe11e907504c7e25829a018a641bedf83670b3281519a1c8d3169f60f6",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00361-ep-e4af6082e7ef/manifest.json",
+      "sha256": "42938443a08cdc65adf28e906b312815926a57f98bc36bd5e4a6c5906160e078",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00350-ep-0e171902c3d2/manifest.json",
+      "sha256": "1ce58ab3f844a609f7bcc0b79ac5a51f49b0a4d56d24e0699b21531182483281",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00367-ep-b67e713e6b19/manifest.json",
+      "sha256": "38cf19580f767a9eace7fbfec41fee36a5436e7967c717466da10f06de65cb45",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00354-ep-811d8cae4538/manifest.json",
+      "sha256": "cc2bb547119ce8fddccdcc41b8a003b3f76a846e64f1535eec972c66a7dd4075",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00365-ep-b4397d590928/manifest.json",
+      "sha256": "85a27db5b512515c7f4af46c64dbaec8790e8ec66c5e845ee57d48d87c224b23",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00348-ep-b166717e0f02/manifest.json",
+      "sha256": "42ea755eb628e668ce16e7b8b2da6c6eb5297408c5c72737467b9326ddb50d4b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00358-ep-9292c2bb415e/manifest.json",
+      "sha256": "3f70939f5de261a9ab2de9704812a212c86df2bcf7be561ababe757041ed79c8",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00369-ep-4d5733c34d0f/manifest.json",
+      "sha256": "c527fb2cb4ca69f668f75ef33b58b535783011b88bb8318026622f1a0355f3d4",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00371-ep-1ebacb608419/manifest.json",
+      "sha256": "895e4aa7ee3fc51b4aaf8af1b7a2ab34867a78fc5648ce15ad80052d49dbeb88",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00352-ep-e587635c3a0d/manifest.json",
+      "sha256": "32bd1657b8cf612e7470f554062dc3f53aa0cd9cc1f790c26427d36d931f1379",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00373-ep-0203a0d1168b/manifest.json",
+      "sha256": "4615db6065a1b7816f6a0e9e82ebf7adae1927eefce96b461c5db2962e932ab2",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00362-ep-f7e091721b5f/manifest.json",
+      "sha256": "52486de9c8da28ede5e35ba379ee58e36aae3a73781e4669c5bb2b3e4c9cf65c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00375-ep-86bae7e92fb3/manifest.json",
+      "sha256": "54d682a1a6c2d98103d26a626738f37e8a563361506fd328c8c7212cff319f61",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00377-ep-886a7cec12fd/manifest.json",
+      "sha256": "dc61bb6e084d4e7136ed9bf066dfc6e3ae4710331a01e033076c77285737d8d1",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00356-ep-c6db1fba4311/manifest.json",
+      "sha256": "36f2a2034fda373d73d4542a7c1152a3fe3c601ab6b6c388135bd8af15a36662",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00366-ep-d074bef30c17/manifest.json",
+      "sha256": "4227e9c37376e20a87b18a1164e231c0611435f6818a18a06781e868ed4059a3",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00379-ep-22cb819fbc22/manifest.json",
+      "sha256": "e970ce5f361c3fcd02bc931dce4771727ab94848b0ef0d9294d3795e2e8c94e1",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00381-ep-9bdec39231b1/manifest.json",
+      "sha256": "c8c4bcb34a48aa846869b15258ec22f86b1c3433d707d34154858274fbe2722c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00360-ep-ff49ce2c1783/manifest.json",
+      "sha256": "a7728df6b5acfd8f4a328b4ef046721526608cf76dfc4a8ea4c664d5b86caf98",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00370-ep-438be90cca71/manifest.json",
+      "sha256": "38e49397aeb97ff969f0be492e8aaa1a8a62798abfbcd610d5b30782fad85985",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00383-ep-075a37ee8baa/manifest.json",
+      "sha256": "aae9a190260ee75c29687cd3ce60ee69bb8c0ed60fb41768ef08d1b7c5a7dad3",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00385-ep-a117f3804c53/manifest.json",
+      "sha256": "c8231f039895babe5762e2885377597d4035bfc6cfb132f0241cfa2c0f51263d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00387-ep-ea02ee825741/manifest.json",
+      "sha256": "ea98bbfc8d65ece0ec1ea5a95e805427fdc0f3833f9519bc01e8ceec620c1e88",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00374-ep-7fd66731a3ae/manifest.json",
+      "sha256": "06f8c97c2525ac574907d05361a82cdb1715ddd24358bb432d909711b1baa53d",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00364-ep-98337f749190/manifest.json",
+      "sha256": "09d8c4fda1b9a69793e26d97e37ff02d797317ca0cff06114040497fe264654b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00389-ep-e4f55e841d8c/manifest.json",
+      "sha256": "9dea42294f3e417bfcc6fdc408066149d4a69c281d35db966789c17e609afbfc",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00391-ep-ebdf119b0f4c/manifest.json",
+      "sha256": "bdc2de3d832b83b9c48ea3d689b64a5e326ba98d33c4e6494cff273ffb4c563b",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00368-ep-4fa352c0f827/manifest.json",
+      "sha256": "9284044e7c131c3bfe5c2838bd7be3717dca4a1dd98c6cd957532d558f64aeeb",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00378-ep-5a15675dc9df/manifest.json",
+      "sha256": "ff6f806be161ba2f4da740a8c8acd3a9e3c31faeef355f2bc779ca7b6bf4edb1",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00395-ep-fc2984643093/manifest.json",
+      "sha256": "b2b0166ed9830a2d137d0a42c09b20cabaac70c6d36f742525edf1e534af63b1",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00393-ep-95258e39a5ed/manifest.json",
+      "sha256": "c22a6958653dde5dccb2af8c93631d546d439cbbd6c87bcfd6cce518e31ce128",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00382-ep-632d7aa177c9/manifest.json",
+      "sha256": "5b7090130e08062e51ef27fb2818b94f98594add1750bcbae035e8946eed602a",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00372-ep-4db6aaca0ee2/manifest.json",
+      "sha256": "bad4e5aada6731896305ad7a33276de712be4e5069f93baf51265401a37e4586",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00399-ep-a7b9f963e3cf/manifest.json",
+      "sha256": "2d89ee7d61ed4dcdbecc4817461268fe293084c6ffd98eb0afbaa581dcd34ff6",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00397-ep-2760f95276de/manifest.json",
+      "sha256": "9209c06c030b62a5f32733b809de0479e79694bbd5d893b56215060466811f82",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00386-ep-3f8372679080/manifest.json",
+      "sha256": "b41d47354ac4aac2299bc951cd920b17156a87ceb0217fa4c2bc60f4ff955216",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00376-ep-c9475015a17b/manifest.json",
+      "sha256": "1201952bcd90bd3465740da94817926115fb53feec32bd042a859dc8ef7849df",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00403-ep-43a3b156a01e/manifest.json",
+      "sha256": "ebc7d48b46dd91cdec2bff3be763b43d62e385a993b3fa47d2ed711f18010d3f",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00401-ep-451a1a79f81a/manifest.json",
+      "sha256": "7cf465f70dd938226e0e943cca834508b9db9db2f75236a5a426bf3665324a43",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00390-ep-11c21217bc15/manifest.json",
+      "sha256": "6219efaca58d027ca2d239f01527345368c21cc6be6d3df6e3c70b1676be40b3",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00380-ep-d8e308e8b4f5/manifest.json",
+      "sha256": "7ca7b7c0d20805a4af3def5ed240bab9a96ebe33a3bed381a9d968a97661231a",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00407-ep-716514715e7b/manifest.json",
+      "sha256": "71be966e7340041efb9a74bf10e341bc5174413fe4a924eb6092d63c5ccc76fd",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00405-ep-c3820f0c98e8/manifest.json",
+      "sha256": "1e5d3c10867548eb12a302f677e548d1f7b5e86feba5bbeb5d2e41d1bd258ec0",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00384-ep-760d3fe2dac3/manifest.json",
+      "sha256": "0508c6e306ad9a9f66f3ac6be5572cf468c74e149c9555620415e518546132fb",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00394-ep-52b35c5717e0/manifest.json",
+      "sha256": "7fe25a5d76d9dd83a554e51970f49adacd82b99d12780e46d9816eec93cce72e",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00411-ep-366c73d82a61/manifest.json",
+      "sha256": "2a19c3b2538a9132b83a778fd6368fb4e79b67761c3c05f253ebb4e5af76efe6",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00398-ep-673b840ee146/manifest.json",
+      "sha256": "a61f37607974d0c57f326ac1c6d2737ef9f18803d9eda68eed68713c0d79ecc0",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00409-ep-2bb94f7bff8a/manifest.json",
+      "sha256": "8f3abe627fa28cd0d118bfb81df729bdbfc43ee81e8a0797949d82b6d314eba5",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00388-ep-b199a1931067/manifest.json",
+      "sha256": "c21e66ca1634301befb07f1611812b1eefcca6a8c914f842997343dab4cc22d5",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00415-ep-ab69d7da88ff/manifest.json",
+      "sha256": "1ed3dae6239481689bddb60121ce11c6a38c6f86e7fa8a0298e6fefe4e98675c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00402-ep-d96671505af0/manifest.json",
+      "sha256": "80dafbe13085bcae449c6b1c42a3e1acd4a6c883071f19787eab688f823ff0be",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00413-ep-1396403cc5d0/manifest.json",
+      "sha256": "975920dc22565a1b8af7498fa137188411d7f1577f26e140abc7f0f0d84a77a8",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00392-ep-447f419ff15b/manifest.json",
+      "sha256": "3a7a7176683660455e5713f35f5fcf284a0c8ae7bf3c54d69fecf5f5560a0bcf",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00419-ep-89ea17969c87/manifest.json",
+      "sha256": "a8c65dcf606341bd2cb5766daa5613f7cfd58571aeb62d3fd3c4dbd38361341a",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00417-ep-9a9e1dde75d1/manifest.json",
+      "sha256": "4c50c3e08bf76f1b28335128b41e2e8a8f20bb9c2345a8f574a815e37507c70f",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00406-ep-0c91f2a5f03d/manifest.json",
+      "sha256": "2dba443c616ae40d39f85ec25c84bb7f96b2b0233e0c92f3b046759dcc3b76d6",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00396-ep-c39c54585d18/manifest.json",
+      "sha256": "facd5925d0184f06e564aa67d5cdc7e14c26c2a538f58c023252aea22cdb622c",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00410-ep-9d143c388422/manifest.json",
+      "sha256": "41b2e5ffdcf481dcd906b78a54ba4840577fe73a2a52035d29ed2c9bc0ebcbc9",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00414-ep-9612f3db25a1/manifest.json",
+      "sha256": "26007c772bfcd5c9400e93d2bb7e92a532d2397548bf9ac7ee55058b1d673354",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00400-ep-355d0a95725c/manifest.json",
+      "sha256": "fee4141d2aa59ba930b2361653e330292b1416e64716bea84f6fcff6b0f70cc6",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00418-ep-5b692ed38ae6/manifest.json",
+      "sha256": "ba88d0b42a8f5b4202c0a0bbdfd1dcd0672582a08690131e1ca38ec66dee7715",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00404-ep-786121c63c2a/manifest.json",
+      "sha256": "aafb177af1bed89e2dcb1f18fc3c8f1860e43d70baeef0da38c70b4144b4c546",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00408-ep-d702cadd0fec/manifest.json",
+      "sha256": "5b1bbdaa082c63bf037080dc884d729dcac80f881b5fd7ec3e807dcc7022e9a8",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00412-ep-18a819c2af56/manifest.json",
+      "sha256": "c42c219ae5b705d555c63e78e329488f38abd9fd8fb5b3653c4e1b3dd34f7fe3",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    },
+    {
+      "path": "evaluation/aihs/.artifacts/lab-campaign/campaign-1/episodes/00416-ep-791eb8d3c970/manifest.json",
+      "sha256": "48fe5b3b10fd062620ae5d33fdd817e5c00d6dd398d903de810a2d6582fb7d03",
+      "evidence_class": "lab_episode",
+      "historical_code_version": "lab-e8a06007eeb819bc"
+    }
+  ],
+  "distinct_incidents": 420,
+  "candidate_records": 420,
+  "by_proposal_source": {
+    "other": 420
+  },
+  "by_scenario": {
+    "BIZ-02": 70,
+    "CON-01": 70,
+    "DB-01": 70,
+    "NET-01": 70,
+    "RES-01": 70,
+    "SEC-02": 70
+  },
+  "by_action": {
+    "call_human": 25,
+    "recreate_moodle_web_from_reviewed_compose": 50,
+    "remove_named_cpu_load_container": 63,
+    "remove_scoped_db_reject": 60,
+    "restart_moodle_cron_service": 53,
+    "restore_fixture_directory_mode": 59,
+    "start_reviewed_compose_service": 53,
+    "unknown": 1,
+    "wait_and_recheck": 56
+  },
+  "by_outcome": {
+    "failure": 187,
+    "missing_evidence": 1,
+    "not_executed": 25,
+    "success": 207
+  },
+  "by_scenario_action_outcome": {
+    "BIZ-02|call_human|not_executed": 6,
+    "BIZ-02|recreate_moodle_web_from_reviewed_compose|failure": 5,
+    "BIZ-02|recreate_moodle_web_from_reviewed_compose|success": 2,
+    "BIZ-02|remove_named_cpu_load_container|failure": 6,
+    "BIZ-02|remove_scoped_db_reject|failure": 6,
+    "BIZ-02|restart_moodle_cron_service|failure": 3,
+    "BIZ-02|restart_moodle_cron_service|success": 22,
+    "BIZ-02|restore_fixture_directory_mode|failure": 7,
+    "BIZ-02|start_reviewed_compose_service|failure": 6,
+    "BIZ-02|start_reviewed_compose_service|success": 1,
+    "BIZ-02|wait_and_recheck|failure": 5,
+    "BIZ-02|wait_and_recheck|success": 1,
+    "CON-01|call_human|not_executed": 4,
+    "CON-01|recreate_moodle_web_from_reviewed_compose|failure": 2,
+    "CON-01|recreate_moodle_web_from_reviewed_compose|success": 4,
+    "CON-01|remove_named_cpu_load_container|failure": 7,
+    "CON-01|remove_scoped_db_reject|failure": 3,
+    "CON-01|remove_scoped_db_reject|success": 1,
+    "CON-01|restart_moodle_cron_service|failure": 6,
+    "CON-01|restore_fixture_directory_mode|failure": 5,
+    "CON-01|restore_fixture_directory_mode|success": 1,
+    "CON-01|start_reviewed_compose_service|failure": 7,
+    "CON-01|start_reviewed_compose_service|success": 21,
+    "CON-01|unknown|missing_evidence": 1,
+    "CON-01|wait_and_recheck|failure": 5,
+    "CON-01|wait_and_recheck|success": 3,
+    "DB-01|call_human|not_executed": 2,
+    "DB-01|recreate_moodle_web_from_reviewed_compose|failure": 2,
+    "DB-01|remove_named_cpu_load_container|failure": 3,
+    "DB-01|remove_named_cpu_load_container|success": 1,
+    "DB-01|remove_scoped_db_reject|failure": 7,
+    "DB-01|remove_scoped_db_reject|success": 27,
+    "DB-01|restart_moodle_cron_service|failure": 6,
+    "DB-01|restore_fixture_directory_mode|failure": 5,
+    "DB-01|start_reviewed_compose_service|failure": 6,
+    "DB-01|start_reviewed_compose_service|success": 1,
+    "DB-01|wait_and_recheck|failure": 3,
+    "DB-01|wait_and_recheck|success": 7,
+    "NET-01|call_human|not_executed": 5,
+    "NET-01|recreate_moodle_web_from_reviewed_compose|failure": 2,
+    "NET-01|recreate_moodle_web_from_reviewed_compose|success": 25,
+    "NET-01|remove_named_cpu_load_container|failure": 4,
+    "NET-01|remove_scoped_db_reject|failure": 6,
+    "NET-01|restart_moodle_cron_service|failure": 4,
+    "NET-01|restart_moodle_cron_service|success": 1,
+    "NET-01|restore_fixture_directory_mode|failure": 6,
+    "NET-01|start_reviewed_compose_service|failure": 2,
+    "NET-01|start_reviewed_compose_service|success": 2,
+    "NET-01|wait_and_recheck|failure": 3,
+    "NET-01|wait_and_recheck|success": 10,
+    "RES-01|call_human|not_executed": 3,
+    "RES-01|recreate_moodle_web_from_reviewed_compose|failure": 3,
+    "RES-01|remove_named_cpu_load_container|failure": 4,
+    "RES-01|remove_named_cpu_load_container|success": 34,
+    "RES-01|remove_scoped_db_reject|failure": 5,
+    "RES-01|restart_moodle_cron_service|failure": 6,
+    "RES-01|restore_fixture_directory_mode|failure": 3,
+    "RES-01|start_reviewed_compose_service|failure": 3,
+    "RES-01|wait_and_recheck|failure": 2,
+    "RES-01|wait_and_recheck|success": 7,
+    "SEC-02|call_human|not_executed": 5,
+    "SEC-02|recreate_moodle_web_from_reviewed_compose|failure": 4,
+    "SEC-02|recreate_moodle_web_from_reviewed_compose|success": 1,
+    "SEC-02|remove_named_cpu_load_container|failure": 4,
+    "SEC-02|remove_scoped_db_reject|failure": 5,
+    "SEC-02|restart_moodle_cron_service|failure": 4,
+    "SEC-02|restart_moodle_cron_service|success": 1,
+    "SEC-02|restore_fixture_directory_mode|failure": 3,
+    "SEC-02|restore_fixture_directory_mode|success": 29,
+    "SEC-02|start_reviewed_compose_service|failure": 4,
+    "SEC-02|wait_and_recheck|failure": 5,
+    "SEC-02|wait_and_recheck|success": 5
+  },
+  "training_eligible": 394,
+  "leakage_scan": "passed_no_raw_identifiers_scenario_markers_or_sensitive_patterns",
+  "audit_records_sha256": "ff32728dce137cb4bfc4ac71e6b88af68d681de610188b1709846592d86b2038"
+}

@@ -1,0 +1,11 @@
+{
+  "stage": "phase2_propose",
+  "status": "LOCKED_C0",
+  "proposals": 59,
+  "proposals_file": "evaluation/aihs/.artifacts/phase2/paper/proposals-test.jsonl",
+  "proposals_file_sha256": "2c44b1a31f9524c5447585817ec7bb65b855812f7279cf2d90546f0a17994da5",
+  "proposals_content_sha256": "a53f61c76c3eb90658bce264e1eddab0d626a458e3f12dd2c04a30448a7212ac",
+  "model_content_sha256": "0da82b583e8bce3668368a1bd2ddbb5e6213a13981e9909d3cebfaa2291e11bb",
+  "scored": false,
+  "labels_opened": false
+}
