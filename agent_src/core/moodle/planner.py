@@ -92,7 +92,6 @@ _S3_3_REMEDIATIONS = {
     "RES-01": ("MoodleNodeCpuHigh", "remove_named_cpu_load_container", "moodle-app", "moodle-app-b"),
     "NET-01": ("MoodleSyntheticTransactionFailed", "recreate_moodle_web_from_reviewed_compose", "moodle-app", "staging_moodle_nodes"),
     "CON-01": ("MoodleWebContainerMissing", "start_reviewed_compose_service", "moodle-app", "moodle-app-b"),
-    "SEC-02": ("MoodleSyntheticTransactionFailed", "restore_fixture_directory_mode", "moodledata-volume", "moodledata_synthetic_fixture_directory"),
     # Business / Infrastructure workflow remediations (BIZ-01, BIZ-02)
     "BIZ-01": ("MoodleMaintenanceModeStuck", "disable_moodle_cli_maintenance_mode", "moodle-app", "staging_moodle_app"),
     "BIZ-02": ("MoodleAdhocTaskQueueStuck", "restart_moodle_cron_service", "moodle-app", "staging_moodle_app"),
@@ -102,7 +101,6 @@ _S3_3_DIAGNOSES = {
     "RES-01": "node_cpu_pressure",
     "NET-01": "application_path_not_isolated",
     "CON-01": "web_container_not_running",
-    "SEC-02": "application_path_not_isolated",
     "BIZ-01": "moodle_maintenance_mode_stuck",
     "BIZ-02": "moodle_adhoc_task_queue_stuck",
 }
@@ -129,35 +127,11 @@ SCENARIO_REMEDIATION_DISPOSITION: dict[str, dict[str, str]] = {
         "target_scope": "staging_moodle_nodes",
         "reason": "Allowlisted S3.3 staging remediation candidate when exact tagged rule and failed node RDS probes match.",
     },
-    "DB-02": {
-        "disposition": "escalated_shadow_only",
-        "catalog_action_id": "restore_database_connection_capacity",
-        "target_scope": "staging_rds_postgresql",
-        "reason": "Escalated for operator review; DB connection capacity recovery is outside the S3.3 live execution slice.",
-    },
-    "DB-03": {
-        "disposition": "escalated_shadow_only",
-        "catalog_action_id": "restore_approved_database_endpoint",
-        "target_scope": "staging_moodle_configuration",
-        "reason": "Escalated for operator review; database endpoint drift requires reviewed configuration reconciliation.",
-    },
     "RES-01": {
         "disposition": "s3_3_live_allowlisted",
         "catalog_action_id": "remove_named_cpu_load_container",
         "target_scope": "moodle-app-b",
         "reason": "Allowlisted S3.3 staging remediation candidate when CPU threshold and named fixture probes match.",
-    },
-    "RES-02": {
-        "disposition": "escalated_shadow_only",
-        "catalog_action_id": "remove_named_memory_pressure_container",
-        "target_scope": "moodle-app-b",
-        "reason": "Escalated for operator review; memory pressure telemetry does not isolate a live-approved remediation.",
-    },
-    "RES-03": {
-        "disposition": "escalated_shadow_only",
-        "catalog_action_id": "remove_named_disk_fixture",
-        "target_scope": "moodle-app-b",
-        "reason": "Escalated for operator review; isolated scratch ENOSPC requires operator verification before cleanup.",
     },
     "NET-01": {
         "disposition": "s3_3_live_allowlisted",
@@ -165,35 +139,11 @@ SCENARIO_REMEDIATION_DISPOSITION: dict[str, dict[str, str]] = {
         "target_scope": "staging_moodle_nodes",
         "reason": "Allowlisted S3.3 staging remediation candidate when hosts-override marker and dependency probes match.",
     },
-    "NET-02": {
-        "disposition": "escalated_shadow_only",
-        "catalog_action_id": "remove_scoped_moodle_db_port_reject",
-        "target_scope": "staging_moodle_nodes",
-        "reason": "Escalated for operator review; DB port block without DB-01 tag is outside the S3.3 live execution slice.",
-    },
-    "NET-03": {
-        "disposition": "escalated_shadow_only",
-        "catalog_action_id": "remove_scoped_netem_profile",
-        "target_scope": "staging_moodle_nodes",
-        "reason": "Escalated for operator review; RDS TCP latency profile removal requires operator confirmation.",
-    },
     "CON-01": {
         "disposition": "s3_3_live_allowlisted",
         "catalog_action_id": "start_reviewed_compose_service",
         "target_scope": "moodle-app-b",
         "reason": "Allowlisted S3.3 staging remediation candidate when stopped web container and healthy host probes match.",
-    },
-    "CON-02": {
-        "disposition": "escalated_shadow_only",
-        "catalog_action_id": "restore_moodle_apache_router",
-        "target_scope": "moodle-app-b",
-        "reason": "Escalated for operator review; Apache router restoration is outside the S3.3 live execution slice.",
-    },
-    "CON-03": {
-        "disposition": "escalated_shadow_only",
-        "catalog_action_id": "restore_approved_runtime_env",
-        "target_scope": "moodle-app-b",
-        "reason": "Escalated for operator review; container restart loop and router fallback require operator isolation.",
     },
     "SEC-01": {
         "disposition": "human_only_escalation",
@@ -201,18 +151,7 @@ SCENARIO_REMEDIATION_DISPOSITION: dict[str, dict[str, str]] = {
         "target_scope": "staging_database_security_group",
         "reason": "Human-only escalation: HIGH blast-radius AWS RDS security-group ingress modification is never agent-executable.",
     },
-    "SEC-02": {
-        "disposition": "s3_3_live_allowlisted",
-        "catalog_action_id": "restore_fixture_directory_mode",
-        "target_scope": "moodledata_synthetic_fixture_directory",
-        "reason": "Allowlisted S3.3 staging remediation candidate when fixture directory mode-zero marker and dependency probes match.",
-    },
-    "SEC-03": {
-        "disposition": "escalated_shadow_only",
-        "catalog_action_id": "restore_approved_proxy_configuration",
-        "target_scope": "staging_moodle_configuration",
-        "reason": "Escalated for operator review; trusted proxy configuration drift requires human baseline verification.",
-    },
+    **BUSINESS_SCENARIO_REMEDIATION_DISPOSITION,
 }
 
 
@@ -322,8 +261,6 @@ def plan_moodle_s3_3_remediation(
         )
         if deps_healthy and matches("moodle_fault_net01_hosts_override", {"moodle-app-a": 1.0, "moodle-app-b": 1.0}):
             candidates.append("NET-01")
-        if deps_healthy and matches("moodle_fault_sec02_fixture_mode_zero", {"moodle-app-a": 1.0, "moodle-app-b": 0.0}):
-            candidates.append("SEC-02")
     if alert_name == _S3_3_REMEDIATIONS["BIZ-01"][0] and (
         matches("moodle_cli_maintenance_mode_enabled", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
         and matches("moodle_upgrade_in_progress", {"moodle-app-a": 0.0, "moodle-app-b": 0.0})

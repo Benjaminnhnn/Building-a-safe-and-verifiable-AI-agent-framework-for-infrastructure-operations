@@ -32,7 +32,7 @@ RUNBOOK_ALERT_NAMES = {
         "MoodleProxyUnavailable", "MoodleContainerCrashLoop", "MoodleSyntheticTransactionFailed",
     ),
     "moodle/runbook_moodle_storage_resources.md": (
-        "MoodleEfsMountMissing", "MoodleScratchEnospc", "MoodleNodeCpuHigh", "MoodleNodeMemoryPressure",
+        "MoodleEfsMountMissing", "MoodleNodeCpuHigh", "MoodleNodeMemoryPressure",
         "MoodleDataVolumePressure", "MoodleSyntheticTransactionFailed",
     ),
     "moodle/runbook_moodle_monitoring.md": (

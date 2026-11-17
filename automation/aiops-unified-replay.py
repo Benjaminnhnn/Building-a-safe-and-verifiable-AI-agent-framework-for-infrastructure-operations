@@ -21,7 +21,7 @@ from evaluation.agent_replay.replay import observations_from_scenario
 from core.schema.resource import Resource
 from core.schema.scenario import ScenarioGroundTruth
 
-SCENARIO_PREFIXES = ("DB-", "RES-", "NET-", "CON-", "SEC-")
+SCENARIO_PREFIXES = ("BIZ-", "DB-", "RES-", "NET-", "CON-", "SEC-")
 ROLLBACK_DENIAL_REASON = "catalogued mutation requires a verified reciprocal rollback"
 HUMAN_ONLY_REASON = "catalogued action requires an operator and cannot be automated"
 OUTCOME_VERIFIED = "verified_dry_run"

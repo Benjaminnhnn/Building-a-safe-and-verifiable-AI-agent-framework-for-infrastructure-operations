@@ -34,19 +34,9 @@ from core.verification.verification_agent import VerificationAgent  # noqa: E402
 
 _SCENARIO_RELATED_CHECKS = {
     "DB-01": ["moodle-app-a_database_tls", "moodle-app-b_database_tls", "both_alb_targets_healthy"],
-    "DB-02": ["app_role_quota_and_tagged_sessions_restored", "independent_monitor_rds_probe_healthy", "both_alb_targets_healthy"],
-    "DB-03": ["db03_backup_removed", "app_b_approved_database_endpoint", "app_b_database_tls", "both_alb_targets_healthy"],
     "RES-01": ["named_cpu_fixture_absent"],
-    "RES-02": ["named_memory_fixture_absent", "memory_fixture_metric_absent", "app_b_web_container_healthy", "both_alb_targets_healthy"],
-    "RES-03": ["scratch_mount_absent", "scratch_enospc_metric_cleared", "app_b_efs_remains_mounted", "both_alb_targets_healthy"],
     "NET-01": ["moodle-app-a_database_dns", "moodle-app-b_database_dns", "both_alb_targets_healthy"],
-    "NET-02": ["tagged_port_block_absent", "moodle-app-a_rds_tcp_healthy", "moodle-app-b_rds_tcp_healthy", "monitor_rds_probe_healthy", "both_alb_targets_healthy"],
-    "NET-03": ["net03_fixture_removed", "net03_qdisc_restored", "moodle-app-a_rds_tcp_latency_normal", "moodle-app-b_rds_tcp_latency_normal", "both_alb_targets_healthy"],
     "CON-01": ["moodle_app_b_container_healthy", "both_alb_targets_healthy"],
-    "CON-02": ["moodle_app_b_router_enabled", "moodle_app_b_router_fallback_healthy", "both_alb_targets_healthy"],
-    "CON-03": ["con03_backup_removed", "app_b_wwwroot_approved", "app_b_web_container_healthy", "both_alb_targets_healthy"],
-    "SEC-02": ["fixture_directory_mode_restored", "efs_mount_metric_is_one"],
-    "SEC-03": ["sec03_backup_removed", "app_b_reverse_proxy_setting_approved", "app_b_reverse_proxy_metric_approved", "both_alb_targets_healthy"],
     "BIZ-01": ["moodle_cli_maintenance_disabled", "student_course_view_http_200"],
     "BIZ-02": ["moodle_cron_service_active", "overdue_adhoc_tasks_zero"],
 }

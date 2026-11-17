@@ -42,41 +42,21 @@ class CatalogEntry(BaseModel):
 _ACTION_TYPES: dict[str, ActionType] = {
     "remove_scoped_db_reject": ActionType.REMOVE_SCOPED_PORT_BLOCK,
     "reconcile_db01_safe_baseline": ActionType.REMOVE_SCOPED_PORT_BLOCK,
-    "kill_named_cpu_hog": ActionType.STOP_FAULT_INJECTOR,
-    "remove_named_memory_pressure_container": ActionType.STOP_FAULT_INJECTOR,
-    "remove_disk_fill_fixture": ActionType.STOP_FAULT_INJECTOR,
     "restore_dns_alias": ActionType.RUN_ANSIBLE_PLAYBOOK,
-    "remove_scoped_port_block": ActionType.REMOVE_SCOPED_PORT_BLOCK,
-    "remove_netem_rules": ActionType.STOP_FAULT_INJECTOR,
     "restart_moodle_container": ActionType.RESTART_CONTAINER,
-    "restore_nginx_upstream": ActionType.RUN_ANSIBLE_PLAYBOOK,
-    "restore_previous_approved_release": ActionType.RUN_ANSIBLE_PLAYBOOK,
     "remove_tagged_database_ingress_rule": ActionType.RUN_ANSIBLE_PLAYBOOK,
-    "restore_moodledata_ownership": ActionType.RESTORE_MOODLEDATA_PERMISSION,
-    "restore_moodle_security_config": ActionType.RUN_ANSIBLE_PLAYBOOK,
     "verify_tls_database_connection": ActionType.READ_HEALTH,
     "probe_moodle_http_health": ActionType.READ_HEALTH,
     "probe_postgres_connectivity": ActionType.READ_HEALTH,
     "start_reviewed_compose_service": ActionType.START_CONTAINER,
     "reconcile_con01_safe_baseline": ActionType.START_CONTAINER,
     "wait_for_alb_target_health": ActionType.READ_HEALTH,
-    "restore_moodle_apache_router": ActionType.RUN_ANSIBLE_PLAYBOOK,
-    "restore_approved_runtime_env": ActionType.RUN_ANSIBLE_PLAYBOOK,
-    "restore_database_connection_capacity": ActionType.STOP_FAULT_INJECTOR,
-    "restore_approved_database_endpoint": ActionType.RUN_ANSIBLE_PLAYBOOK,
     "recreate_moodle_web_from_reviewed_compose": ActionType.RUN_ANSIBLE_PLAYBOOK,
     "reconcile_net01_safe_baseline": ActionType.RUN_ANSIBLE_PLAYBOOK,
     "verify_database_hostname": ActionType.READ_HEALTH,
-    "remove_scoped_moodle_db_port_reject": ActionType.REMOVE_SCOPED_PORT_BLOCK,
-    "remove_scoped_netem_profile": ActionType.STOP_FAULT_INJECTOR,
     "remove_named_cpu_load_container": ActionType.STOP_FAULT_INJECTOR,
     "reconcile_res01_safe_baseline": ActionType.STOP_FAULT_INJECTOR,
     "verify_node_cpu_recovers": ActionType.READ_HEALTH,
-    "remove_named_disk_fixture": ActionType.STOP_FAULT_INJECTOR,
-    "restore_fixture_directory_mode": ActionType.RESTORE_MOODLEDATA_PERMISSION,
-    "reconcile_sec02_safe_baseline": ActionType.RESTORE_MOODLEDATA_PERMISSION,
-    "verify_efs_write": ActionType.READ_HEALTH,
-    "restore_approved_proxy_configuration": ActionType.RUN_ANSIBLE_PLAYBOOK,
     "probe_moodle_synthetic_login": ActionType.READ_HEALTH,
     "start_erpnext_mariadb_container": ActionType.START_CONTAINER,
     "stop_erpnext_mariadb_container": ActionType.START_CONTAINER,
@@ -99,41 +79,21 @@ _ACTION_TYPES: dict[str, ActionType] = {
 _TARGET_RESOURCE_TYPES: dict[str, set[ResourceType]] = {
     "remove_scoped_db_reject": {ResourceType.APPLICATION, ResourceType.DATABASE},
     "reconcile_db01_safe_baseline": {ResourceType.APPLICATION, ResourceType.DATABASE},
-    "kill_named_cpu_hog": {ResourceType.APPLICATION},
-    "remove_named_memory_pressure_container": {ResourceType.APPLICATION},
-    "remove_disk_fill_fixture": {ResourceType.APPLICATION},
     "restore_dns_alias": {ResourceType.APPLICATION, ResourceType.DATABASE},
-    "remove_scoped_port_block": {ResourceType.DATABASE},
-    "remove_netem_rules": {ResourceType.APPLICATION},
     "restart_moodle_container": {ResourceType.APPLICATION},
-    "restore_nginx_upstream": {ResourceType.APPLICATION, ResourceType.ENDPOINT},
-    "restore_previous_approved_release": {ResourceType.APPLICATION},
     "remove_tagged_database_ingress_rule": {ResourceType.NETWORK},
-    "restore_moodledata_ownership": {ResourceType.VOLUME},
-    "restore_moodle_security_config": {ResourceType.APPLICATION},
     "verify_tls_database_connection": {ResourceType.DATABASE},
     "probe_moodle_http_health": {ResourceType.ENDPOINT, ResourceType.APPLICATION},
     "probe_postgres_connectivity": {ResourceType.DATABASE},
     "start_reviewed_compose_service": {ResourceType.APPLICATION},
     "reconcile_con01_safe_baseline": {ResourceType.APPLICATION},
     "wait_for_alb_target_health": {ResourceType.APPLICATION, ResourceType.ENDPOINT},
-    "restore_moodle_apache_router": {ResourceType.APPLICATION},
-    "restore_approved_runtime_env": {ResourceType.APPLICATION},
-    "restore_database_connection_capacity": {ResourceType.DATABASE},
-    "restore_approved_database_endpoint": {ResourceType.DATABASE},
     "recreate_moodle_web_from_reviewed_compose": {ResourceType.APPLICATION},
     "reconcile_net01_safe_baseline": {ResourceType.APPLICATION},
     "verify_database_hostname": {ResourceType.DATABASE},
-    "remove_scoped_moodle_db_port_reject": {ResourceType.DATABASE},
-    "remove_scoped_netem_profile": {ResourceType.APPLICATION},
     "remove_named_cpu_load_container": {ResourceType.APPLICATION},
     "reconcile_res01_safe_baseline": {ResourceType.APPLICATION},
     "verify_node_cpu_recovers": {ResourceType.APPLICATION},
-    "remove_named_disk_fixture": {ResourceType.APPLICATION},
-    "restore_fixture_directory_mode": {ResourceType.VOLUME},
-    "reconcile_sec02_safe_baseline": {ResourceType.VOLUME},
-    "verify_efs_write": {ResourceType.VOLUME},
-    "restore_approved_proxy_configuration": {ResourceType.APPLICATION},
     "probe_moodle_synthetic_login": {ResourceType.APPLICATION, ResourceType.ENDPOINT},
     "start_erpnext_mariadb_container": {ResourceType.DATABASE, ResourceType.CONTAINER},
     "stop_erpnext_mariadb_container": {ResourceType.DATABASE, ResourceType.CONTAINER},
@@ -178,11 +138,6 @@ _S3_3_STAGING_EXECUTION_SCOPES: dict[str, dict[str, str]] = {
         "reconcile_con01_safe_baseline": "moodle-app-b",
         "wait_for_alb_target_health": "moodle-app-b",
     },
-    "SEC-02": {
-        "restore_fixture_directory_mode": "moodledata_synthetic_fixture_directory",
-        "reconcile_sec02_safe_baseline": "moodledata_synthetic_fixture_directory",
-        "verify_efs_write": "moodle-synthetic-transaction",
-    },
 }
 
 # Business / Infrastructure workflow scenarios permitted for staging execution.
@@ -209,7 +164,6 @@ MOODLE_7_SCENARIO_IDS: tuple[str, ...] = (
     "NET-01",
     "SEC-01",
 )
-MOODLE_10_SCENARIO_IDS: tuple[str, ...] = MOODLE_7_SCENARIO_IDS
 
 
 # ---------------------------------------------------------------------------
@@ -284,7 +238,7 @@ class ActionCatalog:
 
     @classmethod
     def load_moodle_catalog(cls) -> ActionCatalog:
-        """Return a catalog pre-loaded with all Moodle scenario actions."""
+        """Return the catalog for the seven thesis Moodle scenarios."""
         _executor_staging = ActionPermission(
             required_role="executor",
             environment_scope=["staging"],
@@ -328,64 +282,9 @@ class ActionCatalog:
                 valid_target_resource_types=[ResourceType.APPLICATION, ResourceType.DATABASE],
             ),
             CatalogEntry(
-                action_id="kill_named_cpu_hog",
-                description="Kill a named container causing CPU exhaustion.",
-                adapter="docker",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=False,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
-                action_id="remove_named_memory_pressure_container",
-                description="Stop and remove the named memory-pressure fixture container.",
-                adapter="docker",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=True,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
-                action_id="remove_disk_fill_fixture",
-                description="Remove disk-fill fixture file to reclaim disk space.",
-                adapter="docker",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=True,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
                 action_id="restore_dns_alias",
                 description="Restore the Moodle DNS alias to the correct upstream.",
                 adapter="ansible",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=True,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
-                action_id="remove_scoped_port_block",
-                description="Remove scoped iptables rule blocking a specific port.",
-                adapter="network",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=True,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
-                action_id="remove_netem_rules",
-                description="Remove tc netem latency/loss rules from the network interface.",
-                adapter="network",
                 permission=_executor_staging,
                 blast_radius="LOW",
                 is_reversible=True,
@@ -405,55 +304,11 @@ class ActionCatalog:
                 forbidden_in_production=True,
             ),
             CatalogEntry(
-                action_id="restore_nginx_upstream",
-                description="Restore the Nginx upstream configuration to the correct target.",
-                adapter="ansible",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=True,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
-                action_id="restore_previous_approved_release",
-                description="Roll back to the previously approved Moodle release image.",
-                adapter="ansible",
-                permission=_executor_staging,
-                blast_radius="MEDIUM",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=False,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
                 action_id="remove_tagged_database_ingress_rule",
                 description="Human-only removal of the exact tagged unauthorized RDS security-group ingress rule.",
                 adapter="ansible",
                 permission=_operator_staging,
                 blast_radius="HIGH",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=True,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
-                action_id="restore_moodledata_ownership",
-                description="Restore correct ownership and permissions on moodledata volume.",
-                adapter="ansible",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=True,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
-                action_id="restore_moodle_security_config",
-                description="Restore trusted proxy/wwwroot/security settings in Moodle config.",
-                adapter="ansible",
-                permission=_executor_staging,
-                blast_radius="LOW",
                 is_reversible=True,
                 rollback_action=None,
                 idempotent=True,
@@ -497,7 +352,7 @@ class ActionCatalog:
             ),
 
             # ---------------------------------------------------------------
-            # Additional Moodle 15-scenario remediation actions and probes
+            # Reviewed staging remediation actions and probes
             # ---------------------------------------------------------------
             CatalogEntry(
                 action_id="start_reviewed_compose_service",
@@ -535,50 +390,6 @@ class ActionCatalog:
                 forbidden_in_production=False,
             ),
             CatalogEntry(
-                action_id="restore_moodle_apache_router",
-                description="Recreate only moodle-app-b web from the approved image to restore its Apache router configuration.",
-                adapter="docker",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=True,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
-                action_id="restore_approved_runtime_env",
-                description="Restore moodle-app-b's exact pre-fault runtime env and recreate its unchanged approved image.",
-                adapter="ansible",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=True,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
-                action_id="restore_database_connection_capacity",
-                description="Terminate runaway connection holder and restore pool capacity.",
-                adapter="docker",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=True,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
-                action_id="restore_approved_database_endpoint",
-                description="Restore reviewed database endpoint configuration.",
-                adapter="ansible",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=True,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
                 action_id="recreate_moodle_web_from_reviewed_compose",
                 description="Recreate Moodle web container from reviewed compose manifest.",
                 adapter="docker",
@@ -612,28 +423,6 @@ class ActionCatalog:
                 rollback_action=None,
                 idempotent=True,
                 forbidden_in_production=False,
-            ),
-            CatalogEntry(
-                action_id="remove_scoped_moodle_db_port_reject",
-                description="Remove scoped port reject rule on DB port 5432.",
-                adapter="network",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=True,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
-                action_id="remove_scoped_netem_profile",
-                description="Remove tc netem packet delay/loss profile.",
-                adapter="network",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=True,
-                forbidden_in_production=True,
             ),
             CatalogEntry(
                 action_id="remove_named_cpu_load_container",
@@ -671,63 +460,6 @@ class ActionCatalog:
                 forbidden_in_production=False,
             ),
             CatalogEntry(
-                action_id="remove_named_disk_fixture",
-                description="Remove only the named file from moodle-app-b's isolated scratch filesystem; never fill EFS.",
-                adapter="docker",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=True,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
-                action_id="restore_fixture_directory_mode",
-                description="Restore correct directory permissions on moodledata.",
-                adapter="ansible",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action="reconcile_sec02_safe_baseline",
-                idempotent=True,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
-                action_id="reconcile_sec02_safe_baseline",
-                description="Re-apply the reviewed SEC-02 safe baseline after partial execution.",
-                action_type=ActionType.RESTORE_MOODLEDATA_PERMISSION,
-                adapter="ansible",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action="restore_fixture_directory_mode",
-                idempotent=True,
-                forbidden_in_production=True,
-                valid_target_resource_types=[ResourceType.VOLUME],
-            ),
-            CatalogEntry(
-                action_id="verify_efs_write",
-                description="Test write access to the EFS moodledata mount.",
-                adapter="probe",
-                permission=_verifier_staging_ro,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=True,
-                forbidden_in_production=False,
-            ),
-            CatalogEntry(
-                action_id="restore_approved_proxy_configuration",
-                description="Restore approved reverse proxy configuration from baseline.",
-                adapter="ansible",
-                permission=_executor_staging,
-                blast_radius="LOW",
-                is_reversible=True,
-                rollback_action=None,
-                idempotent=True,
-                forbidden_in_production=True,
-            ),
-            CatalogEntry(
                 action_id="probe_moodle_synthetic_login",
                 description="Run a synthetic login transaction against Moodle.",
                 adapter="probe",
@@ -740,6 +472,10 @@ class ActionCatalog:
             ),
         ]
 
+        # The Business actions (BIZ-01, BIZ-02) live in their own catalog so the
+        # reviewed live slice can be audited separately; the Moodle catalog
+        # covers all seven thesis scenarios.
+        entries.extend(cls.load_moodle_business_catalog()._entries.values())
         return cls(entries=entries)
 
     @classmethod
@@ -847,13 +583,8 @@ class ActionCatalog:
         s3_3 = cls.load_moodle_s3_3_execution_catalog()
         moodle_full = cls.load_moodle_catalog()
         tech_entries = [moodle_full._entries["remove_tagged_database_ingress_rule"]]
-        biz_entries = list(cls.load_moodle_business_catalog()._entries.values())
+        biz_entries = [moodle_full._entries[action_id] for action_id in cls.load_moodle_business_catalog()._entries]
         return cls(entries=list(s3_3._entries.values()) + tech_entries + biz_entries)
-
-    @classmethod
-    def load_moodle_10_scenario_catalog(cls) -> ActionCatalog:
-        """Backward-compatibility alias pointing to the focused 7-scenario catalog."""
-        return cls.load_moodle_7_scenario_catalog()
 
     @classmethod
     def load_erpnext_catalog(cls) -> ActionCatalog:
@@ -972,16 +703,8 @@ class ActionCatalog:
 
     @classmethod
     def load_reviewed_rollback_catalog(cls) -> ActionCatalog:
-        """Catalog used to look up reciprocal rollback actions.
-
-        Unlike ``load_full_catalog`` it also holds the Business actions
-        (BIZ-01/BIZ-02), whose rollbacks live only in the business catalog.
-        """
-        entries: dict[str, CatalogEntry] = {}
-        for source in (cls.load_moodle_catalog(), cls.load_moodle_business_catalog(), cls.load_erpnext_catalog()):
-            for action_id, entry in source._entries.items():
-                entries.setdefault(action_id, entry)
-        return cls(entries=list(entries.values()))
+        """Catalog used to look up reciprocal rollback actions (Moodle and ERPNext)."""
+        return cls.load_full_catalog()
 
     @classmethod
     def load_full_catalog(cls) -> ActionCatalog:

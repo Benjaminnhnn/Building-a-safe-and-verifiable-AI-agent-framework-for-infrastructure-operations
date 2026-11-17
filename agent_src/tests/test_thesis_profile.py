@@ -18,17 +18,9 @@ from evaluation.benchmark.ansible_baseline import (
     AnsibleBaseline,
 )
 from evaluation.benchmark.manual_protocol import OPERATOR_ACTION_CATALOG
-from evaluation.benchmark.statistical_analysis import ACCEPTANCE, analyze
-from test_statistical_analysis import _ablation_rows, _accepted_main_rows, _write_jsonl
-
-
-def _thesis_main_rows(tmp_path: Path) -> list[dict]:
-    return _accepted_main_rows(
-        tmp_path,
-        scenarios=thesis_profile.THESIS_SCENARIO_IDS,
-        root_causes=thesis_profile.ROOT_CAUSE,
-        ai_denied=thesis_profile.HUMAN_ONLY_SCENARIOS,
-    )
+from evaluation.benchmark import acceptance
+from evaluation.benchmark.statistical_analysis import analyze
+from test_statistical_analysis import _ablation_rows, _main_rows, _write_jsonl
 
 
 def test_profile_matches_the_agent_seven_scenario_scope() -> None:
@@ -44,12 +36,11 @@ def test_profile_matches_the_agent_seven_scenario_scope() -> None:
         assert disposition["catalog_action_id"] == thesis_profile.THESIS_SCENARIOS[scenario_id].allowed_action[0]
 
 
-def test_shared_scenarios_keep_the_legacy_policy_partition() -> None:
-    shared = thesis_profile.THESIS_SCENARIO_IDS & ACCEPTANCE["SCENARIOS"]
-    assert shared == {"CON-01", "DB-01", "RES-01", "NET-01", "SEC-01"}
-    assert thesis_profile.AI_LIVE_EXECUTION_SCENARIOS & shared == ACCEPTANCE["AI_LIVE_EXECUTION_SCENARIOS"] & shared
-    assert thesis_profile.HUMAN_ONLY_SCENARIOS == ACCEPTANCE["HUMAN_ONLY_SCENARIOS"] & shared
-    assert thesis_profile.HUMAN_ONLY_SCENARIOS <= ACCEPTANCE["AI_DENY_HANDOFF_SCENARIOS"]
+def test_profile_and_ground_truth_share_one_policy_partition() -> None:
+    assert thesis_profile.THESIS_SCENARIO_IDS == acceptance.SCENARIOS
+    assert thesis_profile.AI_LIVE_EXECUTION_SCENARIOS == acceptance.AI_LIVE_EXECUTION_SCENARIOS
+    assert thesis_profile.HUMAN_ONLY_SCENARIOS == acceptance.HUMAN_ONLY_SCENARIOS == {"SEC-01"}
+    assert thesis_profile.ROOT_CAUSE == acceptance.GROUND_TRUTH_ROOT_CAUSE
 
 
 @pytest.mark.parametrize("scenario_id", sorted(thesis_profile.THESIS_SCENARIO_IDS))
@@ -110,10 +101,10 @@ def test_rq2_human_only_scenario_cannot_be_auto_resolved() -> None:
     assert "SEC-01" not in MOODLE_LIVE_CONTRACTS
 
 
-def test_seven_clusters_can_reach_significance_only_if_every_scenario_agrees() -> None:
+def test_one_primary_test_on_seven_clusters_can_reach_significance() -> None:
     assert thesis_profile.minimum_cluster_sign_test_p_value() == pytest.approx(2 / 128)
-    assert 3 * thesis_profile.minimum_cluster_sign_test_p_value() < 0.05
-    assert thesis_profile.minimum_cluster_sign_test_p_value(6) * 3 > 0.05
+    assert thesis_profile.minimum_cluster_sign_test_p_value(6) < 0.05
+    assert thesis_profile.minimum_cluster_sign_test_p_value(5) > 0.05
 
 
 def test_missing_thesis_dataset_is_incomplete(tmp_path: Path) -> None:
@@ -123,14 +114,13 @@ def test_missing_thesis_dataset_is_incomplete(tmp_path: Path) -> None:
     assert audit["accepted_empirical_runs"] == 0
 
 
-def test_legacy_only_scenarios_are_rejected_by_the_thesis_profile(tmp_path: Path) -> None:
-    legacy = _accepted_main_rows(tmp_path)
-    issues = thesis_profile.validate_thesis_row(next(row for row in legacy if row["scenario_id"] == "DB-02"))
-    assert issues == ["not_thesis_scenario"]
+def test_retired_scenarios_are_rejected_by_the_thesis_profile(tmp_path: Path) -> None:
+    row = dict(_main_rows(tmp_path, ("ai_agent",))[0], scenario_id="DB-02")
+    assert thesis_profile.validate_thesis_row(row) == ["not_thesis_scenario"]
 
 
 def test_business_rows_are_scored_against_thesis_root_causes(tmp_path: Path) -> None:
-    rows = _thesis_main_rows(tmp_path)
+    rows = _main_rows(tmp_path)
     biz = next(row for row in rows if row["scenario_id"] == "BIZ-02" and row["method"] == "ai_agent")
     assert thesis_profile.validate_thesis_row(biz) == []
     wrong = dict(biz, predicted_root_cause={**biz["predicted_root_cause"], "component": "mdl_task_adhoc"})
@@ -138,44 +128,25 @@ def test_business_rows_are_scored_against_thesis_root_causes(tmp_path: Path) -> 
 
 
 def test_complete_thesis_matrix_answers_rq1_and_rq2(tmp_path: Path) -> None:
-    main_rows = _thesis_main_rows(tmp_path)
-    main_path = tmp_path / "main.jsonl"
-    _write_jsonl(main_path, main_rows)
-    main_ai = {(row["scenario_id"], row["repetition"]): row for row in main_rows if row["method"] == "ai_agent"}
-    no_gate, _ = _ablation_rows(tmp_path, "no_safety_gate", thesis_profile.ABLATION_SCENARIOS)
-    health_only, _ = _ablation_rows(tmp_path, "no_verifier", thesis_profile.ABLATION_SCENARIOS)
-    for row in no_gate + health_only:
-        key = (row["scenario_id"], row["repetition"])
-        row["snapshot_id"] = main_ai[key]["snapshot_id"]
-        row["action_plan_sha256"] = main_ai[key]["action_plan_sha256"]
-    no_gate_path, health_path = tmp_path / "no-gate.jsonl", tmp_path / "health-only.jsonl"
-    _write_jsonl(no_gate_path, no_gate)
-    _write_jsonl(health_path, health_only)
-
-    report = analyze(main_path, 5, no_gate_path, health_path, profile="thesis7")
+    main_rows = _main_rows(tmp_path)
+    no_gate = _ablation_rows(tmp_path, "no_safety_gate", main_rows)
+    health_only = _ablation_rows(tmp_path, "no_verifier", main_rows)
+    report = analyze(
+        _write_jsonl(tmp_path / "main.jsonl", main_rows),
+        5,
+        _write_jsonl(tmp_path / "no-gate.jsonl", no_gate),
+        _write_jsonl(tmp_path / "health-only.jsonl", health_only),
+    )
 
     assert report["profile"] == "thesis7"
     assert report["main_acceptance"]["status"] == "ready"
     assert report["main_acceptance"]["required_empirical_runs"] == 105
     assert report["status"] == "analyzed"
     assert report["rq1"]["status"] == "supported"
-    assert report["rq1"]["no_gate_ablation"]["paired_blocking_comparison"]["eligible_scenario_clusters"] == 7
+    assert report["rq1"]["primary_test"]["scenario_clusters"] == 7
     assert report["rq2"]["status"] == "supported"
-    assert report["rq2"]["paired_test"]["scenario_clusters"] == 7
+    assert report["rq2"]["primary_test"]["scenario_clusters"] == 7
     assert any("Seven scenario clusters" in item for item in report["limitations"])
-
-
-def test_thesis_analysis_rejects_the_legacy_matrix(tmp_path: Path) -> None:
-    main_path = tmp_path / "legacy.jsonl"
-    _write_jsonl(main_path, _accepted_main_rows(tmp_path))
-    report = analyze(main_path, 5, profile="thesis7")
-    assert report["status"] == "inconclusive"
-    assert report["reason"] == "main_dataset_not_acceptance_ready"
-
-
-def test_unknown_profile_is_refused(tmp_path: Path) -> None:
-    with pytest.raises(ValueError):
-        analyze(tmp_path / "absent.jsonl", 5, profile="ad-hoc")
 
 
 def _baseline_plays() -> list[dict]:

@@ -89,11 +89,7 @@ def test_moodle_ground_truth_has_experiment_contract() -> None:
     }
     moodle_paths = [path for path in _ground_truth_paths() if "moodle" in path.parts]
     assert {path.stem for path in moodle_paths} == {
-        "DB-01", "DB-02", "DB-03",
-        "RES-01", "RES-02", "RES-03",
-        "NET-01", "NET-02", "NET-03",
-        "CON-01", "CON-02", "CON-03",
-        "SEC-01", "SEC-02", "SEC-03",
+        "BIZ-01", "BIZ-02", "CON-01", "DB-01", "RES-01", "NET-01", "SEC-01",
     }
     for path in moodle_paths:
         data = _load(path)

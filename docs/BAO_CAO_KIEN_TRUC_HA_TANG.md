@@ -63,7 +63,7 @@ Internet (người dùng)
         ├─► moodle-app-a  (EC2, private App A, AZ A)  web + cron
         └─► moodle-app-b  (EC2, private App B, AZ B)  chỉ web
                 │
-                ├─► RDS PostgreSQL 16.10 (private Data A, Single-AZ, TLS verify-full)
+                ├─► RDS PostgreSQL 16.15 (private Data A, Single-AZ, TLS verify-full)
                 └─► EFS Regional (access point /moodledata, mount target ở mỗi AZ, TLS)
 
 Người vận hành (IP /32 được phép)
@@ -188,7 +188,7 @@ Luồng nội bộ dùng **tham chiếu security group**, không dùng CIDR.
 | Thuộc tính | Giá trị |
 |---|---|
 | Resource / identifier | `aws_db_instance.moodle` / `moodle-staging-postgres` |
-| Engine, lớp | PostgreSQL 16.10, `db.t4g.micro` |
+| Engine, lớp | PostgreSQL 16.15, `db.t4g.micro` |
 | Sẵn sàng | **Single-AZ** ở Data A; không replica, không failover |
 | Mạng | Private, public access tắt, SG `rds_sg` |
 | Lưu trữ | 20 GiB gp3, mã hoá |
@@ -344,7 +344,7 @@ Không có CD production. Workflow build image chạy **độc lập** với CI:
 | Terraform | `fmt`, `validate`, `terraform test` với provider giả |
 | Python | Cài dependency theo hash; `ruff --select E9,F63,F7,F82`; `pytest agent_src/tests` |
 | Automation | `py_compile` các script Python, `bash -n` script shell; `moodle-scenario-verify.sh SEC-01` phải trả **64** |
-| Replay | Replay offline 15 kịch bản với kết quả từng kịch bản được ghim (fail-closed cũng là đúng); không có thực thi live |
+| Replay | Replay offline 7 kịch bản luận văn với kết quả từng kịch bản được ghim (fail-closed cũng là đúng); không có thực thi live |
 | Image Agent | Build; image **không** chứa `evaluation/ground_truth`; chế độ `live` phải escalate |
 | Image Moodle | Build; đọc mật khẩu qua file; layout web root công khai |
 | Sprint 2 replay | 15 `VERIFIED_DRY_RUN`, 0 thực thi bị cấm |

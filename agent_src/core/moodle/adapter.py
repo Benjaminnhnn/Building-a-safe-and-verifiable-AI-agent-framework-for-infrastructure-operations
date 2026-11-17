@@ -52,7 +52,6 @@ MOODLE_ALERT_RESOURCE_MAP: dict[str, str] = {
     "MoodleSyntheticTransactionStale": "moodle-app",
     "MoodleNodeCpuHigh": "moodle-app",
     "MoodleWebContainerMissing": "moodle-app",
-    "MoodleScratchEnospc": "moodle-app",
     "MoodleWebContainerRestarting": "moodle-app",
     "MoodleNodeProbeStale": "moodle-app",
     "MoodleMaintenanceModeStuck": "moodle-app",

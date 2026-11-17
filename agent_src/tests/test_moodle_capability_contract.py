@@ -24,7 +24,7 @@ def test_s3_1_contract_is_valid_and_staging_only() -> None:
     assert load_moodle_capability_contract()["environment"] == "staging"
 
 
-def test_s3_1_contract_covers_exactly_fifteen_moodle_scenarios() -> None:
+def test_s3_1_contract_covers_exactly_the_seven_thesis_scenarios() -> None:
     contract = load_moodle_capability_contract()
     assert set(load_moodle_ground_truth()) == EXPECTED_SCENARIO_IDS
     assert set(contract["scenario_capabilities"]) == EXPECTED_SCENARIO_IDS
@@ -57,8 +57,8 @@ def test_contract_rejects_a_remediation_outside_the_allowlist() -> None:
     assert any("outside the typed catalog" in error for error in errors)
 
 
-def test_s3_4_scenario_map_keeps_live_boundary_at_five_ground_truth_cases() -> None:
-    """Every GT remediation is typed, while only the reviewed five are live."""
+def test_s3_4_scenario_map_keeps_human_only_scenario_out_of_the_live_boundary() -> None:
+    """Every GT remediation is typed; every scenario except human-only SEC-01 is live."""
     catalog = ActionCatalog.load_moodle_catalog()
     contract = load_moodle_capability_contract()
     scenarios = load_moodle_ground_truth()
@@ -81,7 +81,7 @@ def test_s3_4_scenario_map_keeps_live_boundary_at_five_ground_truth_cases() -> N
             ):
                 live_scenarios.add(scenario_id)
 
-    assert live_scenarios == {"DB-01", "RES-01", "NET-01", "CON-01", "SEC-02"}
+    assert live_scenarios == {"BIZ-01", "BIZ-02", "CON-01", "DB-01", "RES-01", "NET-01"}
 
 
 def test_s3_4_bindings_cover_all_scenarios_and_are_fail_closed() -> None:
@@ -90,9 +90,10 @@ def test_s3_4_bindings_cover_all_scenarios_and_are_fail_closed() -> None:
         for scenario_id, scenario in load_moodle_ground_truth().items()
     }
     assert set(bindings) == EXPECTED_SCENARIO_IDS
-    assert sum(item["execution_lane"] == "staging_live_allowlisted" for item in bindings.values()) == 5
-    assert sum(item["execution_lane"] == "offline_or_shadow_only" for item in bindings.values()) == 10
-    assert sum(item["live_allowlisted_action_count"] for item in bindings.values()) == 10
+    assert sum(item["execution_lane"] == "staging_live_allowlisted" for item in bindings.values()) == 6
+    assert sum(item["execution_lane"] == "offline_or_shadow_only" for item in bindings.values()) == 1
+    assert bindings["SEC-01"]["execution_lane"] == "offline_or_shadow_only"
+    assert sum(item["live_allowlisted_action_count"] for item in bindings.values()) == 12
     assert all(item["execution_permitted_by_binding"] is False for item in bindings.values())
 
     broken_scenario = load_moodle_ground_truth()["DB-01"]

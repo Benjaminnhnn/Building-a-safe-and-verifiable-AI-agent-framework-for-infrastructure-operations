@@ -1,7 +1,7 @@
 """Validate the non-mutating S3.1 Moodle capability contract.
 
 The contract joins four independently versioned inputs: the logical resource
-inventory, the fifteen Moodle ground-truth scenarios, the typed action catalog,
+inventory, the seven thesis Moodle ground-truth scenarios, the typed action catalog,
 and the evidence boundary.  It is deliberately a validation layer only; it
 does not execute an adapter or make an AWS call.
 """
@@ -12,17 +12,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from core.safety.action_catalog import ActionCatalog
+from core.safety.action_catalog import MOODLE_7_SCENARIO_IDS, ActionCatalog
 
-EXPECTED_SCENARIO_IDS = frozenset(
-    {
-        "DB-01", "DB-02", "DB-03",
-        "RES-01", "RES-02", "RES-03",
-        "NET-01", "NET-02", "NET-03",
-        "CON-01", "CON-02", "CON-03",
-        "SEC-01", "SEC-02", "SEC-03",
-    }
-)
+EXPECTED_SCENARIO_IDS = frozenset(MOODLE_7_SCENARIO_IDS)
 REQUIRED_EVIDENCE_FIELDS = frozenset(
     {
         "evidence_id", "incident_id", "resource_id", "source", "collected_at",
@@ -194,7 +186,7 @@ def validate_moodle_capability_contract(
 
     if set(scenarios) != EXPECTED_SCENARIO_IDS:
         errors.append(
-            "ground truth must contain exactly the 15 Moodle scenarios; got "
+            "ground truth must contain exactly the 7 thesis Moodle scenarios; got "
             + ", ".join(sorted(scenarios))
         )
     scenario_capabilities = contract.get("scenario_capabilities", {})
@@ -202,7 +194,7 @@ def validate_moodle_capability_contract(
         errors.append("scenario_capabilities must be an object")
         scenario_capabilities = {}
     if set(scenario_capabilities) != EXPECTED_SCENARIO_IDS:
-        errors.append("scenario_capabilities must map exactly the 15 Moodle scenarios")
+        errors.append("scenario_capabilities must map exactly the 7 thesis Moodle scenarios")
 
     action_catalog = catalog or ActionCatalog.load_moodle_catalog()
     for scenario_id, scenario in scenarios.items():

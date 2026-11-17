@@ -141,15 +141,6 @@ def _s3_3_evidence(scenario: str):
             ("moodle_fault_net01_hosts_override", 1, "moodle-app-a"),
             ("moodle_fault_net01_hosts_override", 1, "moodle-app-b"),
         ],
-        "SEC-02": [
-            ("moodle_synthetic_success", 0, "monitor-ai-01"),
-            ("moodle_rds_tcp_probe", 1, "monitor-ai-01"),
-            ("moodle_public_probe", 1, "monitor-ai-01"),
-            ("moodle_efs_mount", 1, "moodle-app-a"),
-            ("moodle_efs_mount", 1, "moodle-app-b"),
-            ("moodle_fault_sec02_fixture_mode_zero", 1, "moodle-app-a"),
-            ("moodle_fault_sec02_fixture_mode_zero", 0, "moodle-app-b"),
-        ],
     }
     return [
         _metric(query_id, value, instance, f"{scenario}-{index}")
@@ -163,14 +154,12 @@ def test_s3_3_plans_require_exact_fresh_runtime_fault_evidence():
         "RES-01": "MoodleNodeCpuHigh",
         "NET-01": "MoodleSyntheticTransactionFailed",
         "CON-01": "MoodleWebContainerMissing",
-        "SEC-02": "MoodleSyntheticTransactionFailed",
     }
     causes = {
         "DB-01": "node_rds_path_probe_failed",
         "RES-01": "node_cpu_pressure",
         "NET-01": "application_path_not_isolated",
         "CON-01": "web_container_not_running",
-        "SEC-02": "application_path_not_isolated",
     }
     for scenario, alert_name in alerts.items():
         evidence = _s3_3_evidence(scenario)

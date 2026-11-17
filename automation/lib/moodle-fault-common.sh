@@ -59,9 +59,9 @@ load_moodle_environment() {
 
 validate_scenario() {
   case "${1:-}" in
-    DB-01|DB-02|DB-03|RES-01|RES-02|RES-03|NET-01|NET-02|NET-03|CON-01|CON-02|CON-03|SEC-01|SEC-02|SEC-03|BIZ-01|BIZ-02) ;;
+    BIZ-01|BIZ-02|CON-01|DB-01|RES-01|NET-01|SEC-01) ;;
     *)
-      echo "Scenario must be one of the Moodle scenarios (DB-01..03, RES-01..03, NET-01..03, CON-01..03, SEC-01..03, BIZ-01, BIZ-02)" >&2
+      echo "Scenario must be one of the thesis scenarios: BIZ-01, BIZ-02, CON-01, DB-01, RES-01, NET-01, SEC-01" >&2
       exit 64
       ;;
   esac
@@ -70,9 +70,8 @@ validate_scenario() {
 scenario_hosts() {
   case "${1:-}" in
     DB-01|NET-01) printf '%s\n' moodle-app-a moodle-app-b ;;
-    DB-02) printf '%s\n' moodle-app-a ;;
-    DB-03|RES-01|RES-02|RES-03|NET-02|NET-03|CON-01|CON-02|CON-03|SEC-03) printf '%s\n' moodle-app-b ;;
-    SEC-02|BIZ-01|BIZ-02) printf '%s\n' moodle-app-a ;;
+    RES-01|CON-01) printf '%s\n' moodle-app-b ;;
+    BIZ-01|BIZ-02) printf '%s\n' moodle-app-a ;;
     # The SEC-01 fault is an AWS security-group rule; its marker is local.
     SEC-01) return 0 ;;
     *) echo "Scenario has no live-drill marker scope: ${1:-}" >&2; return 64 ;;

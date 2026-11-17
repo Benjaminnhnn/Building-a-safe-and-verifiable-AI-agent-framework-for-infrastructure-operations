@@ -35,7 +35,7 @@ PYTHONPATH=agent_src            pytest -q agent_src/tests
 # the "Validate Moodle experiment and operator automation" step of ci.yml)
 bash automation/moodle-scenario-verify.sh SEC-01; test $? -eq 64   # HUMAN_ONLY must be refused
 python automation/aiops-unified-replay.py all                     # CI pins each scenario's outcome (fail-closed counts as correct)
-PYTHONPATH=agent_src python automation/moodle-pipeline-replay.py  # CI asserts 15 VERIFIED_DRY_RUN
+PYTHONPATH=agent_src python automation/moodle-pipeline-replay.py  # CI asserts 7 VERIFIED_DRY_RUN
 
 # 3. Build the images (the AI agent build context is the repo root)
 docker build -f agent_src/Dockerfile -t local/ai-agent:ci .

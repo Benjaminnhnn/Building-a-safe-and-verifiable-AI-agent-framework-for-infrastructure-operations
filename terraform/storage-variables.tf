@@ -1,7 +1,7 @@
 variable "moodle_db_engine_version" {
   description = "Pinned RDS PostgreSQL 16 engine version. Verify regional availability before changing."
   type        = string
-  default     = "16.10"
+  default     = "16.15"
   validation {
     condition     = can(regex("^16\\.[0-9]+$", var.moodle_db_engine_version))
     error_message = "Use an exact RDS PostgreSQL 16 version compatible with postgres16."

@@ -29,10 +29,6 @@ CATALOG = {
         "start_reviewed_compose_service": "moodle-app-b",
         "reconcile_con01_safe_baseline": "moodle-app-b",
     },
-    "SEC-02": {
-        "restore_fixture_directory_mode": "moodledata_synthetic_fixture_directory",
-        "reconcile_sec02_safe_baseline": "moodledata_synthetic_fixture_directory",
-    },
     "BIZ-01": {
         "disable_moodle_cli_maintenance_mode": "staging_moodle_app",
         "enable_moodle_cli_maintenance_mode": "staging_moodle_app",

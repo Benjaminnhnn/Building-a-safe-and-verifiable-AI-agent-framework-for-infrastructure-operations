@@ -41,7 +41,6 @@
   gather_facts: false
   vars:
     safe_executor_user: aiops-executor
-    moodledata_path: /mnt/efs/moodledata
   pre_tasks:
     - ansible.builtin.assert:
         that:
@@ -87,7 +86,6 @@
               fi ;;
             NET-01) docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml up -d --force-recreate moodle-web ;;
             CON-01) docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml up -d --wait moodle-web ;;
-            SEC-02) install -d -o 1000 -g 1000 -m 0770 '{{ moodledata_path }}/synthetic-fixtures'; chown 1000:1000 '{{ moodledata_path }}/synthetic-fixtures'; chmod 0770 '{{ moodledata_path }}/synthetic-fixtures' ;;
             BIZ-01)
               # Re-check at execution time: disabling maintenance during an
               # upgrade is never safe, and an unreadable process table counts
@@ -122,8 +120,6 @@
               scenario=NET-01 ;;
             CON-01|start_reviewed_compose_service|reconcile_con01_safe_baseline)
               scenario=CON-01 ;;
-            SEC-02|restore_fixture_directory_mode|reconcile_sec02_safe_baseline)
-              scenario=SEC-02 ;;
             BIZ-01|disable_moodle_cli_maintenance_mode)
               scenario=BIZ-01 ;;
             BIZ-01-ROLLBACK|enable_moodle_cli_maintenance_mode)

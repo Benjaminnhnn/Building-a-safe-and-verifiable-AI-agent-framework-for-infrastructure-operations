@@ -82,10 +82,18 @@ def test_restart_moodle_container_is_medium(catalog: ActionCatalog) -> None:
     assert entry.blast_radius == "MEDIUM"
 
 
-def test_remove_netem_rules_is_low(catalog: ActionCatalog) -> None:
-    entry = catalog.lookup("remove_netem_rules")
+def test_remove_named_cpu_load_container_is_low(catalog: ActionCatalog) -> None:
+    entry = catalog.lookup("remove_named_cpu_load_container")
     assert entry is not None
     assert entry.blast_radius == "LOW"
+
+
+def test_catalog_holds_no_action_for_retired_scenarios(catalog: ActionCatalog) -> None:
+    for retired in (
+        "remove_netem_rules", "restore_moodledata_ownership", "restore_fixture_directory_mode",
+        "restore_database_connection_capacity", "restore_moodle_apache_router", "remove_named_disk_fixture",
+    ):
+        assert catalog.lookup(retired) is None, retired
 
 
 # ---------------------------------------------------------------------------
@@ -96,18 +104,14 @@ def test_remove_netem_rules_is_low(catalog: ActionCatalog) -> None:
 def test_all_remediation_actions_are_reversible(catalog: ActionCatalog) -> None:
     non_probe_ids = [
         "remove_scoped_db_reject",
-        "kill_named_cpu_hog",
-        "remove_named_memory_pressure_container",
-        "remove_disk_fill_fixture",
+        "remove_named_cpu_load_container",
         "restore_dns_alias",
-        "remove_scoped_port_block",
-        "remove_netem_rules",
+        "recreate_moodle_web_from_reviewed_compose",
+        "start_reviewed_compose_service",
         "restart_moodle_container",
-        "restore_nginx_upstream",
-        "restore_previous_approved_release",
         "remove_tagged_database_ingress_rule",
-        "restore_moodledata_ownership",
-        "restore_moodle_security_config",
+        "disable_moodle_cli_maintenance_mode",
+        "restart_moodle_cron_service",
     ]
     for action_id in non_probe_ids:
         entry = catalog.lookup(action_id)
@@ -178,9 +182,6 @@ def test_s3_3_execution_catalog_contains_only_reviewed_s3_2_pairs() -> None:
         "start_reviewed_compose_service",
         "reconcile_con01_safe_baseline",
         "wait_for_alb_target_health",
-        "restore_fixture_directory_mode",
-        "reconcile_sec02_safe_baseline",
-        "verify_efs_write",
     }
 
 
@@ -202,7 +203,6 @@ def test_each_s3_3_mutation_has_a_reciprocal_idempotent_safe_baseline_compensati
         "remove_named_cpu_load_container": "reconcile_res01_safe_baseline",
         "recreate_moodle_web_from_reviewed_compose": "reconcile_net01_safe_baseline",
         "start_reviewed_compose_service": "reconcile_con01_safe_baseline",
-        "restore_fixture_directory_mode": "reconcile_sec02_safe_baseline",
     }
     for action_id, compensation_id in action_pairs.items():
         action = catalog.lookup(action_id)
@@ -221,13 +221,17 @@ def test_each_s3_3_mutation_has_a_reciprocal_idempotent_safe_baseline_compensati
 def test_full_catalog_all_mutations_have_reciprocal_rollback_action() -> None:
     full = ActionCatalog.load_full_catalog()
     s3_3 = ActionCatalog.load_moodle_s3_3_execution_catalog()
+    business = ActionCatalog.load_moodle_business_catalog()
     erpnext = ActionCatalog.load_erpnext_catalog()
     reviewed_mutation_ids = {
         entry.action_id
-        for entry in list(s3_3._entries.values()) + list(erpnext._entries.values())
+        for entry in (
+            list(s3_3._entries.values()) + list(business._entries.values()) + list(erpnext._entries.values())
+        )
         if not entry.permission.read_only
     }
-    assert len(reviewed_mutation_ids) == 16  # 5 S3.3 pairs (10) + 3 ERPNext pairs (6)
+    # 4 S3.3 pairs (8) + 2 Business pairs (4) + 3 ERPNext pairs (6)
+    assert len(reviewed_mutation_ids) == 18
     for action_id in reviewed_mutation_ids:
         entry = full.lookup(action_id)
         assert entry is not None
@@ -261,7 +265,7 @@ def test_full_catalog_all_mutations_have_reciprocal_rollback_action() -> None:
     [
         ("remove_scoped_db_reject", "DB-01", "staging_moodle_nodes", "production", "executor"),
         ("remove_scoped_db_reject", "DB-01", "moodle-app-b", "staging", "executor"),
-        ("remove_scoped_db_reject", "SEC-02", "staging_moodle_nodes", "staging", "executor"),
+        ("remove_scoped_db_reject", "NET-01", "staging_moodle_nodes", "staging", "executor"),
         ("unrestricted_shell", "DB-01", "staging_moodle_nodes", "staging", "executor"),
         ("remove_scoped_db_reject", "DB-01", "staging_moodle_nodes", "staging", "observer"),
     ],

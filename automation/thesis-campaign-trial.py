@@ -260,12 +260,14 @@ class LiveOps:
 class SimulatedOps:
     def __init__(self, clock: Clock) -> None:
         self.clock = clock
+        self.fault_active = False
 
     def baseline(self) -> dict[str, Any]:
         return {"passed": True, "stdout": "simulated baseline"}
 
     def inject(self, scenario: str) -> dict[str, Any]:
         self.clock.sleep(5)
+        self.fault_active = True
         return {"stdout": f"simulated {scenario} fault"}
 
     def wait_alert(self, scenario: str) -> None:
@@ -273,6 +275,7 @@ class SimulatedOps:
 
     def reset(self, scenario: str) -> bool:
         self.clock.sleep(10)
+        self.fault_active = False
         return True
 
     def health_only(self) -> bool:
@@ -280,10 +283,12 @@ class SimulatedOps:
 
     def contract(self, scenario: str) -> dict[str, Any]:
         self.clock.sleep(5)
-        return {"status": "passed", "checks": [{"id": "simulated", "status": "passed"}]}
+        status = "failed" if self.fault_active else "passed"
+        return {"status": status, "checks": [{"id": "simulated", "status": status}]}
 
     def ansible(self, scenario: str) -> dict[str, Any]:
         self.clock.sleep(20)
+        self.fault_active = False
         return {"returncode": 0, "stdout": "simulated ansible"}
 
     def ansible_injection(self, scenario: str, directory: Path) -> dict[str, bool]:
@@ -291,15 +296,27 @@ class SimulatedOps:
 
     def operator(self, prompt: str) -> str:
         self.clock.sleep(30)
+        if prompt.startswith("Perform:"):
+            self.fault_active = False
         return ""
 
     def drill(self, scenario: str, directory: Path) -> dict[str, Any]:
         times = {}
+        checkpoint_at = None
         for name in TIMESTAMPS:
             self.clock.sleep(150 if name == "t_verify" else 20)
             times[name] = utc(self.clock.now())
+            if name == "t_detect":
+                self.clock.sleep(5)
+                checkpoint_at = utc(self.clock.now())
         return {
             "stage_times": times,
+            "fault_checkpoint": {
+                "observed_at": checkpoint_at,
+                "fault_present": True,
+                "health_only_http_status": "200",
+                "verifier_contract": {"status": "failed", "checks": []},
+            },
             "candidate_id": "ev-simulated",
             "incident_id": f"inc-simulated-{scenario}",
             "prepared_request": {"request": {"scenario_id": scenario}},
@@ -329,6 +346,25 @@ def _verify_window(trial: Trial, ops: Any, scenario: str) -> tuple[bool, float, 
         samples.append(ops.contract(scenario))
     elapsed = (trial.clock.now() - started).total_seconds()
     return all(sample.get("status") == "passed" for sample in samples), elapsed, samples
+
+
+def _fault_checkpoint(trial: Trial, ops: Any, scenario: str) -> dict[str, Any]:
+    """RQ2: ask both oracles whether the system is recovered while the fault is active.
+
+    The fault was injected and has not been reset, so the ground truth is
+    "not recovered" by construction; a "recovered" answer is a false recovery.
+    """
+    observed_at = utc(trial.clock.now())
+    health_only = ops.health_only()
+    contract = ops.contract(scenario)
+    checkpoint = {"observed_at": observed_at, "fault_present": True, "health_only_ok": health_only, "verifier_contract": contract}
+    trial.save("fault-checkpoint.json", checkpoint)
+    return {
+        "observed_at": observed_at,
+        "fault_present": True,
+        "health_only_would_resolve": health_only,
+        "verifier_would_resolve": contract.get("status") == "passed",
+    }
 
 
 def _root_cause_from_operator(ops: Any, trial: Trial) -> dict[str, str]:
@@ -366,6 +402,7 @@ def run_trial(args: argparse.Namespace, ops: Any, clock: Clock) -> dict[str, dic
 
     outcome: dict[str, Any] = {}
     mutated = False
+    fault_checkpoint: dict[str, Any] | None = None
     if method == "ai_agent" and not denied:
         drill = ops.drill(scenario, trial.directory)
         trial.save("agent-drill.json", drill)
@@ -376,6 +413,13 @@ def run_trial(args: argparse.Namespace, ops: Any, clock: Clock) -> dict[str, dic
         stability = float(VERIFY_WINDOW_SECONDS)
         health_only = drill.get("health_only_http_status") == "200"
         contract_at_end = drill.get("contract_at_execute_end", {}).get("status") == "passed"
+        checkpoint = drill.get("fault_checkpoint") or {}
+        fault_checkpoint = {
+            "observed_at": checkpoint.get("observed_at"),
+            "fault_present": checkpoint.get("fault_present") is True,
+            "health_only_would_resolve": checkpoint.get("health_only_http_status") == "200",
+            "verifier_would_resolve": (checkpoint.get("verifier_contract") or {}).get("status") == "passed",
+        }
         candidate_scenario = drill["prepared_request"]["request"]["scenario_id"]
         predicted = dict(thesis_profile.ROOT_CAUSE.get(candidate_scenario, UNKNOWN_ROOT_CAUSE))
         resolution_actor = "independent_verifier"
@@ -386,6 +430,8 @@ def run_trial(args: argparse.Namespace, ops: Any, clock: Clock) -> dict[str, dic
         trial.save("inject.json", ops.inject(scenario))
         ops.wait_alert(scenario)
         trial.mark("t_detect")
+        if method == "ai_agent":
+            fault_checkpoint = _fault_checkpoint(trial, ops, scenario)
         if method == "ai_agent":
             diagnosis = ops.agent_diagnosis(scenario, trial.times["t_inject"])
             trial.save("agent-diagnosis.json", diagnosis)
@@ -518,6 +564,7 @@ def run_trial(args: argparse.Namespace, ops: Any, clock: Clock) -> dict[str, dic
             "canonical_resolution_actor": "independent_verifier",
             "health_only_would_resolve": health_only,
             "contract_satisfied": contract_at_end,
+            "fault_checkpoint": fault_checkpoint,
         })
     return rows
 

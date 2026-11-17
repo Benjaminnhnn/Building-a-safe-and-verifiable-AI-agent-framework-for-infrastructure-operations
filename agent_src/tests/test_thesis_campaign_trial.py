@@ -90,11 +90,26 @@ def test_pipeline_output_is_analyzable_once_labelled_live(campaign: Path, tmp_pa
     for name, label in (("main.jsonl", "empirical_live"), ("no-gate.jsonl", "empirical_counterfactual"), ("health-only.jsonl", "empirical_counterfactual")):
         rows = [dict(row, data_classification=label) for row in _rows(campaign / name)]
         (tmp_path / name).write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
-    report = analyze(tmp_path / "main.jsonl", 5, tmp_path / "no-gate.jsonl", tmp_path / "health-only.jsonl", profile="thesis7")
+    report = analyze(tmp_path / "main.jsonl", 5, tmp_path / "no-gate.jsonl", tmp_path / "health-only.jsonl")
     assert report["main_acceptance"]["status"] == "ready", report["main_acceptance"]["rejected_dataset_rows"][:2]
     assert report["status"] == "analyzed"
     assert report["rq1"]["no_gate_ablation"]["status"] == "validated_counterfactual"
-    assert report["rq2"]["status"] in {"supported", "not_supported"}
+    # The simulated oracles follow the designed behaviour, so both primary
+    # tests reach the 7/7 decision; live data decides the real outcome.
+    assert report["rq1"]["status"] == "supported"
+    assert report["rq2"]["status"] == "supported"
+    assert report["rq2"]["primary_test"]["informative_scenarios"] == 7
+
+
+def test_every_ai_trial_records_the_fault_active_checkpoint(campaign: Path) -> None:
+    rows = _rows(campaign / "health-only.jsonl")
+    assert len(rows) == len(SCENARIOS) * 5
+    for row in rows:
+        checkpoint = row["fault_checkpoint"]
+        assert checkpoint["fault_present"] is True
+        assert row["timestamps"]["t_detect"] <= checkpoint["observed_at"] <= row["timestamps"]["t_execute_start"]
+        assert checkpoint["health_only_would_resolve"] is True
+        assert checkpoint["verifier_would_resolve"] is False
 
 
 def test_live_mode_requires_frozen_provenance_and_cost(tmp_path: Path) -> None:

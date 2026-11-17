@@ -12,7 +12,7 @@ An operator prepares a fresh candidate through the remediation prepare endpoint,
 
 - core/schema: canonical Incident, Resource, Evidence, TypedAction, and Verification contracts.
 - core/evidence: evidence collection, SQLite store, dependency graph, adapters, and integrity checks.
-- core/moodle: Moodle adapter, alert investigation, diagnosis, 15-scenario disposition & planning, and live handoff.
+- core/moodle: Moodle adapter, alert investigation, diagnosis, 7-scenario disposition & planning, and live handoff.
 - core/erpnext: ERPNext adapter (`ERPNextPlatformAdapter`) validating multi-platform generalizability over the platform-neutral core.
 - core/safety: action catalog (with reciprocal safe-baseline compensation pairs), policy, approvals, audit, verifier attestation, and executor client.
 - core/verification: probes, verifier contracts, and schema-based incident state machine.

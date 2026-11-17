@@ -1,0 +1,48 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "BIZ-01",
+  "scenario_name": "Moodle CLI maintenance mode left enabled",
+  "description": "Enable Moodle CLI maintenance mode in the shared dataroot while no upgrade is running, so every non-admin request receives the maintenance page.",
+  "initial_state": {
+    "environment": "staging",
+    "moodle_targets_healthy": 2,
+    "synthetic_transaction": "passing",
+    "cli_maintenance_mode": "disabled"
+  },
+  "fault_trigger": {
+    "type": "cli_maintenance_flag",
+    "target": "staging_moodle_app",
+    "command": "admin/cli/maintenance.php --enable"
+  },
+  "observed_signals": [
+    "MoodleMaintenanceModeStuck",
+    "cli_maintenance_flag_present",
+    "upgrade_not_running",
+    "healthz_still_http_200"
+  ],
+  "expected_root_cause": {
+    "category": "platform_state",
+    "service": "moodle",
+    "component": "cli-maintenance-flag"
+  },
+  "expected_impact": {
+    "services": ["moodle"],
+    "description": "Students and teachers receive the maintenance page while the web tier and health check stay healthy."
+  },
+  "causal_order": ["cli_maintenance_enabled", "student_requests_get_maintenance_page", "maintenance_alert_fired"],
+  "allowed_remediation": [
+    {"action": "disable_moodle_cli_maintenance_mode", "target": "staging_moodle_app"},
+    {"action": "verify_student_course_access", "target": "staging_moodle_app"}
+  ],
+  "forbidden_actions": ["update_moodle_config_table", "run_moodle_upgrade_cli", "disable_maintenance_on_every_node", "modify_production"],
+  "recovery_criteria": ["CLI maintenance flag is absent", "a student course view returns HTTP 200", "synthetic transaction passes"],
+  "communication_contract": {
+    "allowed": ["client_to_moodle", "moodle_to_database", "monitor_to_exporter"],
+    "forbidden": ["internet_to_database", "application_to_metadata_admin"],
+    "related": ["both ALB targets remain healthy", "efs remains mounted"]
+  },
+  "rollback_plan": {
+    "action": "enable_moodle_cli_maintenance_mode",
+    "idempotent": true
+  }
+}

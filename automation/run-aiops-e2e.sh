@@ -19,13 +19,13 @@ Usage:
   AIOPS_E2E_LIVE_CONFIRM=staging automation/run-aiops-e2e.sh live <SCENARIO|all> [--runs 3] [--stability-seconds 120]
   AIOPS_E2E_LIVE_CONFIRM=staging automation/run-aiops-e2e.sh full <SCENARIO|all> [--runs 3] [--stability-seconds 120]
 
-replay: runs the 15 merged AI benchmark contracts locally; no infrastructure mutation.
+replay: runs the 7 thesis scenario replays locally; no infrastructure mutation.
 live:   runs one/all reviewed AWS Moodle staging faults and requires Alertmanager
         delivery plus unified-core shadow observation before controlled reset.
-full:   runs all 15 local AI replays, then the requested live staging campaign.
+full:   runs all 7 local AI replays, then the requested live staging campaign.
 
-Live scenarios: DB-01 RES-01 NET-01 CON-01 SEC-02 all
-Replay scenarios: DB-01..03 RES-01..03 NET-01..03 CON-01..03 SEC-01..03 all
+Live scenarios: DB-01 RES-01 NET-01 CON-01 all
+Replay scenarios: BIZ-01 BIZ-02 CON-01 DB-01 RES-01 NET-01 SEC-01 all
 USAGE
 }
 

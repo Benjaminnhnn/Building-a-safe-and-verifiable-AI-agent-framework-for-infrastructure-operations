@@ -96,7 +96,6 @@ def test_node_rds_alert_uses_fixed_node_local_probe_query():
 @pytest.mark.parametrize(
     ("alert_name", "query_id"),
     [
-        ("MoodleScratchEnospc", "moodle_node_scratch_enospc"),
         ("MoodleWebContainerRestarting", "moodle_node_web_restart_count_2m"),
         ("MoodleNodeProbeStale", "moodle_node_probe_age_seconds"),
         ("MoodleNodeRdsTcpLatencyHigh", "moodle_node_rds_tcp_duration_seconds"),

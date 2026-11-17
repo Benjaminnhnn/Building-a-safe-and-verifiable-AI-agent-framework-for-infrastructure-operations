@@ -20,7 +20,6 @@ web_exists=0
 router_enabled=0
 router_fallback_success=0
 reverse_proxy_enabled=0
-scratch_enospc=0
 db_tcp_success=0
 db_tcp_duration=0
 restart_count=0
@@ -28,7 +27,6 @@ fault_db01_tagged_rule=0
 fault_res01_cpu_fixture_running=0
 fault_net01_hosts_override=0
 fault_con01_web_stopped=0
-fault_sec02_fixture_mode_zero=0
 cli_maintenance_enabled=0
 upgrade_in_progress=0
 cron_running=0
@@ -62,12 +60,6 @@ if (( web_running == 1 )) && [[ "$db_host" =~ ^[A-Za-z0-9.-]{1,253}$ ]] &&
 fi
 if (( web_exists == 1 && web_running == 0 )); then
   fault_con01_web_stopped=1
-fi
-fixture_path=/mnt/efs/moodledata/synthetic-fixtures
-if [[ "$(findmnt --noheadings --output FSTYPE --target /mnt/efs/moodledata 2>/dev/null || true)" =~ ^(nfs4|efs)$ ]] &&
-  [[ -d "$fixture_path" ]] &&
-  [[ "$(stat -c '%u:%g:%a' "$fixture_path" 2>/dev/null || true)" == '1000:1000:0' ]]; then
-  fault_sec02_fixture_mode_zero=1
 fi
 
 if (( web_running == 1 )); then
@@ -148,12 +140,6 @@ if (( web_running == 1 )); then
   fi
 fi
 
-scratch_path=/var/lib/moodle-faults/res03-scratch
-if [[ -d "$scratch_path" ]] && [[ "$(findmnt --noheadings --output FSTYPE --target "$scratch_path" 2>/dev/null || true)" == tmpfs ]]; then
-  scratch_available="$(df -Pk "$scratch_path" 2>/dev/null | awk 'NR==2 {print $4}')"
-  [[ "$scratch_available" =~ ^[0-9]+$ && "$scratch_available" -le 4 ]] && scratch_enospc=1
-fi
-
 temporary_file="$(mktemp "$output_dir/.moodle_node_probes.XXXXXX")"
 cleanup() { [[ -e "$temporary_file" ]] && rm -f -- "$temporary_file"; }
 trap cleanup EXIT
@@ -173,9 +159,6 @@ printf '%s\n' \
   '# HELP moodle_fault_con01_web_stopped Whether the existing reviewed Moodle web container is stopped.' \
   '# TYPE moodle_fault_con01_web_stopped gauge' \
   "moodle_fault_con01_web_stopped $fault_con01_web_stopped" \
-  '# HELP moodle_fault_sec02_fixture_mode_zero Whether the exact synthetic fixture directory has the SEC-02 mode 0000.' \
-  '# TYPE moodle_fault_sec02_fixture_mode_zero gauge' \
-  "moodle_fault_sec02_fixture_mode_zero $fault_sec02_fixture_mode_zero" \
   '# HELP moodle_node_apache_router_enabled Whether the Moodle Apache router config is enabled.' \
   '# TYPE moodle_node_apache_router_enabled gauge' \
   "moodle_node_apache_router_enabled $router_enabled" \
@@ -185,9 +168,6 @@ printf '%s\n' \
   '# HELP moodle_node_reverse_proxy_enabled Whether Moodle reverse-proxy trust is enabled in the web container.' \
   '# TYPE moodle_node_reverse_proxy_enabled gauge' \
   "moodle_node_reverse_proxy_enabled $reverse_proxy_enabled" \
-  '# HELP moodle_node_scratch_enospc Whether the isolated RES-03 scratch tmpfs is full.' \
-  '# TYPE moodle_node_scratch_enospc gauge' \
-  "moodle_node_scratch_enospc $scratch_enospc" \
   '# HELP moodle_node_rds_tcp_success Whether the Moodle web container connected to RDS TCP 5432.' \
   '# TYPE moodle_node_rds_tcp_success gauge' \
   "moodle_node_rds_tcp_success $db_tcp_success" \

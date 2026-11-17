@@ -1,19 +1,18 @@
-"""Statistical helpers and fail-closed evidence validation tests."""
+"""Statistical helpers, fail-closed evidence validation and RQ1/RQ2 decisions."""
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
 
-from evaluation.benchmark.ablation_config import DEFAULT_ABLATION_SCENARIOS
+from evaluation.benchmark import acceptance, thesis_profile
 from evaluation.benchmark.statistical_analysis import (
     _main_metrics,
     _validate_ablation,
     analyze,
-    ACCEPTANCE,
     exact_cluster_sign_test,
     exact_mcnemar,
     holm_adjust,
@@ -23,6 +22,14 @@ from evaluation.benchmark.statistical_analysis import (
 COMMIT_SHA = "a" * 40
 MOODLE_IMAGE_DIGEST = "sha256:" + "b" * 64
 AI_AGENT_IMAGE_DIGEST = "sha256:" + "c" * 64
+SCENARIOS = sorted(thesis_profile.THESIS_SCENARIO_IDS)
+TIMESTAMP_NAMES = (
+    "t_inject", "t_detect", "t_incident", "t_plan", "t_gate",
+    "t_execute_start", "t_execute_end", "t_verify", "t_resolved",
+)
+TIMESTAMPS = {name: f"2026-10-01T00:00:{index:02d}Z" for index, name in enumerate(TIMESTAMP_NAMES)}
+# Between t_detect (00:01) and t_execute_start (00:05): the fault is still active.
+FAULT_CHECKPOINT_AT = "2026-10-01T00:00:02Z"
 
 
 def _write_audit_trace(
@@ -43,118 +50,184 @@ def _write_audit_trace(
             "details": {},
             "occurred_at": f"2026-10-01T00:00:{index:02d}Z",
         }
-        for index, stage in enumerate(ACCEPTANCE["AUDIT_STAGES"], 1)
+        for index, stage in enumerate(acceptance.AUDIT_STAGES, 1)
     ]
     path.write_text("\n".join(json.dumps(event) for event in events) + "\n", encoding="utf-8")
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _retie_audit_trace(row: dict) -> None:
-    old_ref = row["audit_trace_ref"]
-    old_path = Path(old_ref)
-    new_path = old_path.with_name(f"{old_path.stem}-retied-{row['run_id']}.jsonl")
-    refs = [ref for ref in row["evidence_refs"] if ref != old_ref]
-    digest = _write_audit_trace(new_path, row["run_id"], refs)
-    refs.append(str(new_path))
-    row["audit_trace_ref"] = str(new_path)
-    row["evidence_refs"] = refs
-    row["evidence_sha256"].pop(old_ref, None)
-    row["evidence_sha256"][str(new_path)] = digest
+def _bind_audit_trace(tmp_path: Path, row: dict, actor: str) -> None:
+    trace = tmp_path / f"{row['run_id']}-{actor}-audit.jsonl"
+    refs = [ref for ref in row["evidence_refs"] if ref != row.get("audit_trace_ref")]
+    for ref in list(row["evidence_sha256"]):
+        if ref not in refs:
+            row["evidence_sha256"].pop(ref)
+    digest = _write_audit_trace(trace, row["run_id"], refs, actor=actor)
+    row["audit_trace_ref"] = str(trace)
+    row["evidence_refs"] = [*refs, str(trace)]
+    row["evidence_sha256"][str(trace)] = digest
 
 
-def _ablation_rows(
-    tmp_path: Path, mode: str, scenarios: list[str] | None = None
-) -> tuple[list[dict], dict[tuple[str, int], dict]]:
-    evidence = tmp_path / "raw.json"
+def _shared_evidence(tmp_path: Path) -> tuple[Path, Path, str]:
+    evidence = tmp_path / "trace.json"
     evidence.write_text("{}", encoding="utf-8")
     model_config = tmp_path / "model-config.json"
-    model_config.write_text('{"model":"gemini-test","temperature":0}', encoding="utf-8")
-    model_config_sha256 = hashlib.sha256(model_config.read_bytes()).hexdigest()
-    main_ai: dict[tuple[str, int], dict] = {}
+    model_config.write_text('{"model":"deterministic-evidence-rules"}', encoding="utf-8")
+    return evidence, model_config, hashlib.sha256(model_config.read_bytes()).hexdigest()
+
+
+def _main_rows(tmp_path: Path, methods: tuple[str, ...] = ("manual", "ansible", "ai_agent")) -> list[dict]:
+    """Acceptance-valid main rows for the seven thesis scenarios."""
+    evidence, model_config, model_sha = _shared_evidence(tmp_path)
     rows: list[dict] = []
-    for scenario in scenarios if scenarios is not None else DEFAULT_ABLATION_SCENARIOS:
-        for repetition in range(1, 6):
-            key = (scenario, repetition)
-            main_ai[key] = {
-                "run_id": f"main-{scenario}-{repetition}",
-                "commit_sha": COMMIT_SHA,
-                "moodle_image_digest": MOODLE_IMAGE_DIGEST,
-                "ai_agent_image_digest": AI_AGENT_IMAGE_DIGEST,
-                "model_name": "gemini-test",
-                "model_configuration_sha256": f"sha256:{model_config_sha256}",
-                "prompt_version": "prompt-test-v1",
-                "snapshot_id": f"snapshot-{scenario}-{repetition}",
-                "action_plan_sha256": hashlib.sha256(f"plan-{scenario}-{repetition}".encode()).hexdigest(),
-                "dangerous_action_opportunity_count": 1,
-                "audit_complete": True,
-            }
-            row = {
-                "run_id": f"{mode}-{scenario}-{repetition}",
-                "commit_sha": COMMIT_SHA,
-                "moodle_image_digest": MOODLE_IMAGE_DIGEST,
-                "ai_agent_image_digest": AI_AGENT_IMAGE_DIGEST,
-                "scenario_id": scenario,
-                "repetition": repetition,
-                "method": mode,
-                "ablation_mode": mode,
-                "data_classification": "empirical_counterfactual",
-                "environment": "staging",
-                "model_name": "gemini-test",
-                "model_configuration_sha256": f"sha256:{model_config_sha256}",
-                "model_configuration_ref": str(model_config),
-                "prompt_version": "prompt-test-v1",
-                "baseline_before": "passed",
-                "baseline_after_reset": "passed",
-                "stability_seconds": 120,
-                "snapshot_id": main_ai[key]["snapshot_id"],
-                "action_plan_sha256": main_ai[key]["action_plan_sha256"],
-                "evidence_refs": [str(evidence), str(model_config)],
-                "evidence_sha256": {
-                    str(evidence): hashlib.sha256(evidence.read_bytes()).hexdigest(),
-                    str(model_config): model_config_sha256,
-                },
-                "timestamps": {
-                    "t_inject": "2026-10-01T00:00:00Z",
-                    "t_detect": "2026-10-01T00:00:01Z",
-                    "t_incident": "2026-10-01T00:00:02Z",
-                    "t_plan": "2026-10-01T00:00:03Z",
-                    "t_gate": "2026-10-01T00:00:04Z",
-                    "t_execute_start": "2026-10-01T00:00:05Z",
-                    "t_execute_end": "2026-10-01T00:00:06Z",
-                    "t_verify": "2026-10-01T00:02:07Z",
-                    "t_resolved": "2026-10-01T00:02:08Z",
-                },
-                "runtime_seconds": 128.0,
-                "aws_cost_usd": 0.01,
-                "action_count": 1,
-                "llm_call_count": 1,
-                "llm_latency_seconds": 1.5,
-                "audit_complete": True,
-            }
-            if mode == "no_safety_gate":
-                row.update({
-                    "sandbox_intercepted": True,
-                    "sandbox_intercepted_action_count": 1,
-                    "live_action_count": 0,
-                    "shadow_would_execute": ["candidate-action"],
-                    "dangerous_would_execute_count": 1,
-                })
-            else:
-                row.update({
-                    "counterfactual_only": True,
-                    "canonical_resolution_actor": "independent_verifier",
+    for scenario in SCENARIOS:
+        human_only = scenario in acceptance.HUMAN_ONLY_SCENARIOS
+        for method in methods:
+            for repetition in range(1, 6):
+                ai = method == "ai_agent"
+                denied = human_only and method in ("ai_agent", "ansible")
+                blocked = ai or denied
+                row = {
+                    "run_id": f"main-{method}-{scenario}-{repetition}",
+                    "commit_sha": COMMIT_SHA,
+                    "moodle_image_digest": MOODLE_IMAGE_DIGEST,
+                    "ai_agent_image_digest": AI_AGENT_IMAGE_DIGEST,
+                    "scenario_id": scenario,
+                    "method": method,
+                    "repetition": repetition,
+                    "data_classification": "empirical_live",
+                    "environment": "staging",
+                    "model_name": "deterministic-evidence-rules" if ai else None,
+                    "model_configuration_sha256": f"sha256:{model_sha}" if ai else None,
+                    "model_configuration_ref": str(model_config) if ai else None,
+                    "prompt_version": "rules-v1" if ai else None,
+                    "execution_authority": (
+                        "ai_agent_policy_gate" if ai and denied else acceptance.AUTHORITIES[method]
+                    ),
+                    "status": "completed",
+                    "baseline_before": "passed",
+                    "baseline_after_reset": "passed",
+                    "stability_seconds": 120,
+                    "verifier_actor": "independent_verifier",
+                    "verification_status": "passed",
+                    "snapshot_id": f"snapshot-{scenario}-{repetition}",
+                    "action_plan_sha256": hashlib.sha256(f"plan-{scenario}".encode()).hexdigest(),
+                    "predicted_root_cause": dict(thesis_profile.ROOT_CAUSE[scenario]),
+                    "rca_correct": True,
+                    "timestamps": dict(TIMESTAMPS),
+                    "recovery_success": not denied,
+                    "false_recovery": False,
+                    "dangerous_action_blocked": blocked,
+                    "dangerous_action_opportunity_count": 1,
+                    "dangerous_action_blocked_count": int(blocked),
+                    "forbidden_execution_count": int(not blocked),
+                    "rollback_needed": False,
+                    "rollback_success": False,
+                    "audit_complete": True,
+                    "verifier_resolved": ai and not denied,
+                    "action_count": 0 if denied else 1,
+                    "llm_call_count": 0,
+                    "llm_latency_seconds": 0.0,
+                    "runtime_seconds": 130.0,
+                    "aws_cost_usd": 0.01,
+                    "evidence_refs": [str(evidence), *([str(model_config)] if ai else [])],
+                    "evidence_sha256": {
+                        str(evidence): hashlib.sha256(evidence.read_bytes()).hexdigest(),
+                        **({str(model_config): model_sha} if ai else {}),
+                    },
+                }
+                if denied:
+                    row.update({
+                        "outcome": "denied_handoff",
+                        "resolution_actor": "manual_operator",
+                        "denial_reason": "human_only",
+                        "gate_decision": "DENY",
+                        "handoff_target": "manual_operator",
+                        "method_mutated": False,
+                        "handoff_at": TIMESTAMPS["t_execute_start"],
+                    })
+                elif human_only:
+                    row.update({"outcome": "human_remediation", "resolution_actor": "manual_operator"})
+                _bind_audit_trace(tmp_path, row, method)
+                rows.append(row)
+    return rows
+
+
+def _ablation_rows(tmp_path: Path, mode: str, main_rows: list[dict]) -> list[dict]:
+    """Paired counterfactual rows for every AI-agent main row."""
+    rows: list[dict] = []
+    keep = (
+        "commit_sha", "moodle_image_digest", "ai_agent_image_digest", "scenario_id", "repetition",
+        "model_name", "model_configuration_sha256", "model_configuration_ref", "prompt_version",
+        "environment", "baseline_before", "baseline_after_reset", "stability_seconds", "snapshot_id",
+        "action_plan_sha256", "timestamps", "runtime_seconds", "aws_cost_usd", "llm_call_count",
+        "llm_latency_seconds", "action_count",
+    )
+    for main in (row for row in main_rows if row["method"] == "ai_agent"):
+        row = {name: json.loads(json.dumps(main[name])) for name in keep}
+        row.update({
+            "run_id": f"{mode}-{main['scenario_id']}-{main['repetition']}",
+            "method": mode,
+            "ablation_mode": mode,
+            "data_classification": "empirical_counterfactual",
+            "audit_complete": True,
+            "evidence_refs": [ref for ref in main["evidence_refs"] if ref != main["audit_trace_ref"]],
+            "evidence_sha256": {
+                ref: digest for ref, digest in main["evidence_sha256"].items() if ref != main["audit_trace_ref"]
+            },
+        })
+        if mode == "no_safety_gate":
+            row.update({
+                "sandbox_intercepted": True,
+                "sandbox_intercepted_action_count": 1,
+                "live_action_count": 0,
+                "shadow_would_execute": ["dangerous-proposal"],
+                "dangerous_would_execute_count": 1,
+            })
+        else:
+            row.update({
+                "counterfactual_only": True,
+                "canonical_resolution_actor": "independent_verifier",
+                "health_only_would_resolve": True,
+                "contract_satisfied": True,
+                "fault_checkpoint": {
+                    "observed_at": FAULT_CHECKPOINT_AT,
+                    "fault_present": True,
                     "health_only_would_resolve": True,
-                    "contract_satisfied": False,
-                })
-            audit_trace = tmp_path / f"{row['run_id']}-audit.jsonl"
-            refs = [str(evidence), str(model_config)]
-            audit_digest = _write_audit_trace(audit_trace, row["run_id"], refs, actor=mode)
-            row["audit_trace_ref"] = str(audit_trace)
-            refs.append(str(audit_trace))
-            row["evidence_refs"] = refs
-            row["evidence_sha256"][str(audit_trace)] = audit_digest
-            rows.append(row)
-    return rows, main_ai
+                    "verifier_would_resolve": False,
+                },
+            })
+        _bind_audit_trace(tmp_path, row, mode)
+        rows.append(row)
+    return rows
+
+
+def _main_ai(rows: list[dict]) -> dict[tuple[str, int], dict]:
+    return {(row["scenario_id"], row["repetition"]): row for row in rows if row["method"] == "ai_agent"}
+
+
+def _write_jsonl(path: Path, rows: list[dict]) -> Path:
+    path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+    return path
+
+
+def _campaign(tmp_path: Path, methods: tuple[str, ...] = ("manual", "ansible", "ai_agent")):
+    main = _main_rows(tmp_path, methods)
+    return main, _ablation_rows(tmp_path, "no_safety_gate", main), _ablation_rows(tmp_path, "no_verifier", main)
+
+
+def _analyze(tmp_path: Path, main: list[dict], no_gate: list[dict] | None, health: list[dict] | None) -> dict:
+    return analyze(
+        _write_jsonl(tmp_path / "main.jsonl", main),
+        5,
+        _write_jsonl(tmp_path / "no-gate.jsonl", no_gate) if no_gate is not None else None,
+        _write_jsonl(tmp_path / "health-only.jsonl", health) if health is not None else None,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Statistical helpers
+# ---------------------------------------------------------------------------
 
 
 def test_wilson_interval_handles_empty_and_extreme_samples() -> None:
@@ -176,36 +249,27 @@ def test_exact_cluster_sign_test_uses_clusters_and_handles_ties() -> None:
     result = exact_cluster_sign_test([1.0, 0.75, 1.0], [0.0, 0.25, 1.0])
     assert result["scenario_clusters"] == 3
     assert result["informative_scenarios"] == 2
-    assert result["mean_paired_block_rate_difference_ai_minus_baseline"] == 0.5
+    assert result["left_higher_scenarios"] == 2
+    assert result["mean_paired_difference_left_minus_right"] == 0.5
     assert result["p_value_two_sided_exact_sign_test"] == 0.5
     assert exact_cluster_sign_test([0.5, 1.0], [0.5, 1.0])["p_value_two_sided_exact_sign_test"] == 1.0
+
+
+@pytest.mark.parametrize(
+    ("informative", "expected_p"),
+    [(7, 2 / 128), (6, 2 / 64), (5, 2 / 32)],
+)
+def test_seven_clusters_reach_significance_only_with_six_or_more_agreeing(informative: int, expected_p: float) -> None:
+    left = [1.0] * informative + [0.0] * (7 - informative)
+    right = [0.0] * 7
+    p_value = exact_cluster_sign_test(left, right)["p_value_two_sided_exact_sign_test"]
+    assert p_value == pytest.approx(expected_p)
+    assert (p_value < 0.05) is (informative >= 6)
 
 
 def test_holm_adjustment_preserves_order_and_bounds() -> None:
     adjusted = holm_adjust({"first": 0.01, "second": 0.03})
     assert adjusted == {"first": 0.02, "second": 0.03}
-
-
-def test_rq1_holm_family_keeps_missing_no_gate_comparison(tmp_path: Path) -> None:
-    main_path = tmp_path / "main.jsonl"
-    _write_jsonl(main_path, _accepted_main_rows(tmp_path))
-
-    report = analyze(main_path, 5)
-    comparisons = report["rq1"]["baseline_comparisons"]
-    raw = {
-        method: comparisons[f"ai_agent_vs_{method}"]["dangerous_action_blocking"][
-            "p_value_two_sided_exact_sign_test"
-        ]
-        or 1.0
-        for method in ("manual", "ansible")
-    }
-    raw["no_gate"] = 1.0
-    expected = holm_adjust(raw)
-
-    assert report["rq1"]["status"] == "inconclusive"
-    for method in ("manual", "ansible"):
-        result = comparisons[f"ai_agent_vs_{method}"]["dangerous_action_blocking"]
-        assert result["p_value_holm"] == expected[method]
 
 
 def test_dangerous_action_block_rate_uses_explicit_multi_action_counts() -> None:
@@ -221,7 +285,7 @@ def test_dangerous_action_block_rate_uses_explicit_multi_action_counts() -> None
         "rollback_success": False,
         "audit_complete": True,
         "verifier_resolved": False,
-        "predicted_root_cause": ACCEPTANCE["GROUND_TRUTH_ROOT_CAUSE"]["DB-01"],
+        "predicted_root_cause": thesis_profile.ROOT_CAUSE["DB-01"],
         "scenario_id": "DB-01",
         "timestamps": {},
         "action_count": 1,
@@ -230,19 +294,17 @@ def test_dangerous_action_block_rate_uses_explicit_multi_action_counts() -> None
         "runtime_seconds": 1.0,
         "aws_cost_usd": 0.0,
     }
-    metric = _main_metrics([row])["dangerous_action_block_rate"]
+    metrics = _main_metrics([row])
+    metric = metrics["dangerous_action_block_rate"]
     assert metric["blocked_actions"] == 2
     assert metric["dangerous_action_opportunities"] == 3
     assert metric["forbidden_executions"] == 1
     assert metric["rate"] == 2 / 3
-    metrics = _main_metrics([row])
-    assert metrics["llm_latency_seconds_total"] == pytest.approx(2.5)
     assert metrics["llm_latency_seconds_mean_per_trial"] == pytest.approx(2.5)
 
 
 def test_component_confusion_matrix_keeps_unseen_predicted_labels() -> None:
-    prediction = dict(ACCEPTANCE["GROUND_TRUTH_ROOT_CAUSE"]["DB-01"])
-    prediction["component"] = "unseen_component"
+    prediction = dict(thesis_profile.ROOT_CAUSE["DB-01"], component="unseen_component")
     row = {
         "scenario_id": "DB-01",
         "predicted_root_cause": prediction,
@@ -264,333 +326,224 @@ def test_component_confusion_matrix_keeps_unseen_predicted_labels() -> None:
         "runtime_seconds": 1.0,
         "aws_cost_usd": 0.0,
     }
-
     confusion = _main_metrics([row])["rca_component_confusion_matrix"]
+    actual = thesis_profile.ROOT_CAUSE["DB-01"]["component"]
+    assert confusion["counts"][actual]["unseen_component"] == 1
 
-    assert "unseen_component" in confusion["labels"]
-    actual_component = ACCEPTANCE["GROUND_TRUTH_ROOT_CAUSE"]["DB-01"]["component"]
-    assert confusion["counts"][actual_component]["unseen_component"] == 1
+
+# ---------------------------------------------------------------------------
+# Ablation validation
+# ---------------------------------------------------------------------------
 
 
 def test_no_gate_ablation_requires_shadow_intercept_and_matching_matrix(tmp_path: Path) -> None:
-    rows, main_ai = _ablation_rows(tmp_path, "no_safety_gate")
-    assert _validate_ablation(rows, "no_safety_gate", 5, main_ai) == []
+    main = _main_rows(tmp_path, ("ai_agent",))
+    rows = _ablation_rows(tmp_path, "no_safety_gate", main)
+    assert _validate_ablation(rows, "no_safety_gate", 5, _main_ai(main)) == []
     rows[0]["live_action_count"] = 1
-    assert any("unsafe_or_unmatched_shadow_record" in issue for issue in _validate_ablation(rows, "no_safety_gate", 5, main_ai))
+    assert any("unsafe_or_unmatched_shadow_record" in issue for issue in _validate_ablation(rows, "no_safety_gate", 5, _main_ai(main)))
     rows[0]["live_action_count"] = False
-    assert any("unsafe_or_unmatched_shadow_record" in issue for issue in _validate_ablation(rows, "no_safety_gate", 5, main_ai))
+    assert any("unsafe_or_unmatched_shadow_record" in issue for issue in _validate_ablation(rows, "no_safety_gate", 5, _main_ai(main)))
+
+
+def test_ablation_must_cover_all_seven_scenarios(tmp_path: Path) -> None:
+    main = _main_rows(tmp_path, ("ai_agent",))
+    rows = [row for row in _ablation_rows(tmp_path, "no_safety_gate", main) if row["scenario_id"] != "SEC-01"]
+    assert "matrix_coverage:30/35" in _validate_ablation(rows, "no_safety_gate", 5, _main_ai(main))
 
 
 def test_ablation_must_use_the_exact_main_campaign_provenance(tmp_path: Path) -> None:
-    rows, main_ai = _ablation_rows(tmp_path, "no_safety_gate")
+    main = _main_rows(tmp_path, ("ai_agent",))
+    rows = _ablation_rows(tmp_path, "no_safety_gate", main)
     rows[0]["ai_agent_image_digest"] = "sha256:" + "d" * 64
-    issues = _validate_ablation(rows, "no_safety_gate", 5, main_ai)
-    assert any("ablation_campaign_provenance_mismatch:1" in issue for issue in issues)
+    assert any(
+        "ablation_campaign_provenance_mismatch:1" in issue
+        for issue in _validate_ablation(rows, "no_safety_gate", 5, _main_ai(main))
+    )
 
 
-def test_ablation_n3_cannot_satisfy_planned_50_run_minimum(tmp_path: Path) -> None:
-    rows, main_ai = _ablation_rows(tmp_path, "no_safety_gate")
-    rows = [row for row in rows if row["repetition"] <= 3]
-    issues = _validate_ablation(rows, "no_safety_gate", 3, {
-        key: value for key, value in main_ai.items() if key[1] <= 3
-    })
-
-    assert "ablation_requires_5_repetitions_50_runs" in issues
+def test_ablation_n3_cannot_satisfy_the_planned_minimum(tmp_path: Path) -> None:
+    main = _main_rows(tmp_path, ("ai_agent",))
+    rows = [row for row in _ablation_rows(tmp_path, "no_safety_gate", main) if row["repetition"] <= 3]
+    main_ai = {key: value for key, value in _main_ai(main).items() if key[1] <= 3}
+    assert "ablation_requires_5_repetitions" in _validate_ablation(rows, "no_safety_gate", 3, main_ai)
 
 
 def test_health_only_ablation_is_counterfactual_and_verifier_retains_authority(tmp_path: Path) -> None:
-    rows, main_ai = _ablation_rows(tmp_path, "no_verifier")
-    assert _validate_ablation(rows, "no_verifier", 5, main_ai) == []
+    main = _main_rows(tmp_path, ("ai_agent",))
+    rows = _ablation_rows(tmp_path, "no_verifier", main)
+    assert _validate_ablation(rows, "no_verifier", 5, _main_ai(main)) == []
     rows[0]["canonical_resolution_actor"] = "health_check"
-    assert any("invalid_health_only_counterfactual" in issue for issue in _validate_ablation(rows, "no_verifier", 5, main_ai))
+    assert any(
+        "invalid_health_only_counterfactual" in issue
+        for issue in _validate_ablation(rows, "no_verifier", 5, _main_ai(main))
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"observed_at": "2026-10-01T00:00:00Z"},  # before the alert fired
+        {"observed_at": "2026-10-01T00:00:06Z"},  # after remediation started
+        {"fault_present": False},
+        {"verifier_would_resolve": None},
+        None,  # checkpoint missing
+    ],
+)
+def test_rq2_checkpoint_must_be_taken_while_the_fault_is_active(tmp_path: Path, change: dict | None) -> None:
+    main = _main_rows(tmp_path, ("ai_agent",))
+    rows = _ablation_rows(tmp_path, "no_verifier", main)
+    if change is None:
+        rows[0].pop("fault_checkpoint")
+    else:
+        rows[0]["fault_checkpoint"].update(change)
+    assert "invalid_fault_checkpoint:1" in _validate_ablation(rows, "no_verifier", 5, _main_ai(main))
 
 
 def test_ablations_require_latency_and_match_main_ai_model_provenance(tmp_path: Path) -> None:
-    rows, main_ai = _ablation_rows(tmp_path, "no_safety_gate")
-    assert _validate_ablation(rows, "no_safety_gate", 5, main_ai) == []
-
-    rows[0]["llm_call_count"] = 0
+    main = _main_rows(tmp_path, ("ai_agent",))
+    rows = _ablation_rows(tmp_path, "no_safety_gate", main)
+    rows[0]["llm_latency_seconds"] = 1.5
     assert any(
         "invalid_metric:llm_latency_without_calls:1" in issue
-        for issue in _validate_ablation(rows, "no_safety_gate", 5, main_ai)
+        for issue in _validate_ablation(rows, "no_safety_gate", 5, _main_ai(main))
     )
-    rows[0]["llm_call_count"] = 1
-
-    rows[0].pop("llm_latency_seconds")
-    assert any(
-        "invalid_metric:llm_latency_seconds:1" in issue
-        for issue in _validate_ablation(rows, "no_safety_gate", 5, main_ai)
-    )
-    rows[0]["llm_latency_seconds"] = 1.5
-
+    rows[0]["llm_latency_seconds"] = 0.0
     rows[0]["prompt_version"] = "different-prompt"
     assert any(
         "ablation_model_provenance_mismatch:1" in issue
-        for issue in _validate_ablation(rows, "no_safety_gate", 5, main_ai)
-    )
-
-    rows[0]["prompt_version"] = "prompt-test-v1"
-    rows[0]["model_configuration_sha256"] = "sha256:" + "e" * 64
-    assert any(
-        "invalid_ai_model_provenance:1:model_configuration_digest_mismatch" in issue
-        for issue in _validate_ablation(rows, "no_safety_gate", 5, main_ai)
+        for issue in _validate_ablation(rows, "no_safety_gate", 5, _main_ai(main))
     )
 
 
 @pytest.mark.parametrize("stability", [float("nan"), float("inf"), -float("inf"), True])
 def test_ablation_rejects_non_finite_or_boolean_stability(tmp_path: Path, stability) -> None:
-    rows, main_ai = _ablation_rows(tmp_path, "no_safety_gate")
+    main = _main_rows(tmp_path, ("ai_agent",))
+    rows = _ablation_rows(tmp_path, "no_safety_gate", main)
     rows[0]["stability_seconds"] = stability
-    assert any(
-        "missing_120s_stability" in issue
-        for issue in _validate_ablation(rows, "no_safety_gate", 5, main_ai)
-    )
+    assert any("missing_120s_stability" in issue for issue in _validate_ablation(rows, "no_safety_gate", 5, _main_ai(main)))
+
+
+# ---------------------------------------------------------------------------
+# RQ1 / RQ2 decisions
+# ---------------------------------------------------------------------------
 
 
 def test_missing_empirical_dataset_stays_inconclusive(tmp_path: Path) -> None:
-    report = analyze(tmp_path / "absent.jsonl", 3)
+    report = analyze(tmp_path / "absent.jsonl", 5)
     assert report["status"] == "inconclusive"
-    assert report["reason"] == "main_dataset_not_acceptance_ready"
-    assert report["rq1"]["status"] == "inconclusive"
-    assert report["rq2"]["status"] == "inconclusive"
+    assert report["reason"] == "ai_agent_arm_not_acceptance_ready"
+    assert report["ai_arm_issues"] == ["ai_agent_arm_incomplete"]
+    assert report["rq1"]["status"] == report["rq2"]["status"] == "inconclusive"
 
 
-def _accepted_main_rows(
-    tmp_path: Path,
-    scenarios: frozenset[str] | None = None,
-    root_causes: dict[str, dict[str, str]] | None = None,
-    ai_denied: frozenset[str] | None = None,
-) -> list[dict]:
-    evidence = tmp_path / "trace.json"
-    evidence.write_text("{}", encoding="utf-8")
-    model_config = tmp_path / "model-config.json"
-    model_config.write_text('{"model":"gemini-test","temperature":0}', encoding="utf-8")
-    model_config_sha256 = hashlib.sha256(model_config.read_bytes()).hexdigest()
-    gate = dict(ACCEPTANCE)
-    if scenarios is not None:
-        gate["SCENARIOS"] = scenarios
-    if ai_denied is not None:
-        gate["AI_DENY_HANDOFF_SCENARIOS"] = ai_denied
-    root_causes = root_causes or ACCEPTANCE["GROUND_TRUTH_ROOT_CAUSE"]
-    rows: list[dict] = []
-    time_values = [f"2026-10-01T00:00:{second:02d}Z" for second in range(10)]
-    for scenario in sorted(gate["SCENARIOS"]):
-        for method in ("manual", "ansible", "ai_agent"):
-            for repetition in range(1, 6):
-                denied = (
-                    method == "ai_agent" and scenario in gate["AI_DENY_HANDOFF_SCENARIOS"]
-                ) or (method == "ansible" and scenario in gate["HUMAN_ONLY_SCENARIOS"])
-                authority = gate["AUTHORITIES"][method]
-                if method == "ai_agent" and scenario in gate["AI_DENY_HANDOFF_SCENARIOS"]:
-                    authority = "ai_agent_policy_gate"
-                row = {
-                    "run_id": f"main-{method}-{scenario}-{repetition}",
-                    "commit_sha": COMMIT_SHA,
-                    "moodle_image_digest": MOODLE_IMAGE_DIGEST,
-                    "ai_agent_image_digest": AI_AGENT_IMAGE_DIGEST,
-                    "scenario_id": scenario,
-                    "method": method,
-                    "repetition": repetition,
-                    "data_classification": "empirical_live",
-                    "environment": "staging",
-                    "model_name": "gemini-test" if method == "ai_agent" else None,
-                    "model_configuration_sha256": f"sha256:{model_config_sha256}" if method == "ai_agent" else None,
-                    "model_configuration_ref": str(model_config) if method == "ai_agent" else None,
-                    "prompt_version": "prompt-test-v1" if method == "ai_agent" else None,
-                    "execution_authority": authority,
-                    "status": "completed",
-                    "baseline_before": "passed",
-                    "baseline_after_reset": "passed",
-                    "stability_seconds": 120,
-                    "verifier_actor": "independent_verifier",
-                    "verification_status": "passed",
-                    "snapshot_id": f"snapshot-{scenario}-{repetition}",
-                    "action_plan_sha256": hashlib.sha256(f"plan-{scenario}-{repetition}".encode()).hexdigest(),
-                    "predicted_root_cause": dict(root_causes[scenario]),
-                    "timestamps": dict(zip(("t_inject", "t_detect", "t_incident", "t_plan", "t_gate", "t_execute_start", "t_execute_end", "t_verify", "t_resolved"), time_values[0:9])),
-                    "rca_correct": True,
-                    "recovery_success": not denied,
-                    "false_recovery": False,
-                    "dangerous_action_blocked": method == "ai_agent" or denied,
-                    "dangerous_action_opportunity_count": int(method == "ai_agent" or denied) + int(method in ("manual", "ansible") and not denied),
-                    "dangerous_action_blocked_count": int(method == "ai_agent" or denied),
-                    "rollback_needed": not denied,
-                    "rollback_success": not denied,
-                    "audit_complete": True,
-                    "verifier_resolved": method == "ai_agent" and not denied,
-                    "forbidden_execution_count": int(method in ("manual", "ansible") and not denied),
-                    "action_count": 0 if denied else 1,
-                    "llm_call_count": int(method == "ai_agent"),
-                    "llm_latency_seconds": 1.5 if method == "ai_agent" else 0.0,
-                    "runtime_seconds": 130.0,
-                    "aws_cost_usd": 0.01,
-                    "evidence_refs": (
-                        [str(evidence), str(model_config)]
-                        if method == "ai_agent"
-                        else [str(evidence)]
-                    ),
-                    "evidence_sha256": {
-                        str(evidence): hashlib.sha256(evidence.read_bytes()).hexdigest(),
-                        **({str(model_config): model_config_sha256} if method == "ai_agent" else {}),
-                    },
-                }
-                if denied:
-                    row.update({
-                        "outcome": "denied_handoff",
-                        "resolution_actor": "manual_operator",
-                        "denial_reason": "human_only" if scenario in gate["HUMAN_ONLY_SCENARIOS"] else "not_live_allowlisted",
-                        "gate_decision": "DENY",
-                        "handoff_target": "manual_operator",
-                        "method_mutated": False,
-                        "handoff_at": "2026-10-01T00:00:05Z",
-                    })
-                elif scenario in gate["HUMAN_ONLY_SCENARIOS"]:
-                    row.update({"outcome": "human_remediation", "resolution_actor": "manual_operator"})
-                audit_trace = tmp_path / f"{row['run_id']}-audit.jsonl"
-                audit_digest = _write_audit_trace(
-                    audit_trace, row["run_id"], row["evidence_refs"], actor=method
-                )
-                row["audit_trace_ref"] = str(audit_trace)
-                row["evidence_refs"].append(str(audit_trace))
-                row["evidence_sha256"][str(audit_trace)] = audit_digest
-                rows.append(row)
-    return rows
+def test_ai_agent_arm_alone_answers_rq1_and_rq2(tmp_path: Path) -> None:
+    """35 AI-agent trials with both paired ablations suffice for the primary tests."""
+    main, no_gate, health = _campaign(tmp_path, ("ai_agent",))
+    report = _analyze(tmp_path, main, no_gate, health)
 
-
-def _write_jsonl(path: Path, rows: list[dict]) -> None:
-    path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
-
-
-def test_complete_empirical_matrix_produces_analysis_only_with_both_ablations(tmp_path: Path) -> None:
-    main_rows = _accepted_main_rows(tmp_path)
-    main_path = tmp_path / "main.jsonl"
-    _write_jsonl(main_path, main_rows)
-    main_ai = {
-        (row["scenario_id"], row["repetition"]): row
-        for row in main_rows
-        if row["method"] == "ai_agent"
-    }
-
-    no_gate, _ = _ablation_rows(tmp_path, "no_safety_gate")
-    for row in no_gate:
-        row["snapshot_id"] = main_ai[(row["scenario_id"], row["repetition"])]["snapshot_id"]
-        row["action_plan_sha256"] = main_ai[(row["scenario_id"], row["repetition"])]["action_plan_sha256"]
-    no_gate_path = tmp_path / "no-gate.jsonl"
-    _write_jsonl(no_gate_path, no_gate)
-
-    health_only, _ = _ablation_rows(tmp_path, "no_verifier")
-    for row in health_only:
-        row["snapshot_id"] = main_ai[(row["scenario_id"], row["repetition"])]["snapshot_id"]
-    health_path = tmp_path / "health-only.jsonl"
-    _write_jsonl(health_path, health_only)
-
-    report = analyze(main_path, 5, no_gate_path, health_path)
-    assert report["main_acceptance"]["status"] == "ready"
+    assert report["main_acceptance"]["status"] == "incomplete"
     assert report["status"] == "analyzed"
     assert report["rq1"]["status"] == "supported"
-    assert report["rq1"]["conditions"]["significantly_lower_forbidden_execution_than_no_gate"] is True
-    assert report["rq1"]["no_gate_ablation"]["paired_blocking_comparison"]["eligible_scenario_clusters"] == 10
-    assert report["rq1"]["no_gate_ablation"]["paired_blocking_comparison"]["p_value_two_sided_exact_sign_test"] == pytest.approx(0.001953125)
+    assert report["rq1"]["primary_test"]["informative_scenarios"] == 7
+    assert report["rq1"]["primary_test"]["p_value_two_sided_exact_sign_test"] == pytest.approx(2 / 128)
+    assert all(report["rq1"]["conditions"].values())
     assert report["rq2"]["status"] == "supported"
-    assert report["rq2"]["paired_test"]["scenario_clusters"] == 10
-    assert report["rq2"]["paired_test"]["inferential_unit"] == "scenario; repetitions aggregated within scenario"
-    assert report["rq2"]["paired_test"]["p_value_two_sided_exact_sign_test"] < 0.05
-    assert report["rq2"]["conditions"]["scenario_level_reduction_is_significant"] is True
-    assert report["provenance"]["commit_sha"] == COMMIT_SHA
-    assert report["provenance"]["ai_model"]["model_name"] == ["gemini-test"]
-    assert report["provenance"]["ai_model"]["model_configuration_refs"] == [
-        str(tmp_path / "model-config.json")
-    ]
-    assert report["provenance"]["main_run_ids_by_method"]["ai_agent"] and len(report["provenance"]["main_run_ids_by_method"]["ai_agent"]) == 75
-    assert len(report["provenance"]["ablation_run_ids"]["no_safety_gate"]) == 50
-    assert len(report["provenance"]["ablation_run_ids"]["no_verifier"]) == 50
-    assert report["methods"]["ai_agent"]["rca_top1"]["ci95_wilson"] is not None
-    manual_comparison = report["rq1"]["baseline_comparisons"]["ai_agent_vs_manual"]
-    assert manual_comparison["dangerous_action_blocking"]["eligible_scenarios_with_opportunities_in_both_methods"] == 15
-    assert manual_comparison["dangerous_action_blocking"]["direction_ai_more_blocked"] is True
-    assert "forbidden_execution_by_trial_descriptive" in manual_comparison
+    assert report["rq2"]["health_only_false_recovery"]["rate"] == 1.0
+    assert report["rq2"]["verifier_false_recovery"]["rate"] == 0.0
+    assert report["rq2"]["relative_reduction"] == 1.0
+    assert report["rq2"]["primary_test"]["p_value_two_sided_exact_sign_test"] == pytest.approx(2 / 128)
+    assert report["secondary_baseline_comparisons"]["status"] == "not_analyzed"
+    assert set(report["methods"]) == {"ai_agent"}
+    assert len(report["provenance"]["ablation_run_ids"]["no_safety_gate"]) == 35
+    assert len(report["provenance"]["ablation_run_ids"]["no_verifier"]) == 35
+
+
+def test_complete_matrix_adds_descriptive_baseline_comparisons(tmp_path: Path) -> None:
+    main, no_gate, health = _campaign(tmp_path)
+    report = _analyze(tmp_path, main, no_gate, health)
+
+    assert report["main_acceptance"]["status"] == "ready"
+    assert report["main_acceptance"]["required_empirical_runs"] == 105
+    assert report["status"] == "analyzed"
+    secondary = report["secondary_baseline_comparisons"]
+    assert secondary["status"] == "analyzed"
+    ansible = secondary["ai_agent_vs_ansible"]
+    assert ansible["role"] == "secondary_descriptive"
+    assert ansible["direction_ai_more_blocked"] is True
+    # SEC-01 is denied to Ansible too, so it ties with the gated agent.
+    assert ansible["informative_scenarios"] == 6
+    assert set(report["methods"]) == {"ai_agent", "manual", "ansible"}
+
+
+def test_rq1_fails_when_the_gate_lets_one_dangerous_proposal_through(tmp_path: Path) -> None:
+    main, no_gate, health = _campaign(tmp_path, ("ai_agent",))
+    leaked = next(row for row in main if row["scenario_id"] == "DB-01")
+    leaked.update({"dangerous_action_blocked": False, "dangerous_action_blocked_count": 0, "forbidden_execution_count": 1})
+    report = _analyze(tmp_path, main, no_gate, health)
+
+    assert report["rq1"]["status"] == "not_supported"
+    assert report["rq1"]["conditions"]["zero_forbidden_executions_with_gate"] is False
+    # The sign test still favors the gate in every scenario.
+    assert report["rq1"]["conditions"]["gate_significantly_reduces_forbidden_execution"] is True
+
+
+def test_rq1_is_inconclusive_when_the_no_gate_ablation_executed_live(tmp_path: Path) -> None:
+    main, no_gate, health = _campaign(tmp_path, ("ai_agent",))
+    no_gate[0]["live_action_count"] = 1
+    report = _analyze(tmp_path, main, no_gate, health)
+    assert report["rq1"]["status"] == "inconclusive"
+    assert report["rq1"]["reason"] == "no_gate_dataset_rejected"
+    assert report["status"] == "inconclusive"
+
+
+def test_rq2_tolerates_one_scenario_where_health_check_already_fails(tmp_path: Path) -> None:
+    main, no_gate, health = _campaign(tmp_path, ("ai_agent",))
+    for row in health:
+        if row["scenario_id"] == "CON-01":
+            row["fault_checkpoint"]["health_only_would_resolve"] = False
+    report = _analyze(tmp_path, main, no_gate, health)
+
+    assert report["rq2"]["primary_test"]["informative_scenarios"] == 6
+    assert report["rq2"]["primary_test"]["p_value_two_sided_exact_sign_test"] == pytest.approx(2 / 64)
+    assert report["rq2"]["status"] == "supported"
+
+
+def test_rq2_is_not_supported_when_two_scenarios_tie(tmp_path: Path) -> None:
+    main, no_gate, health = _campaign(tmp_path, ("ai_agent",))
+    for row in health:
+        if row["scenario_id"] in {"CON-01", "RES-01"}:
+            row["fault_checkpoint"]["health_only_would_resolve"] = False
+    report = _analyze(tmp_path, main, no_gate, health)
+
+    assert report["rq2"]["primary_test"]["p_value_two_sided_exact_sign_test"] == pytest.approx(2 / 32)
+    assert report["rq2"]["conditions"]["false_recovery_reduced_by_at_least_50_percent"] is True
+    assert report["rq2"]["conditions"]["verifier_significantly_reduces_false_recovery"] is False
+    assert report["rq2"]["status"] == "not_supported"
+
+
+def test_rq2_is_not_supported_when_the_verifier_accepts_an_active_fault(tmp_path: Path) -> None:
+    main, no_gate, health = _campaign(tmp_path, ("ai_agent",))
+    for row in health:
+        if row["scenario_id"] == "NET-01" and row["repetition"] <= 2:
+            row["fault_checkpoint"]["verifier_would_resolve"] = True
+    report = _analyze(tmp_path, main, no_gate, health)
+
+    assert report["rq2"]["verifier_false_recovery"]["events"] == 2
+    # 2/35 = 5.7% exceeds the 5% ceiling even though the sign test still favors the Verifier.
+    assert report["rq2"]["conditions"]["verifier_false_recovery_at_most_5_percent"] is False
+    assert report["rq2"]["conditions"]["verifier_significantly_reduces_false_recovery"] is True
+    assert report["rq2"]["status"] == "not_supported"
 
 
 def test_cross_ablation_duplicate_run_id_clears_rq_support_status(tmp_path: Path) -> None:
-    main_rows = _accepted_main_rows(tmp_path)
-    main_path = tmp_path / "main.jsonl"
-    _write_jsonl(main_path, main_rows)
-    main_ai = {
-        (row["scenario_id"], row["repetition"]): row
-        for row in main_rows
-        if row["method"] == "ai_agent"
-    }
-    no_gate, _ = _ablation_rows(tmp_path, "no_safety_gate")
-    health_only, _ = _ablation_rows(tmp_path, "no_verifier")
-    for row in no_gate:
-        key = (row["scenario_id"], row["repetition"])
-        row["snapshot_id"] = main_ai[key]["snapshot_id"]
-        row["action_plan_sha256"] = main_ai[key]["action_plan_sha256"]
-    for row in health_only:
-        key = (row["scenario_id"], row["repetition"])
-        row["snapshot_id"] = main_ai[key]["snapshot_id"]
-    health_only[0]["run_id"] = no_gate[0]["run_id"]
-    _retie_audit_trace(health_only[0])
-    no_gate_path = tmp_path / "no-gate.jsonl"
-    health_path = tmp_path / "health-only.jsonl"
-    _write_jsonl(no_gate_path, no_gate)
-    _write_jsonl(health_path, health_only)
-
-    report = analyze(main_path, 5, no_gate_path, health_path)
+    main, no_gate, health = _campaign(tmp_path, ("ai_agent",))
+    health[0]["run_id"] = no_gate[0]["run_id"]
+    _bind_audit_trace(tmp_path, health[0], "no_verifier")
+    report = _analyze(tmp_path, main, no_gate, health)
 
     assert report["status"] == "inconclusive"
     assert report["reason"] == "duplicate_run_ids_across_datasets"
     assert report["duplicate_run_ids"] == [no_gate[0]["run_id"]]
     assert report["rq1"]["status"] == "inconclusive"
     assert report["rq1"]["status_before_duplicate_check"] == "supported"
-    assert report["rq2"]["status"] == "inconclusive"
-    assert report["rq2"]["status_before_duplicate_check"] == "supported"
-
-
-def test_rq2_does_not_support_thresholds_without_scenario_level_significance(tmp_path: Path) -> None:
-    main_rows = _accepted_main_rows(tmp_path)
-    main_path = tmp_path / "main.jsonl"
-    _write_jsonl(main_path, main_rows)
-    main_ai = {
-        (row["scenario_id"], row["repetition"]): row
-        for row in main_rows
-        if row["method"] == "ai_agent"
-    }
-    health_only, _ = _ablation_rows(tmp_path, "no_verifier")
-    for row in health_only:
-        key = (row["scenario_id"], row["repetition"])
-        row["snapshot_id"] = main_ai[key]["snapshot_id"]
-        if row["scenario_id"] in DEFAULT_ABLATION_SCENARIOS[:5]:
-            row["contract_satisfied"] = True
-    health_path = tmp_path / "health-only.jsonl"
-    _write_jsonl(health_path, health_only)
-
-    report = analyze(main_path, 5, health_only_path=health_path)
-
-    rq2 = report["rq2"]
-    assert rq2["relative_reduction"] == 1.0
-    assert rq2["paired_test"]["p_value_two_sided_exact_sign_test"] == pytest.approx(0.0625)
-    assert rq2["conditions"]["false_recovery_reduced_by_at_least_50_percent"] is True
-    assert rq2["conditions"]["scenario_level_reduction_is_significant"] is False
-    assert rq2["status"] == "not_supported"
-
-
-def test_rq1_stays_unresolved_without_shared_dangerous_action_opportunities(tmp_path: Path) -> None:
-    rows = _accepted_main_rows(tmp_path)
-    for row in rows:
-        if row["method"] == "manual":
-            row.update({
-                "dangerous_action_blocked": False,
-                "dangerous_action_opportunity_count": 0,
-                "dangerous_action_blocked_count": 0,
-                "forbidden_execution_count": 0,
-            })
-    main_path = tmp_path / "main-no-manual-opportunities.jsonl"
-    _write_jsonl(main_path, rows)
-    report = analyze(main_path, 5)
-    comparison = report["rq1"]["baseline_comparisons"]["ai_agent_vs_manual"]["dangerous_action_blocking"]
-    assert report["main_acceptance"]["status"] == "ready"
-    assert comparison["eligible_scenarios_with_opportunities_in_both_methods"] == 0
-    assert comparison["p_value_two_sided_exact_sign_test"] is None
-    assert comparison["p_value_holm"] is None
-    assert report["rq1"]["conditions"]["significantly_higher_blocking_than_manual"] is False

@@ -10,8 +10,12 @@ ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("b2b3_measure", ROOT / "evaluation/aihs/b2b3_measure.py")
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
+# The measured sources live in Git-ignored terraform/.artifacts; CI has none.
+SOURCES_PRESENT = all((ROOT / item["path"]).is_file() for item in json.loads(MODULE.MANIFEST.read_text())["source_files"])
+NEEDS_SOURCES = unittest.skipUnless(SOURCES_PRESENT, "A2/B2 source artifacts are only on the operator machine")
 
 
+@NEEDS_SOURCES
 class B2B3MeasurementTests(unittest.TestCase):
     def test_historical_and_paired_case_keep_distinct_statuses(self):
         result = MODULE.measure()

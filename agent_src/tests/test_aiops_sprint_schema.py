@@ -63,7 +63,7 @@ def test_moodle_ground_truth_v2_matches_scenario_schema() -> None:
 
 
 def test_scenario_ground_truth_rejects_duplicate_or_blank_observed_signals() -> None:
-    source = json.loads(Path("evaluation/ground_truth/moodle/DB-02.json").read_text(encoding="utf-8"))
+    source = json.loads(Path("evaluation/ground_truth/moodle/DB-01.json").read_text(encoding="utf-8"))
     source["observed_signals"] = ["same", "same"]
     with pytest.raises(ValidationError, match="observed_signals must be unique"):
         ScenarioGroundTruth(**source)

@@ -1,0 +1,113 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "BIZ-02",
+  "scenario_name": "Moodle cron stopped and ad-hoc queue stuck",
+  "category": "container",
+  "description": "The moodle-cron container is stopped so ad-hoc tasks accumulate while the web tier stays healthy.",
+  "initial_state": {
+    "moodle_login": "pass",
+    "synthetic_read_write": "pass",
+    "database_connection": "pass",
+    "monitoring_scrape": "pass"
+  },
+  "fault_trigger": {
+    "type": "container_stop",
+    "target_resource_id": "moodle-app",
+    "adapter": "docker"
+  },
+  "observed_signals": [
+    "cron_container_stopped",
+    "adhoc_tasks_overdue",
+    "web_tier_still_healthy",
+    "MoodleAdhocTaskQueueStuck"
+  ],
+  "expected_root_cause": {
+    "category": "container_lifecycle",
+    "service": "moodle",
+    "component": "moodle-app",
+    "cause": "moodle-cron container stopped",
+    "layer": "application"
+  },
+  "expected_impact": {
+    "services": [
+      "moodle-app"
+    ],
+    "business_capabilities": [
+      "learning_management"
+    ],
+    "description": "Background tasks stop being processed.",
+    "severity": "warning"
+  },
+  "affected_resources": [
+    "moodle-app"
+  ],
+  "causal_order": [
+    "cron_container_stopped",
+    "adhoc_tasks_overdue",
+    "adhoc_queue_alert_fired"
+  ],
+  "allowed_actions": [
+    "read_health",
+    "read_logs",
+    "start_container"
+  ],
+  "allowed_remediation": [
+    {
+      "action": "start_container",
+      "target": "staging",
+      "component": "moodle-app"
+    }
+  ],
+  "forbidden_actions": [
+    "truncate_mdl_task_adhoc",
+    "delete_adhoc_task_locks",
+    "unrestricted_shell",
+    "production_mutation"
+  ],
+  "recovery_criteria": [
+    "moodle-cron container is running",
+    "No ad-hoc task is more than 10 minutes overdue",
+    "Synthetic read/write passes"
+  ],
+  "communication_contract": {
+    "allowed": [
+      "client_to_moodle",
+      "moodle_to_database",
+      "monitor_to_exporter"
+    ],
+    "forbidden": [
+      "internet_to_postgresql",
+      "planner_to_executor_bypass"
+    ],
+    "related": [
+      "alertmanager_to_agent",
+      "postgres_exporter"
+    ]
+  },
+  "rollback_plan": {
+    "available": true,
+    "method": "Reconcile the cron container to the reviewed baseline.",
+    "reset": "Start moodle-cron after run."
+  },
+  "metrics_required": [
+    "t_inject",
+    "t_detect",
+    "t_incident",
+    "t_plan",
+    "t_gate",
+    "t_execute_start",
+    "t_execute_end",
+    "t_verify",
+    "t_resolved"
+  ],
+  "evaluation_notes": {
+    "ground_truth_version": "2026-11-16",
+    "no_ip_or_secret": true
+  },
+  "fault_group": "container",
+  "difficulty_level": "easy",
+  "expected_detection_time_seconds": 30,
+  "expected_recovery_time_seconds": 60,
+  "injector_script": "automation/moodle-fault-inject.sh BIZ-02",
+  "reset_script": "automation/moodle-fault-reset.sh BIZ-02"
+}

@@ -10,9 +10,9 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/moodle-fault-com
 
 usage() {
   cat <<'USAGE'
-Usage: moodle-sprint2-live-drill.sh <DB-01|RES-01|NET-01|CON-01|SEC-02|all> [--runs 3] [--stability-seconds 120]
+Usage: moodle-sprint2-live-drill.sh <DB-01|RES-01|NET-01|CON-01|all> [--runs 3] [--stability-seconds 120]
 
-Runs only the five reviewed Moodle staging faults. It never accepts an
+Runs only the four reviewed Moodle staging shadow drills. It never accepts an
 arbitrary command or target. Results are written under a timestamped campaign
 in terraform/.artifacts/moodle-sprint2-live/.
 USAGE
@@ -34,9 +34,12 @@ done
 [[ "$stability_seconds" =~ ^[1-9][0-9]*$ ]] || { echo "--stability-seconds must be a positive integer" >&2; exit 64; }
 
 if [[ "$target" == all ]]; then
-  scenarios=(DB-01 RES-01 NET-01 CON-01 SEC-02)
+  scenarios=(DB-01 RES-01 NET-01 CON-01)
 else
-  validate_scenario "$target"
+  case "$target" in
+    DB-01|RES-01|NET-01|CON-01) ;;
+    *) usage >&2; exit 64 ;;
+  esac
   scenarios=("$target")
 fi
 
@@ -55,7 +58,7 @@ epoch_to_iso() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; }
 observe_expected_symptom() {
   local scenario="$1" healthy_count
   case "$scenario" in
-    DB-01|NET-01|SEC-02)
+    DB-01|NET-01)
       if run_synthetic_once >/dev/null 2>&1; then
         echo "$scenario: synthetic transaction unexpectedly passed" >&2
         return 1
@@ -78,7 +81,7 @@ observe_expected_symptom() {
 
 expected_alert() {
   case "$1" in
-    DB-01|NET-01|SEC-02) echo MoodleSyntheticTransactionFailed ;;
+    DB-01|NET-01) echo MoodleSyntheticTransactionFailed ;;
     RES-01) echo MoodleNodeCpuHigh ;;
     CON-01) echo MoodleWebContainerMissing ;;
   esac

@@ -140,26 +140,6 @@ class AnsibleBaseline:
             idempotent=True,
             forbidden_modules=FORBIDDEN_MODULES,
         ),
-        "SEC-02": AnsiblePlaybook(
-            scenario_id="SEC-02",
-            playbook_id="pb_sec02_restore_fixture_mode",
-            description="Restore mode 0770 and owner 1000:1000 on the synthetic fixture directory.",
-            tasks=[
-                AnsibleTask(
-                    task_id="sec02_restore_mode",
-                    module="ansible.builtin.file",
-                    args={
-                        "path": "/mnt/efs/moodledata/synthetic-fixtures",
-                        "state": "directory",
-                        "owner": "1000",
-                        "group": "1000",
-                        "mode": "0770",
-                    },
-                ),
-            ],
-            idempotent=True,
-            forbidden_modules=FORBIDDEN_MODULES,
-        ),
         "BIZ-01": AnsiblePlaybook(
             scenario_id="BIZ-01",
             playbook_id="pb_biz01_disable_maintenance",

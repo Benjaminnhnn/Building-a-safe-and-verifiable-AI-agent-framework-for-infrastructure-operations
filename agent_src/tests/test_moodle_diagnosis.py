@@ -95,11 +95,6 @@ def test_prometheus_alerts_do_not_expose_experiment_identity():
     assert "moodle-fault-res-02" not in config_text
 
 
-def test_memory_alert_threshold_matches_live_injector_strictly():
-    injector = Path(__file__).resolve().parents[2] / "automation" / "moodle-fault-inject.sh"
-    assert 'test "$((before - after))" -gt 32768' in injector.read_text(encoding="utf-8")
-
-
 def test_synthetic_failure_is_attributed_to_single_failing_dependency():
     result = diagnose_moodle_alert(
         "MoodleSyntheticTransactionFailed",
@@ -391,9 +386,8 @@ def test_exporter_and_cadvisor_alerts_only_report_missing_node_telemetry():
         assert result["action_candidate"] is None
 
 
-def test_node_probe_stale_restart_and_scratch_alerts_are_node_scoped():
+def test_node_probe_stale_and_restart_alerts_are_node_scoped():
     cases = [
-        ("MoodleScratchEnospc", "moodle_node_scratch_enospc", 1.0, "isolated_fault_scratch_full"),
         ("MoodleWebContainerRestarting", "moodle_node_web_restart_count_2m", 2.0, "web_container_restarting"),
         ("MoodleNodeProbeStale", "moodle_node_probe_age_seconds", 121.0, "node_probe_stale"),
     ]

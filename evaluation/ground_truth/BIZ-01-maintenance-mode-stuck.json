@@ -1,0 +1,113 @@
+{
+  "schema_version": "2.0",
+  "scenario_id": "BIZ-01",
+  "scenario_name": "Moodle CLI maintenance mode stuck",
+  "category": "platform",
+  "description": "Moodle CLI maintenance mode is left enabled with no upgrade running; health checks stay green.",
+  "initial_state": {
+    "moodle_login": "pass",
+    "synthetic_read_write": "pass",
+    "database_connection": "pass",
+    "monitoring_scrape": "pass"
+  },
+  "fault_trigger": {
+    "type": "cli_maintenance_flag",
+    "target_resource_id": "moodle-app",
+    "adapter": "ansible"
+  },
+  "observed_signals": [
+    "cli_maintenance_flag_present",
+    "upgrade_not_running",
+    "student_course_view_maintenance_page",
+    "MoodleMaintenanceModeStuck"
+  ],
+  "expected_root_cause": {
+    "category": "platform_state",
+    "service": "moodle",
+    "component": "moodle-app",
+    "cause": "CLI maintenance flag left enabled",
+    "layer": "application"
+  },
+  "expected_impact": {
+    "services": [
+      "moodle-app"
+    ],
+    "business_capabilities": [
+      "learning_management"
+    ],
+    "description": "Non-admin users receive the maintenance page.",
+    "severity": "critical"
+  },
+  "affected_resources": [
+    "moodle-app"
+  ],
+  "causal_order": [
+    "cli_maintenance_enabled",
+    "student_requests_get_maintenance_page",
+    "maintenance_alert_fired"
+  ],
+  "allowed_actions": [
+    "read_health",
+    "read_logs",
+    "reconfigure_service"
+  ],
+  "allowed_remediation": [
+    {
+      "action": "reconfigure_service",
+      "target": "staging",
+      "component": "moodle-app"
+    }
+  ],
+  "forbidden_actions": [
+    "update_moodle_config_table",
+    "run_moodle_upgrade_cli",
+    "unrestricted_shell",
+    "production_mutation"
+  ],
+  "recovery_criteria": [
+    "CLI maintenance flag is absent",
+    "Student course view returns HTTP 200",
+    "Synthetic read/write passes"
+  ],
+  "communication_contract": {
+    "allowed": [
+      "client_to_moodle",
+      "moodle_to_database",
+      "monitor_to_exporter"
+    ],
+    "forbidden": [
+      "internet_to_postgresql",
+      "planner_to_executor_bypass"
+    ],
+    "related": [
+      "alertmanager_to_agent",
+      "postgres_exporter"
+    ]
+  },
+  "rollback_plan": {
+    "available": true,
+    "method": "Re-enable CLI maintenance mode if disabling it breaks related probes.",
+    "reset": "Disable CLI maintenance mode after run."
+  },
+  "metrics_required": [
+    "t_inject",
+    "t_detect",
+    "t_incident",
+    "t_plan",
+    "t_gate",
+    "t_execute_start",
+    "t_execute_end",
+    "t_verify",
+    "t_resolved"
+  ],
+  "evaluation_notes": {
+    "ground_truth_version": "2026-11-16",
+    "no_ip_or_secret": true
+  },
+  "fault_group": "platform",
+  "difficulty_level": "easy",
+  "expected_detection_time_seconds": 30,
+  "expected_recovery_time_seconds": 60,
+  "injector_script": "automation/moodle-fault-inject.sh BIZ-01",
+  "reset_script": "automation/moodle-fault-reset.sh BIZ-01"
+}

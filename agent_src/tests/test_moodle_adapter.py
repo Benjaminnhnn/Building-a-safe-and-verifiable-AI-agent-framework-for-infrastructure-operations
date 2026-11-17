@@ -118,7 +118,7 @@ def test_moodle_adapter_action_catalog_and_target_scopes() -> None:
     catalog = adapter.get_action_catalog()
     assert isinstance(catalog, ActionCatalog)
     assert catalog.lookup("remove_scoped_db_reject") is not None
-    assert catalog.lookup("reconcile_sec02_safe_baseline") is not None
+    assert catalog.lookup("reconcile_biz02_cron_baseline") is not None
     assert catalog.lookup("verify_tls_database_connection") is not None
 
     scopes = adapter.get_target_scopes()

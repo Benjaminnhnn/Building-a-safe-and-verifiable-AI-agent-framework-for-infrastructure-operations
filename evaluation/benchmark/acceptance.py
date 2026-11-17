@@ -1,30 +1,35 @@
-#!/usr/bin/env python3
-"""Audit Sprint 6 evidence without promoting shadow or simulation to live results.
+"""Row-level acceptance checks for the seven-scenario thesis benchmark.
 
-The input is a JSONL dataset of completed, per-run empirical records.  This
-coverage gate does not produce runs, infer missing measurements, or prove the
-authenticity of referenced evidence.  A complete matrix still needs review of
-scenario fidelity and raw traces before Sprint closure.
+Every empirical main-trial row must pass ``validate_empirical`` before it can
+be counted. The checks bind each row to raw evidence by SHA-256, require
+campaign provenance, a clean baseline before and after the trial, a 120-second
+stability window and an Independent Verifier decision. They do not prove the
+authenticity of the evidence; a complete matrix still needs review of scenario
+fidelity and raw traces.
+
+The scenario set, expected root causes and the human-only partition come from
+the Moodle ground truth (``evaluation/ground_truth/moodle``). The dataset-level
+coverage audit lives in ``thesis_profile.audit_thesis_dataset``.
 """
 
 from __future__ import annotations
 
-import argparse
+import hashlib
 import json
 import math
 import re
-import hashlib
-from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
 
-REPO = Path(__file__).resolve().parents[1]
-ARTIFACTS = REPO / "terraform" / ".artifacts"
-SCENARIOS = frozenset(path.stem for path in (REPO / "evaluation" / "ground_truth" / "moodle").glob("*.json"))
+REPO = Path(__file__).resolve().parents[2]
+_GROUND_TRUTH = {
+    path.stem: json.loads(path.read_text(encoding="utf-8"))
+    for path in sorted((REPO / "evaluation" / "ground_truth" / "moodle").glob("*.json"))
+}
+SCENARIOS = frozenset(_GROUND_TRUTH)
 GROUND_TRUTH_ROOT_CAUSE = {
-    path.stem: json.loads(path.read_text(encoding="utf-8"))["expected_root_cause"]
-    for path in (REPO / "evaluation" / "ground_truth" / "moodle").glob("*.json")
+    scenario_id: scenario["expected_root_cause"] for scenario_id, scenario in _GROUND_TRUTH.items()
 }
 METHODS = ("manual", "ansible", "ai_agent")
 PROVENANCE_FIELDS = ("commit_sha", "moodle_image_digest", "ai_agent_image_digest")
@@ -56,12 +61,14 @@ AUTHORITIES = {
     "ansible": "fixed_ansible_playbook",
     "ai_agent": "approved_safe_executor",
 }
-AI_DENY_HANDOFF_SCENARIOS = frozenset({
-    "DB-02", "DB-03", "RES-02", "RES-03", "NET-02", "NET-03",
-    "CON-02", "CON-03", "SEC-03", "SEC-01",
-})
-AI_LIVE_EXECUTION_SCENARIOS = frozenset({"DB-01", "RES-01", "NET-01", "CON-01", "SEC-02"})
-HUMAN_ONLY_SCENARIOS = frozenset({"SEC-01"})
+# A human-only scenario is denied to both automated methods and handed to an
+# operator; every other thesis scenario is live-allowlisted for the Agent.
+HUMAN_ONLY_SCENARIOS = frozenset(
+    scenario_id for scenario_id, scenario in _GROUND_TRUTH.items()
+    if scenario.get("execution_policy") == "HUMAN_ONLY"
+)
+AI_DENY_HANDOFF_SCENARIOS = HUMAN_ONLY_SCENARIOS
+AI_LIVE_EXECUTION_SCENARIOS = SCENARIOS - HUMAN_ONLY_SCENARIOS
 
 
 def _utc(value: object) -> datetime | None:
@@ -393,140 +400,3 @@ def validate_empirical(row: object) -> list[str]:
         if handoff is None or parsed.get("t_gate") is None or parsed.get("t_execute_end") is None or not (parsed["t_gate"] <= handoff <= parsed["t_execute_end"]):
             issues.append("missing_handoff_timestamp")
     return issues
-
-
-def audit(
-    dataset: Path,
-    shadow_campaigns: list[Path],
-    repetitions: int,
-    reduced_sample_limitation: str | None = None,
-) -> dict:
-    if repetitions not in (3, 5):
-        raise ValueError("repetitions must be 3 or 5")
-    limitation = reduced_sample_limitation.strip() if isinstance(reduced_sample_limitation, str) else ""
-    design_issues = (
-        ["n3_requires_documented_limitation"]
-        if repetitions == 3 and len(limitation) < 20
-        else []
-    )
-    rows: list[object] = []
-    if dataset.is_file():
-        for line in dataset.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                try:
-                    rows.append(json.loads(line))
-                except json.JSONDecodeError:
-                    rows.append(None)
-    accepted: Counter[tuple[str, str, int]] = Counter()
-    accepted_outcomes: Counter[str] = Counter()
-    rejected: list[dict] = []
-    seen_run_ids: set[str] = set()
-    valid_rows: list[dict] = []
-    for line_number, row in enumerate(rows, 1):
-        issues = validate_empirical(row)
-        if not issues:
-            run_id = row["run_id"]
-            if run_id in seen_run_ids:
-                issues.append("duplicate_run_id")
-            else:
-                seen_run_ids.add(run_id)
-                valid_rows.append(row)
-        if issues:
-            rejected.append({"line": line_number, "reasons": issues})
-            continue
-        key = (row["scenario_id"], row["method"], row["repetition"])
-        accepted[key] += 1
-        accepted_outcomes[str(row.get("outcome", "unclassified"))] += 1
-    expected = {(scenario, method, repetition) for scenario in SCENARIOS for method in METHODS for repetition in range(1, repetitions + 1)}
-    missing = sorted(expected - accepted.keys())
-    duplicate = sorted(key for key, count in accepted.items() if count > 1)
-    extra = sorted(accepted.keys() - expected)
-    shadow: Counter[str] = Counter()
-    for campaign in shadow_campaigns:
-        for result in campaign.glob("*/result.json"):
-            try:
-                value = json.loads(result.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            if value.get("status") == "passed" and value.get("ai_layer_mode") == "shadow":
-                shadow[str(value.get("scenario_id"))] += 1
-    policy_partition_valid = (
-        AI_DENY_HANDOFF_SCENARIOS.isdisjoint(AI_LIVE_EXECUTION_SCENARIOS)
-        and AI_DENY_HANDOFF_SCENARIOS | AI_LIVE_EXECUTION_SCENARIOS == SCENARIOS
-    )
-    campaign_provenance = {
-        field: sorted({row[field] for row in valid_rows})
-        for field in PROVENANCE_FIELDS
-    }
-    provenance_issues = [
-        f"mixed_campaign_{field}"
-        for field, values in campaign_provenance.items()
-        if len(values) > 1
-    ]
-    ai_rows = [row for row in valid_rows if row["method"] == "ai_agent"]
-    model_provenance = {
-        field: sorted({row[field] for row in ai_rows})
-        for field in AI_MODEL_PROVENANCE_FIELDS
-    }
-    model_provenance_issues = [
-        f"mixed_campaign_{field}"
-        for field, values in model_provenance.items()
-        if len(values) > 1
-    ]
-    ready = len(SCENARIOS) == 15 and policy_partition_valid and not missing and not duplicate and not extra and not rejected and not design_issues and not provenance_issues and not model_provenance_issues
-    return {
-        "status": "ready" if ready else "incomplete",
-        "scenario_count": len(SCENARIOS),
-        "required_empirical_runs": len(expected),
-        "accepted_empirical_runs": sum(accepted.values()),
-        "sample_design": {
-            "repetitions_per_cell": repetitions,
-            "limitation": limitation if repetitions == 3 else None,
-            "design_issues": design_issues,
-        },
-        "campaign_provenance": campaign_provenance,
-        "ai_model_provenance": model_provenance,
-        "provenance_issues": provenance_issues,
-        "model_provenance_issues": model_provenance_issues,
-        "accepted_outcomes": dict(sorted(accepted_outcomes.items())),
-        "policy_partition_valid": policy_partition_valid,
-        "policy_matrix_required": {
-            "ai_live_execution": len(AI_LIVE_EXECUTION_SCENARIOS) * repetitions,
-            "ai_denied_handoff": len(AI_DENY_HANDOFF_SCENARIOS) * repetitions,
-            "ansible_human_only_denied_handoff": len(HUMAN_ONLY_SCENARIOS) * repetitions,
-        },
-        "rejected_dataset_rows": rejected,
-        "missing_matrix_cells": [{"scenario_id": s, "method": m, "repetition": n} for s, m, n in missing],
-        "duplicate_matrix_cells": [{"scenario_id": s, "method": m, "repetition": n} for s, m, n in duplicate],
-        "extra_matrix_cells": [{"scenario_id": s, "method": m, "repetition": n} for s, m, n in extra],
-        "shadow_harness_runs_not_counted": dict(sorted(shadow.items())),
-        "dataset": str(dataset),
-    }
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset", type=Path, default=ARTIFACTS / "sprint6-benchmark-live" / "benchmark_results.jsonl")
-    parser.add_argument("--shadow-campaign", action="append", type=Path, default=[])
-    parser.add_argument("--repetitions", type=int, choices=(3, 5), default=5)
-    parser.add_argument(
-        "--reduced-sample-limitation",
-        help="Required written limitation (at least 20 characters) when auditing a reduced n=3 main matrix.",
-    )
-    parser.add_argument("--output", type=Path, default=ARTIFACTS / "sprint6-acceptance-audit.json")
-    parser.add_argument("--require-complete", action="store_true")
-    args = parser.parse_args()
-    report = audit(
-        args.dataset,
-        args.shadow_campaign,
-        args.repetitions,
-        args.reduced_sample_limitation,
-    )
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"Sprint 6 acceptance: {report['status']}; empirical {report['accepted_empirical_runs']}/{report['required_empirical_runs']}; shadow excluded {sum(report['shadow_harness_runs_not_counted'].values())}; report {args.output}")
-    return int(args.require_complete and report["status"] != "ready")
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

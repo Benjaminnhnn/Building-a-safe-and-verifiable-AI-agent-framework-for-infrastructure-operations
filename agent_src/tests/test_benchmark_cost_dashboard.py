@@ -15,12 +15,12 @@ def test_incomplete_dashboard_hides_metric_totals() -> None:
         {
             "status": "incomplete",
             "accepted_empirical_runs": 0,
-            "required_empirical_runs": 225,
+            "required_empirical_runs": 105,
             "campaign_provenance": {},
         }
     )
 
-    assert "0 / 225" in page
+    assert "0 / 105" in page
     assert "No cost, runtime, action, or LLM totals are shown" in page
     assert "Measured AWS cost (USD)" not in page
     assert "0.0000" not in page

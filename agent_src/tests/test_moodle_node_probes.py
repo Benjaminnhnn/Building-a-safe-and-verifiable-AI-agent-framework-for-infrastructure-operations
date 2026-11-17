@@ -69,12 +69,12 @@ def test_missing_container_emits_zero_not_fake_recovery(tmp_path: Path) -> None:
     assert "moodle_node_rds_tcp_success 0\n" in metrics
     assert "moodle_node_router_fallback_success 0\n" in metrics
     assert "moodle_node_reverse_proxy_enabled 0\n" in metrics
-    assert "moodle_node_scratch_enospc 0\n" in metrics
+    assert "moodle_node_scratch_enospc" not in metrics
     assert "moodle_fault_db01_tagged_rule 0\n" in metrics
     assert "moodle_fault_res01_cpu_fixture_running 0\n" in metrics
     assert "moodle_fault_net01_hosts_override 0\n" in metrics
     assert "moodle_fault_con01_web_stopped 0\n" in metrics
-    assert "moodle_fault_sec02_fixture_mode_zero 0\n" in metrics
+    assert "moodle_fault_sec02_fixture_mode_zero" not in metrics
     assert "MOODLE_DB_PASSWORD" not in metrics
 
 

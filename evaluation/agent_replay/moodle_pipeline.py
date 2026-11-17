@@ -28,6 +28,7 @@ from evaluation.agent_replay.domain.enums import ActionType
 from evaluation.agent_replay.domain.gate_pass import GatePass, _SAFETY_GATE_TOKEN
 from evaluation.agent_replay.ground_truth import load_ground_truth, validate_ground_truth
 from core.schema.event_schema import normalize_alert, validate_normalized_event
+from core.safety.action_catalog import MOODLE_7_SCENARIO_IDS
 from core.moodle.contract import (
     MoodleContractError,
     load_moodle_capability_contract,
@@ -36,13 +37,7 @@ from core.moodle.contract import (
     validate_moodle_capability_contract,
 )
 
-SCENARIOS = (
-    "DB-01", "DB-02", "DB-03",
-    "RES-01", "RES-02", "RES-03",
-    "NET-01", "NET-02", "NET-03",
-    "CON-01", "CON-02", "CON-03",
-    "SEC-01", "SEC-02", "SEC-03",
-)
+SCENARIOS = MOODLE_7_SCENARIO_IDS
 SENSITIVE_TERMS = ("password", "secret", "token", "credential", "private_key")
 
 

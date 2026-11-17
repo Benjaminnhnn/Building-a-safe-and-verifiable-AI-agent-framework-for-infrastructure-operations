@@ -16,12 +16,6 @@
       changed_when: false
 
   tasks:
-    - name: Install traffic-control utility for container-scoped NET-03 drill
-      tags: [moodle_node_netem]
-      ansible.builtin.package:
-        name: iproute-tc
-        state: present
-
     - name: Create exporter runtime directory
       ansible.builtin.file:
         path: "{{ moodle_observability_root }}"

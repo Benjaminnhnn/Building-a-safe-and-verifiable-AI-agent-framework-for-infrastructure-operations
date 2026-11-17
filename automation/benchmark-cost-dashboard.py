@@ -10,15 +10,17 @@ from __future__ import annotations
 import argparse
 import html
 import json
-import runpy
 from collections import defaultdict
+import sys
 from pathlib import Path
 from typing import Any
 
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
+from evaluation.benchmark import acceptance, thesis_profile  # noqa: E402
+
 ARTIFACTS = REPO / "terraform" / ".artifacts"
-ACCEPTANCE = runpy.run_path(str(REPO / "automation" / "sprint6-acceptance.py"))
 METHODS = ("manual", "ansible", "ai_agent")
 
 
@@ -45,7 +47,7 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 def _provenance_html(audit: dict[str, Any]) -> str:
     provenance = audit.get("campaign_provenance", {})
     rows = []
-    for field in ACCEPTANCE["PROVENANCE_FIELDS"]:
+    for field in acceptance.PROVENANCE_FIELDS:
         values = provenance.get(field, [])
         value = values[0] if len(values) == 1 else "unavailable"
         rows.append(
@@ -119,18 +121,18 @@ def main() -> int:
     parser.add_argument(
         "--dataset",
         type=Path,
-        default=ARTIFACTS / "sprint6-benchmark-live" / "benchmark_results.jsonl",
+        default=ARTIFACTS / "thesis-campaign" / "main.jsonl",
     )
     parser.add_argument("--repetitions", type=int, choices=(3, 5), default=5)
     parser.add_argument("--reduced-sample-limitation")
     parser.add_argument(
         "--output",
         type=Path,
-        default=ARTIFACTS / "sprint6-benchmark-live" / "cost-dashboard.html",
+        default=ARTIFACTS / "thesis-campaign" / "cost-dashboard.html",
     )
     args = parser.parse_args()
-    audit = ACCEPTANCE["audit"](
-        args.dataset, [], args.repetitions, args.reduced_sample_limitation
+    audit = thesis_profile.audit_thesis_dataset(
+        args.dataset, args.repetitions, args.reduced_sample_limitation
     )
     summaries = None
     if audit["status"] == "ready":

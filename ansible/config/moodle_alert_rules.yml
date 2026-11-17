@@ -53,7 +53,7 @@ groups:
 
       # These are real node-local symptoms, without a scenario_id label.
       # A fault marker and independent evidence must bind a specific scenario;
-      # the alert alone cannot distinguish DB-03 from NET-02, for example.
+      # the alert alone cannot distinguish DB-01 from NET-01, for example.
       - alert: MoodleNodeRdsTcpFailed
         expr: |
           (moodle_node_rds_tcp_success{job="moodle_node"} == 0)
@@ -89,11 +89,6 @@ groups:
         for: 15s
         labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-trusted-proxy}
         annotations: {summary: "Moodle reverse-proxy trust differs from the approved staging baseline on {{ $labels.instance }}"}
-      - alert: MoodleScratchEnospc
-        expr: moodle_node_scratch_enospc{job="moodle_node"} == 1
-        for: 15s
-        labels: {severity: warning, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-isolated-scratch}
-        annotations: {summary: "Isolated Moodle fault scratch filesystem is full on {{ $labels.instance }}"}
       - alert: MoodleNodeMemoryPressure
         expr: |
           (-delta(node_memory_MemAvailable_bytes{job="moodle_node"}[1m]) > 33554432)

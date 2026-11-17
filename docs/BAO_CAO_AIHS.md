@@ -158,7 +158,7 @@ Kiểm kê trên máy Operator tại thời điểm 14/11/2026. Đây là artifa
 | `aiops-unified-replay/` | 22 file trong 11 thư mục run | Offline replay, không phải live recovery hay mẫu độc lập |
 | `isolated-live-lab/` | 1 file | Lab riêng; chưa đủ hồ sơ để chuyển thành mẫu huấn luyện |
 | `moodle-sprint2-live/` | 196 file trong 22 thư mục con | Bằng chứng lịch sử hỗn hợp; chưa nối provenance/schema A2, chưa gộp vào 8 run trên |
-| `evaluation/ground_truth/` | 15 fixture Moodle, 3 ERPNext, 15 fixture legacy ở gốc | Ground truth/hậu nghiệm cho đánh giá offline; **cấm** đưa vào đặc trưng hoặc đếm như incident live |
+| `evaluation/ground_truth/` | 7 fixture Moodle, 3 ERPNext, 7 fixture replay ở gốc | Ground truth/hậu nghiệm cho đánh giá offline; **cấm** đưa vào đặc trưng hoặc đếm như incident live |
 
 Manifest kiểm kê và SHA-256 của 8 JSON nguồn đã chọn nằm trong [`evaluation/aihs/a2-export/manifest.json`](../evaluation/aihs/a2-export/manifest.json). Các nhóm chưa phân loại được giữ ngoài bộ xuất để tránh biến tên file hoặc trạng thái `passed` thành bằng chứng đã khôi phục live.
 

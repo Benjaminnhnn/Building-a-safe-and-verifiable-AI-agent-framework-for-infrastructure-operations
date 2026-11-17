@@ -165,7 +165,7 @@ def test_investigate_returns_exact_runtime_remediation_candidate_without_dispatc
     monkeypatch.setattr(
         "core.evidence.evidence_collectors.PrometheusEvidenceCollector._collect_query", collect
     )
-    alert = _alert("SEC-02", "MoodleNodeCpuHigh")
+    alert = _alert("NET-01", "MoodleNodeCpuHigh")
     report = process_moodle_alert(alert)
 
     assert report["status"] == "remediation_candidate"
@@ -575,8 +575,8 @@ def test_moodle_alert_strictly_follows_single_runtime_path_and_isolates_legacy(
     assert invoked_paths == ["moodle_pipeline"]
 
 
-def test_all_15_moodle_scenarios_have_explicit_remediation_disposition_and_valid_catalog_entries() -> None:
-    """Verify 15-scenario coverage: 5 S3.3 live-allowlisted, 1 human-only escalation (SEC-01), 9 shadow/escalated."""
+def test_all_seven_thesis_scenarios_have_explicit_remediation_disposition_and_valid_catalog_entries() -> None:
+    """Verify 7-scenario coverage: 6 live-allowlisted and 1 human-only escalation (SEC-01)."""
     from core.moodle.planner import SCENARIO_REMEDIATION_DISPOSITION, describe_moodle_remediation_disposition
     from core.safety.action_catalog import ActionCatalog
 
@@ -587,9 +587,9 @@ def test_all_15_moodle_scenarios_have_explicit_remediation_disposition_and_valid
     human_only = {k for k, v in SCENARIO_REMEDIATION_DISPOSITION.items() if v["disposition"] == "human_only_escalation"}
     shadow_escalated = {k for k, v in SCENARIO_REMEDIATION_DISPOSITION.items() if v["disposition"] == "escalated_shadow_only"}
 
-    assert s3_3 == {"DB-01", "RES-01", "NET-01", "CON-01", "SEC-02"}
+    assert s3_3 == {"BIZ-01", "BIZ-02", "DB-01", "RES-01", "NET-01", "CON-01"}
     assert human_only == {"SEC-01"}
-    assert shadow_escalated == {"DB-02", "DB-03", "RES-02", "RES-03", "NET-02", "NET-03", "CON-02", "CON-03", "SEC-03"}
+    assert shadow_escalated == set()
 
     for scenario_id, info in SCENARIO_REMEDIATION_DISPOSITION.items():
         entry = catalog.lookup(info["catalog_action_id"])

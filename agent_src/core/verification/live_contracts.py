@@ -1,9 +1,8 @@
 """Reviewed live verification contracts accepted by the Agent runtime.
 
-Covers both the Technical/Infrastructure scenarios (CON-01, DB-01, RES-01,
-NET-01, SEC-02) and the Business/User-Admin workflow scenarios (BIZ-01..BIZ-04).
-Human-only scenarios (SEC-01, BIZ-05) are intentionally excluded so they can
-never be auto-resolved by an agent execution receipt.
+Covers the six agent-executable thesis scenarios: CON-01, DB-01, RES-01,
+NET-01, BIZ-01 and BIZ-02. The human-only scenario SEC-01 is intentionally
+excluded so it can never be auto-resolved by an agent execution receipt.
 """
 
 MOODLE_LIVE_CONTRACTS: dict[str, dict[str, list[str]]] = {
@@ -45,15 +44,6 @@ MOODLE_LIVE_CONTRACTS: dict[str, dict[str, list[str]]] = {
             "moodle-app-a_database_dns",
             "moodle-app-b_database_dns",
             "both_alb_targets_healthy",
-        ],
-    },
-    "SEC-02": {
-        "allowed": ["common_synthetic_transaction"],
-        "forbidden": ["internet_to_postgresql_blocked"],
-        "related": [
-            "scenario_alert_resolved",
-            "fixture_directory_mode_restored",
-            "efs_mount_metric_is_one",
         ],
     },
     # -----------------------------------------------------------------------

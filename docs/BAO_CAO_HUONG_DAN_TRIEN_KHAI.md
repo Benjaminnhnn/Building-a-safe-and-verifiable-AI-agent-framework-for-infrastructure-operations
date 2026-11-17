@@ -776,7 +776,7 @@ chỉ `COPY agent_src/`. Vì vậy so cây `agent_src/` là đủ để biết i
 đúng mã nguồn hay không.
 
 **Vì sao CI quan trọng hơn với Agent?** CI kiểm tra những thứ ảnh hưởng trực
-tiếp tới an toàn: replay 15 kịch bản phải fail-closed đúng kết quả đã ghim, và
+tiếp tới an toàn: replay 7 kịch bản phải cho đúng kết quả đã ghim (kể cả fail-closed), và
 image **không được chứa** `evaluation/ground_truth`. Một image Agent chưa qua
 CI có thể ra quyết định sai trên hạ tầng thật.
 

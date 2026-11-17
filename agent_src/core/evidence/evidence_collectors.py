@@ -118,7 +118,6 @@ METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
         ("moodle_public_probe", 'probe_success{job="blackbox_moodle_public",probe="healthz"}'),
         ("moodle_efs_mount", 'moodle_efs_mount_available{job="moodle_node"}'),
         ("moodle_fault_net01_hosts_override", 'moodle_fault_net01_hosts_override{job="moodle_node"}'),
-        ("moodle_fault_sec02_fixture_mode_zero", 'moodle_fault_sec02_fixture_mode_zero{job="moodle_node"}'),
     ),
     "MoodleSyntheticTransactionStale": (
         (
@@ -143,9 +142,6 @@ METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
         ("moodle_node_web_running", 'moodle_node_web_running{job="moodle_node"}'),
         ("moodle_node_up", 'up{job="moodle_node"}'),
         ("moodle_cadvisor_up", 'up{job="moodle_cadvisor"}'),
-    ),
-    "MoodleScratchEnospc": (
-        ("moodle_node_scratch_enospc", 'moodle_node_scratch_enospc{job="moodle_node"}'),
     ),
     "MoodleWebContainerRestarting": (
         ("moodle_node_web_restart_count_2m", 'changes(moodle_node_web_restart_count{job="moodle_node"}[2m])'),

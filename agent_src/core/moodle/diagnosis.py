@@ -27,7 +27,6 @@ _ALL_QUERY_IDS = (
     "moodle_node_cpu_busy_percent",
     "moodle_node_memory_available_drop_bytes",
     "moodle_web_container_last_seen_age_seconds",
-    "moodle_node_scratch_enospc",
     "moodle_node_web_restart_count_2m",
     "moodle_node_probe_age_seconds",
     "moodle_node_rds_tcp_duration_seconds",
@@ -39,7 +38,6 @@ _ALL_QUERY_IDS = (
     "moodle_fault_res01_cpu_fixture_running",
     "moodle_fault_net01_hosts_override",
     "moodle_fault_con01_web_stopped",
-    "moodle_fault_sec02_fixture_mode_zero",
     # Business / Infrastructure workflow query IDs (BIZ-01, BIZ-02)
     "moodle_cli_maintenance_mode_enabled",
     "moodle_upgrade_in_progress",
@@ -155,14 +153,6 @@ _DIRECT_THRESHOLD_RULES = {
         33554432.0,
         "node_available_memory_drop",
         "Node available memory is below 20% and dropped by more than 32 MiB in the last minute",
-        True,
-        False,
-    ),
-    "MoodleScratchEnospc": (
-        "moodle_node_scratch_enospc",
-        0.5,
-        "isolated_fault_scratch_full",
-        "The isolated fault scratch filesystem reports ENOSPC; Moodle data storage is not implicated by this signal",
         True,
         False,
     ),
@@ -605,18 +595,8 @@ def diagnose_moodle_alert(alert_name: str, evidence: list[Any]) -> dict[str, Any
             and status["moodle_efs_mount"] == 1
             and status["moodle_synthetic_success"] == 0
         )
-        sec02_exact = (
-            exact_instances("moodle_fault_sec02_fixture_mode_zero", {"moodle-app-a": 1.0, "moodle-app-b": 0.0})
-            and status["moodle_rds_tcp_probe"] == 1
-            and status["moodle_public_probe"] == 1
-            and status["moodle_efs_mount"] == 1
-            and status["moodle_synthetic_success"] == 0
-        )
-        if net01_exact != sec02_exact:
-            marker_query = (
-                "moodle_fault_net01_hosts_override" if net01_exact
-                else "moodle_fault_sec02_fixture_mode_zero"
-            )
+        if net01_exact:
+            marker_query = "moodle_fault_net01_hosts_override"
             result["confidence"] = 0.8
             result["evidence_refs"] = sorted(set(
                 result["evidence_refs"] + refs_by_query[marker_query]

@@ -60,9 +60,7 @@ def test_verifier_requires_unique_executed_audit_receipt(tmp_path: Path) -> None
 
 def test_live_contracts_match_all_reviewed_staging_verification_scenarios() -> None:
     assert set(verifier._SCENARIO_RELATED_CHECKS) == {
-        "DB-01", "DB-02", "DB-03", "RES-01", "RES-02", "RES-03",
-        "NET-01", "NET-02", "NET-03", "CON-01", "CON-02", "CON-03",
-        "SEC-02", "SEC-03", "BIZ-01", "BIZ-02",
+        "BIZ-01", "BIZ-02", "CON-01", "DB-01", "RES-01", "NET-01",
     }
     assert "SEC-01" not in verifier._ALL_VERIFIED_SCENARIOS
     for scenario_id in verifier._SCENARIO_RELATED_CHECKS:
@@ -131,7 +129,7 @@ def test_probe_rejects_conflicting_exit_overall_and_check_status(
         verifier._run_probe("DB-01", "req-1")
 
 
-@pytest.mark.parametrize("field,value", [("scenario_id", "DB-02"), ("drill_id", "other-request")])
+@pytest.mark.parametrize("field,value", [("scenario_id", "NET-01"), ("drill_id", "other-request")])
 def test_probe_rejects_output_bound_to_another_request(
     monkeypatch: pytest.MonkeyPatch, field: str, value: str,
 ) -> None:

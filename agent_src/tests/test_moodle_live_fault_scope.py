@@ -15,7 +15,7 @@ INJECTOR = REPO_ROOT / "automation" / "moodle-fault-inject.sh"
 RESET = REPO_ROOT / "automation" / "moodle-fault-reset.sh"
 VERIFIER = REPO_ROOT / "automation" / "moodle-scenario-verify.sh"
 EXECUTOR_DRILL = REPO_ROOT / "automation" / "moodle-safe-executor-drill.sh"
-LIVE_SCENARIOS = {"DB-01", "DB-02", "DB-03", "RES-01", "RES-02", "RES-03", "NET-01", "NET-02", "NET-03", "CON-01", "CON-02", "CON-03", "SEC-02", "SEC-03", "BIZ-01", "BIZ-02"}
+LIVE_SCENARIOS = {"BIZ-01", "BIZ-02", "CON-01", "DB-01", "RES-01", "NET-01"}
 # Human-only: the harness may inject and reset it for a drill, but the agent
 # verifier refuses it and injection needs a second, AWS-specific confirmation.
 HUMAN_ONLY_SCENARIOS = {"SEC-01"}

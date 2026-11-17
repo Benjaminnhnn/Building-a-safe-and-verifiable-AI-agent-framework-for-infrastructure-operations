@@ -58,40 +58,24 @@ class DiagnosisRule:
 # or allowed remediation fields while producing a diagnosis or action.
 DIAGNOSIS_RULES: tuple[DiagnosisRule, ...] = (
     DiagnosisRule("postgres_stopped", frozenset({"postgres_exporter_up_zero", "moodle_database_connection_error", "synthetic_read_write_failed"}), "PostgreSQL container stopped", ActionType.START_CONTAINER, "postgres-db"),
-    DiagnosisRule("postgres_connections_exhausted", frozenset({"postgres_connections_saturated", "moodle_database_wait_high", "synthetic_transaction_failed"}), "Available PostgreSQL connections are exhausted", ActionType.STOP_FAULT_INJECTOR, "postgres-db"),
-    DiagnosisRule("invalid_database_endpoint", frozenset({"moodle_database_resolution_failed", "database_exporter_still_healthy", "synthetic_transaction_failed"}), "Moodle points to an invalid database endpoint", ActionType.RUN_ANSIBLE_PLAYBOOK, "postgres-db"),
     DiagnosisRule("moodle_stopped", frozenset({"moodle_endpoint_down", "container_state_exited", "postgres_exporter_still_up"}), "Moodle container stopped", ActionType.START_CONTAINER, "moodle-app"),
-    DiagnosisRule("moodle_apache_router_drift", frozenset({"node_deep_link_failed", "apache_router_config_missing", "moodle_internal_health_still_passes"}), "Moodle Apache router configuration drift on one application node", ActionType.RUN_ANSIBLE_PLAYBOOK, "moodle-app"),
-    DiagnosisRule("moodle_crash_loop", frozenset({"container_restart_count_high", "moodle_health_failed", "database_exporter_still_healthy"}), "Controlled bad image configuration causes a crash loop", ActionType.RUN_ANSIBLE_PLAYBOOK, "moodle-app"),
     DiagnosisRule("database_dns_alias_loss", frozenset({"database_alias_resolution_failed", "postgres_exporter_still_healthy", "moodle_database_connection_failed"}), "Controlled database DNS alias is unavailable", ActionType.RUN_ANSIBLE_PLAYBOOK, "moodle-app"),
-    DiagnosisRule("moodle_database_port_block", frozenset({"moodle_database_connection_timeout", "postgres_exporter_still_up", "blackbox_moodle_write_failed"}), "Scoped Moodle-to-PostgreSQL port block", ActionType.REMOVE_SCOPED_PORT_BLOCK, "postgres-db"),
-    DiagnosisRule("database_path_degraded", frozenset({"database_round_trip_high", "moodle_request_latency_high", "synthetic_transaction_timeout"}), "Scoped fixture degrades the Moodle database path", ActionType.STOP_FAULT_INJECTOR, "moodle-app"),
     DiagnosisRule("moodle_cpu_pressure", frozenset({"host_cpu_saturation", "moodle_latency_high", "synthetic_transaction_timeout"}), "Controlled CPU hog on Moodle host", ActionType.STOP_FAULT_INJECTOR, "moodle-app"),
-    DiagnosisRule("moodle_memory_pressure", frozenset({"host_memory_available_low", "moodle_latency_high", "container_memory_pressure"}), "Bounded fixture causes host memory pressure", ActionType.STOP_FAULT_INJECTOR, "moodle-app"),
-    DiagnosisRule("moodle_disk_pressure", frozenset({"filesystem_free_space_low", "moodle_write_failed", "synthetic_transaction_failed"}), "Known bounded fixture consumes available disk space", ActionType.STOP_FAULT_INJECTOR, "moodle-app"),
+    DiagnosisRule("moodle_maintenance_mode_stuck", frozenset({"cli_maintenance_flag_present", "upgrade_not_running", "student_course_view_maintenance_page"}), "Moodle CLI maintenance mode left enabled with no upgrade running", ActionType.RECONFIGURE_SERVICE, "moodle-app"),
+    DiagnosisRule("moodle_cron_stopped", frozenset({"cron_container_stopped", "adhoc_tasks_overdue", "web_tier_still_healthy"}), "Moodle cron container stopped; ad-hoc task queue is overdue", ActionType.START_CONTAINER, "moodle-app"),
     DiagnosisRule("database_port_exposed", frozenset({"forbidden_database_probe_succeeded", "database_service_still_healthy", "network_policy_drift_detected"}), "Controlled network policy exposes the database port", ActionType.RUN_ANSIBLE_PLAYBOOK, "moodle-rds-security-group"),
-    DiagnosisRule("moodledata_permission_drift", frozenset({"moodle_write_permission_denied", "synthetic_write_failed", "database_connection_still_healthy"}), "Moodle data directory ownership or mode is invalid", ActionType.RESTORE_MOODLEDATA_PERMISSION, "moodledata-volume"),
-    DiagnosisRule("moodle_security_config_drift", frozenset({"moodle_redirect_contract_failed", "config_checksum_changed", "database_connection_still_healthy"}), "Moodle trusted proxy or site URL configuration drift", ActionType.RUN_ANSIBLE_PLAYBOOK, "moodle-app"),
 )
 
 DIAGNOSIS_RULES_BY_ID = {rule.rule_id: rule for rule in DIAGNOSIS_RULES}
 
 # These are reviewed catalog identifiers, not executable command strings.
 _RULE_CATALOG_ACTIONS = {
-    "postgres_connections_exhausted": "restore_database_connection_capacity",
-    "invalid_database_endpoint": "restore_approved_database_endpoint",
     "moodle_stopped": "start_reviewed_compose_service",
-    "moodle_apache_router_drift": "restore_moodle_apache_router",
-    "moodle_crash_loop": "restore_previous_approved_release",
     "database_dns_alias_loss": "restore_dns_alias",
-    "moodle_database_port_block": "remove_scoped_port_block",
-    "database_path_degraded": "remove_netem_rules",
     "moodle_cpu_pressure": "remove_named_cpu_load_container",
-    "moodle_memory_pressure": "remove_named_memory_pressure_container",
-    "moodle_disk_pressure": "remove_disk_fill_fixture",
+    "moodle_maintenance_mode_stuck": "disable_moodle_cli_maintenance_mode",
+    "moodle_cron_stopped": "restart_moodle_cron_service",
     "database_port_exposed": "remove_tagged_database_ingress_rule",
-    "moodledata_permission_drift": "restore_moodledata_ownership",
-    "moodle_security_config_drift": "restore_moodle_security_config",
 }
 
 

@@ -228,6 +228,16 @@ fi
 wait_for_prometheus_alert "$alert_name" "$alert_timeout"
 mark_time t_detect
 
+# RQ2 fault-active checkpoint. The fault is injected and not yet reset, so the
+# ground truth here is "not recovered". Record what a health-only check and the
+# Verifier probe contract would each conclude; neither result drives the drill.
+fault_checkpoint_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+fault_health_http_status="$(curl --silent --output /dev/null --max-time 10 --write-out '%{http_code}' "$public_url/healthz.php" || true)"
+fault_contract="$("$script_dir/moodle-scenario-verify.sh" "$scenario" 2>/dev/null || true)"
+jq -e . <<<"$fault_contract" >/dev/null 2>&1 || fault_contract='{"status":"failed","checks":[]}'
+fault_checkpoint="$(jq -cn --arg at "$fault_checkpoint_at" --arg health "$fault_health_http_status" --argjson contract "$fault_contract" \
+  '{observed_at:$at,fault_present:true,health_only_http_status:$health,verifier_contract:$contract}')"
+
 candidate_id=""
 for _ in {1..30}; do
   candidate_id="$(remote monitor-ai-01 "sudo docker exec moodle-ai-agent python -c 'import sqlite3,sys; db=sqlite3.connect(\"/app/data/evidence.db\"); row=db.execute(\"select evidence_id from evidence where source=? and json_extract(metadata_json, ?) = ? and json_extract(json_extract(metadata_json, ?), ?) = ? and julianday(collected_at) >= julianday(?) order by collected_at desc limit 1\", (\"ai_decision\", \"$.decision_kind\", \"remediation_candidate\", \"$.decision_json\", \"$.scenario_id\", \"$scenario\", sys.argv[1])).fetchone(); print(row[0] if row else \"\")' '$drill_started_at'")"
@@ -461,9 +471,9 @@ jq -n \
   --slurpfile execution "$execute_result_file" --slurpfile verifier "$verifier_file" \
   --slurpfile runtime "$runtime_verification_file" --slurpfile runtime_status "$runtime_verification_file.status.json" \
   --argjson stage_times "$stage_times" --arg health_only_http_status "$health_only_http_status" \
-  --argjson contract_at_execute_end "$contract_at_execute_end" \
+  --argjson contract_at_execute_end "$contract_at_execute_end" --argjson fault_checkpoint "$fault_checkpoint" \
   --argjson safety_comparison "$safety_comparison" --argjson ai_shadow_proposal "$ai_shadow_proposal" --argjson controlled_related_fault "$controlled_related_fault" \
-  '{run_id:$run_id,stage_times:$stage_times,health_only_http_status:$health_only_http_status,contract_at_execute_end:$contract_at_execute_end,safety_comparison:$safety_comparison,ai_shadow_proposal:$ai_shadow_proposal,controlled_related_fault:$controlled_related_fault,scenario_id:$scenario,status:"passed",evidence_class:"operator_approved_staging_drill",method:"agent_prepare_one_operator_approval_execute_signed_independent_verify",observed_alert:$alert,candidate_id:$candidate_id,incident_id:$incident_id,prepared_request:$prepared[0],human_approval:$human_approval[0],executor_approval:$executor_approval[0].approval,execution_receipt:$execution[0].result,verifier:$verifier[0],verifier_attestation:$verifier[0].attestation,runtime_persistence:$runtime[0],runtime_status:$runtime_status[0],probe_samples:$verifier[0].probe_samples,alert_resolved:"passed",reset:"safe_executor_receipt",baseline_after_reset:"passed",live_switch:"disabled_after_drill",completed_at:$completed_at}' \
+  '{run_id:$run_id,stage_times:$stage_times,health_only_http_status:$health_only_http_status,contract_at_execute_end:$contract_at_execute_end,fault_checkpoint:$fault_checkpoint,safety_comparison:$safety_comparison,ai_shadow_proposal:$ai_shadow_proposal,controlled_related_fault:$controlled_related_fault,scenario_id:$scenario,status:"passed",evidence_class:"operator_approved_staging_drill",method:"agent_prepare_one_operator_approval_execute_signed_independent_verify",observed_alert:$alert,candidate_id:$candidate_id,incident_id:$incident_id,prepared_request:$prepared[0],human_approval:$human_approval[0],executor_approval:$executor_approval[0].approval,execution_receipt:$execution[0].result,verifier:$verifier[0],verifier_attestation:$verifier[0].attestation,runtime_persistence:$runtime[0],runtime_status:$runtime_status[0],probe_samples:$verifier[0].probe_samples,alert_resolved:"passed",reset:"safe_executor_receipt",baseline_after_reset:"passed",live_switch:"disabled_after_drill",completed_at:$completed_at}' \
   > "$evidence_file"
 chmod 0600 "$evidence_file"
 python3 "$script_dir/moodle-drill-summary.py" "$evidence_file" || {

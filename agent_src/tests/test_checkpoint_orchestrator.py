@@ -28,7 +28,7 @@ def _resources() -> list[Resource]:
 
 
 def _scenarios() -> list[ScenarioGroundTruth]:
-    prefixes = ("DB-", "RES-", "NET-", "CON-", "SEC-")
+    prefixes = ("BIZ-", "DB-", "RES-", "NET-", "CON-", "SEC-")
     paths = sorted(
         path
         for path in Path("evaluation/ground_truth").glob("*.json")
@@ -37,9 +37,9 @@ def _scenarios() -> list[ScenarioGroundTruth]:
     return [ScenarioGroundTruth(**json.loads(path.read_text(encoding="utf-8"))) for path in paths]
 
 
-def test_all_fifteen_scenarios_replay_in_stage_order(tmp_path) -> None:
+def test_all_seven_scenarios_replay_in_stage_order(tmp_path) -> None:
     scenarios = _scenarios()
-    assert len(scenarios) == 15
+    assert len(scenarios) == 7
     with SQLiteEvidenceStore(tmp_path / "evidence.db") as store:
         orchestrator = CheckpointOrchestrator(store)
         for scenario in scenarios:
@@ -171,7 +171,7 @@ def test_transition_audit_is_append_only_and_verified_on_checkpoint_load(tmp_pat
 
 
 def test_resume_from_gate_request_stops_before_verification_when_policy_denies(tmp_path) -> None:
-    scenario = next(item for item in _scenarios() if item.scenario_id == "CON-02")
+    scenario = next(item for item in _scenarios() if item.scenario_id == "NET-01")
     observations = observations_from_scenario(scenario)
     with SQLiteEvidenceStore(tmp_path / "evidence.db") as store:
         orchestrator = CheckpointOrchestrator(store)

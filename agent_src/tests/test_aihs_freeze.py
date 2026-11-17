@@ -15,6 +15,12 @@ EVAL = ROOT / "evaluation/aihs"
 sys.path.insert(0, str(EVAL))
 from b2_freeze_dataset import freeze  # noqa: E402
 
+# The A2 source artifacts live in Git-ignored terraform/.artifacts; CI has none.
+A2_SOURCES_PRESENT = all(
+    (ROOT / item["path"]).is_file()
+    for item in json.loads((EVAL / "a2-export/manifest.json").read_text())["source_files"]
+)
+
 
 class AIHSFreezeTest(unittest.TestCase):
     def setUp(self):
@@ -82,6 +88,7 @@ class AIHSFreezeTest(unittest.TestCase):
         }))
         return records, labels, source
 
+    @unittest.skipUnless(A2_SOURCES_PRESENT, "A2 source artifacts are only on the operator machine")
     def test_real_a2_data_blocks_without_fake_test_split(self):
         result = freeze(
             records=EVAL / "a2-export/audit-records.jsonl",

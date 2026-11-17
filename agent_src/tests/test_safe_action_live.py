@@ -274,7 +274,6 @@ def test_live_workflow_requires_independent_gate_and_executor_approvers(tmp_path
         ("RES-01", "remove_named_cpu_load_container", "moodle-app-b"),
         ("NET-01", "recreate_moodle_web_from_reviewed_compose", "staging_moodle_nodes"),
         ("CON-01", "start_reviewed_compose_service", "moodle-app-b"),
-        ("SEC-02", "restore_fixture_directory_mode", "moodledata_synthetic_fixture_directory"),
     ],
 )
 def test_live_workflow_catalogs_safe_baseline_compensation_for_every_s3_3_mutation(
