@@ -98,8 +98,8 @@
                   exit 75
                 fi
               done
-              docker exec -u 1000 release-moodle-web-1 php /var/www/html/admin/cli/maintenance.php --disable ;;
-            BIZ-01-ROLLBACK) docker exec -u 1000 release-moodle-web-1 php /var/www/html/admin/cli/maintenance.php --enable ;;
+              docker exec -u 1000:1999 release-moodle-web-1 php /var/www/html/admin/cli/maintenance.php --disable ;;
+            BIZ-01-ROLLBACK) docker exec -u 1000:1999 release-moodle-web-1 php /var/www/html/admin/cli/maintenance.php --enable ;;
             BIZ-02) docker compose --env-file /opt/moodle/release/moodle-runtime.env -f /opt/moodle/release/docker-compose.yml --profile cron up -d --wait moodle-cron ;;
             *) echo 'action is not allowlisted' >&2; exit 64 ;;
           esac

@@ -74,7 +74,7 @@ case "$scenario" in
     publish_scenario_marker "$scenario" "$(date -u +%Y%m%dT%H%M%SZ)"
     remote moodle-app-a "
       set -eu
-      sudo docker exec -u 1000 release-moodle-web-1 php /var/www/html/admin/cli/maintenance.php --enable >/dev/null
+      sudo docker exec -u 1000:1999 release-moodle-web-1 php /var/www/html/admin/cli/maintenance.php --enable >/dev/null
       sudo test -f '$moodledata_path/climaintenance.html'
     "
     ;;
@@ -89,7 +89,7 @@ case "$scenario" in
       set -eu
       sudo docker stop release-moodle-cron-1 >/dev/null
       test "$(sudo docker inspect --format "{{.State.Running}}" release-moodle-cron-1)" = false
-      sudo docker exec -u 1000 release-moodle-web-1 php -r '\''
+      sudo docker exec -u 1000:1999 release-moodle-web-1 php -r '\''
         define("CLI_SCRIPT", true);
         require "/var/www/html/config.php";
         $class = "\\core\\task\\refresh_mod_calendar_events_task";

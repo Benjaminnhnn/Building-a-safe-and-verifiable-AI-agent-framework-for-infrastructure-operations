@@ -51,7 +51,7 @@ case "$scenario" in
   BIZ-01)
     remote moodle-app-a "
       set -eu
-      sudo docker exec -u 1000 release-moodle-web-1 php /var/www/html/admin/cli/maintenance.php --disable >/dev/null
+      sudo docker exec -u 1000:1999 release-moodle-web-1 php /var/www/html/admin/cli/maintenance.php --disable >/dev/null
       sudo test ! -e '$moodledata_path/climaintenance.html'
     "
     wait_for_prometheus_query 'max(moodle_cli_maintenance_mode_enabled{job="moodle_node"}) == 0' 120
