@@ -45,6 +45,18 @@
           - lookup('file', executor_api_source) is search('MoodleSafeExecutor')
         fail_msg: Run automation/configure-moodle-safe-executor-api.sh to generate credentials and validate prerequisites.
       no_log: true
+    # A freshly built monitor has no Docker yet (the monitoring playbook
+    # installs it, but that playbook requires the verifier key installed here).
+    - name: Install Docker so the bridge exists on a fresh monitor
+      ansible.builtin.dnf:
+        name: docker
+        state: present
+        update_cache: true
+    - name: Start Docker
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
     - name: Detect the Docker bridge gateway used by monitor containers
       ansible.builtin.command:
         cmd: ip -4 -o addr show docker0
