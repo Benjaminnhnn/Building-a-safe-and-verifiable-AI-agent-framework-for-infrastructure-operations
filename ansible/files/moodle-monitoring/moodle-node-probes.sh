@@ -104,13 +104,20 @@ fi
 
 # BIZ-01 guard: an upgrade process in either Moodle container makes disabling
 # maintenance unsafe. If the process table cannot be read, report 1 so the
-# agent escalates instead of assuming the upgrade has finished.
+# agent escalates instead of assuming the upgrade has finished. A container
+# that exits between the running check and `docker top` (the cron container
+# exits and restarts while CLI maintenance is on) runs no upgrade, so it is
+# skipped; only a running container whose table stays unreadable reports 1.
 for upgrade_container in "$container" "$cron_container"; do
   docker inspect "$upgrade_container" >/dev/null 2>&1 || continue
-  [[ "$(docker inspect --format '{{.State.Running}}' "$upgrade_container" 2>/dev/null || true)" == true ]] || continue
-  if ! process_table="$(timeout 5 docker top "$upgrade_container" -eo args 2>/dev/null)"; then
-    upgrade_in_progress=1
-  elif grep -Fq 'admin/cli/upgrade.php' <<<"$process_table"; then
+  process_table=""
+  for _ in 1 2 3; do
+    [[ "$(docker inspect --format '{{.State.Running}}' "$upgrade_container" 2>/dev/null || true)" == true ]] || continue 2
+    process_table="$(timeout 5 docker top "$upgrade_container" -eo pid,args 2>/dev/null)" && break
+    process_table=""
+    sleep 1
+  done
+  if [[ -z "$process_table" ]] || grep -Fq 'admin/cli/upgrade.php' <<<"$process_table"; then
     upgrade_in_progress=1
   fi
 done

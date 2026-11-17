@@ -90,9 +90,17 @@
               # Re-check at execution time: disabling maintenance during an
               # upgrade is never safe, and an unreadable process table counts
               # as an upgrade in progress.
+              # A container that exits before `docker top` (cron restarts
+              # while CLI maintenance is on) runs no upgrade and is skipped.
               for container in release-moodle-web-1 release-moodle-cron-1; do
-                test -n "$(docker ps -q --filter "name=^${container}$" --filter status=running)" || continue
-                processes=$(docker top "$container" -eo args) || { echo "cannot read $container processes" >&2; exit 75; }
+                processes=""
+                for _ in 1 2 3; do
+                  test -n "$(docker ps -q --filter "name=^${container}$" --filter status=running)" || continue 2
+                  processes=$(docker top "$container" -eo pid,args 2>/dev/null) && break
+                  processes=""
+                  sleep 1
+                done
+                test -n "$processes" || { echo "cannot read $container processes" >&2; exit 75; }
                 if printf '%s\n' "$processes" | grep -Fq 'admin/cli/upgrade.php'; then
                   echo 'Moodle upgrade is running; refusing to disable maintenance mode' >&2
                   exit 75

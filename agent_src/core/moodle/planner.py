@@ -222,6 +222,15 @@ def plan_moodle_s3_3_remediation(
         evidence_ids.update(sample[1] for sample in samples.values())
         return True
 
+    def matches_all_positive(query_id: str) -> bool:
+        # A database-wide gauge (BIZ-02 overdue ad-hoc tasks) is reported by
+        # every node from the same shared database, so both samples must agree.
+        samples = rows.get(query_id, {})
+        if set(samples) != {"moodle-app-a", "moodle-app-b"} or any(sample[0] <= 0.0 for sample in samples.values()):
+            return False
+        evidence_ids.update(sample[1] for sample in samples.values())
+        return True
+
     def matches_one_healthy(query_id: str) -> bool:
         # Blackbox exporter instance names depend on deployment. The reviewed
         # Prometheus query scopes the job/probe; accept exactly one healthy
@@ -268,7 +277,7 @@ def plan_moodle_s3_3_remediation(
     ):
         candidates.append("BIZ-01")
     if alert_name == _S3_3_REMEDIATIONS["BIZ-02"][0] and (
-        matches("moodle_adhoc_tasks_overdue_count", minimum=0.0)
+        matches_all_positive("moodle_adhoc_tasks_overdue_count")
         and matches("moodle_cron_container_stopped", {"moodle-app-a": 1.0, "moodle-app-b": 0.0})
         and matches("moodle_node_web_running", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
     ):

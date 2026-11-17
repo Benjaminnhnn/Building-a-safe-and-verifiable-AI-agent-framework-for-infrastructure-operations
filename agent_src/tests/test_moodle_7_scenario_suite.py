@@ -112,7 +112,7 @@ def _scenario_evidence(scenario_id: str) -> tuple[str, list[SimpleNamespace]]:
         "BIZ-02": (
             "MoodleAdhocTaskQueueStuck",
             [
-                ("moodle_adhoc_tasks_overdue_count", 0.0, "moodle-app-a"),
+                ("moodle_adhoc_tasks_overdue_count", 5.0, "moodle-app-a"),
                 ("moodle_adhoc_tasks_overdue_count", 5.0, "moodle-app-b"),
                 ("moodle_cron_container_stopped", 1.0, "moodle-app-a"),
                 ("moodle_cron_container_stopped", 0.0, "moodle-app-b"),
@@ -309,6 +309,24 @@ def test_biz02_cron_restarts_container_without_moodle_db_mutation() -> None:
     assert proposal["catalog_action_id"] == "restart_moodle_cron_service"
     assert proposal["action"]["action_type"] == ActionType.START_CONTAINER.value
     assert proposal["action"]["rollback_plan"]["rollback_action_id"] == "reconcile_biz02_cron_baseline"
+    # The overdue count is database-wide, so a node reporting none means the
+    # queue is not stuck: no candidate (staging reports the same value on A and B).
+    for zero_node in ("moodle-app-a", "moodle-app-b"):
+        partial = [
+            SimpleNamespace(**{**vars(item), "metadata": {**item.metadata, "payload_json": json.dumps({
+                **json.loads(item.metadata["payload_json"]), "sample_value": 0.0,
+            })}})
+            if json.loads(item.metadata["payload_json"]).get("query_id") == "moodle_adhoc_tasks_overdue_count"
+            and json.loads(item.metadata["payload_json"]).get("labels", {}).get("instance") == zero_node
+            else item
+            for item in evidence
+        ]
+        assert plan_moodle_s3_3_remediation(
+            incident_id="inc-biz02-partial",
+            alert_name=alert_name,
+            diagnosis={**diag, "evidence_refs": [item.evidence_id for item in partial]},
+            evidence=partial,
+        ) is None
     # Catalog entry check
     catalog = ActionCatalog.load_moodle_7_scenario_catalog()
     entry = catalog.lookup("restart_moodle_cron_service")
