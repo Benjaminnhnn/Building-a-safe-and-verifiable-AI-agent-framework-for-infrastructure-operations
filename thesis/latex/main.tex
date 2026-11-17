@@ -1,0 +1,77 @@
+% Define metadata
+\documentclass{template/thesis}
+\Title{XÂY DỰNG KHUNG AI AGENT AN TOÀN VÀ KIỂM CHỨNG ĐƯỢC CHO VẬN HÀNH HẠ TẦNG}
+\Title[en]{BUILDING A SAFE AND VERIFIABLE AI AGENT FRAMEWORK FOR INFRASTRUCTURE OPERATIONS}
+
+\ThesisType{KHÓA LUẬN TỐT NGHIỆP}
+
+\University{ĐẠI HỌC QUỐC GIA THÀNH PHỐ HỒ CHÍ MINH}
+\CollegeOrDept{{TRƯỜNG ĐẠI HỌC CÔNG NGHỆ THÔNG TIN}}
+\Faculty{KHOA MẠNG MÁY TÍNH VÀ TRUYỀN THÔNG}
+
+
+\Author{LÊ QUANG TIẾN}{23521572}
+\Author{LÊ HOÀNG VIỆT}{23521778}
+
+\Degree{CỬ NHÂN}
+\Major{MẠNG MÁY TÍNH VÀ TRUYỀN THÔNG DỮ LIỆU}
+% \MajorCode{123}
+\ThesisYear{2026}
+\ThesisLocation{TP. HỒ CHÍ MINH}
+
+% TODO: kiểm tra lại thành viên và giảng viên hướng dẫn cho KLTN (sao từ Đồ án chuyên ngành)
+\Supervisor{ThS.Trần Thị Dung}
+
+
+\hypersetup{
+	pdfencoding=auto,
+	pdfauthor={Tên tác giả},
+	pdfsubject={Chủ đề đề tài},
+	pdftitle={Tên tiêu đề đề tài},
+	pdfkeywords={}
+}
+
+\begin{document}
+\firstbeforepreface
+\secondbeforepreface
+\setcounter{page}{1}
+\newpage
+\afterpreface
+
+\chapter{Giới thiệu}
+\label{c:intro}
+\input{chapters/1-MoDau}
+
+\chapter{Cơ sở lý thuyết}
+\label{c:cosolythuyet}
+\input{chapters/2-CoSoLyThuyet}
+
+
+\chapter{Phương pháp thực hiện}
+\label{c:phuongphapthuchien}
+\input{chapters/3-PhuongPhapThucHien}
+
+\chapter{Triển khai hệ thống và đánh giá}
+\label{c:thucnghiemdanhgia}
+\input{chapters/4-Trienkhaihethongvadanhgia}
+
+
+\chapter{Kết luận và hướng phát triển}
+\label{c:ketluanvaphattrien}
+\input{chapters/5-KetLuanPhatTrien}
+
+
+\appendix
+\renewcommand{\cftchappresnum}{Phụ lục }
+\addtocontents{toc}{\protect\renewcommand{\protect\cftchappresnum}{Phụ lục }}
+\input{chapters/appendix}
+
+\begingroup
+\setlength{\emergencystretch}{8em}
+\justifying\printbibliography[title=Tài liệu tham khảo]
+\endgroup
+\addcontentsline{toc}{chapter}{Tài liệu tham khảo}
+
+
+
+\end{document}
