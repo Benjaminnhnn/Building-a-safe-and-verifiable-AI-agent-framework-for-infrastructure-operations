@@ -274,6 +274,7 @@ def plan_moodle_s3_3_remediation(
         matches("moodle_cli_maintenance_mode_enabled", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
         and matches("moodle_upgrade_in_progress", {"moodle-app-a": 0.0, "moodle-app-b": 0.0})
         and matches("moodle_node_web_running", {"moodle-app-a": 1.0, "moodle-app-b": 1.0})
+        and matches_one_healthy("moodle_public_probe")
     ):
         candidates.append("BIZ-01")
     if alert_name == _S3_3_REMEDIATIONS["BIZ-02"][0] and (

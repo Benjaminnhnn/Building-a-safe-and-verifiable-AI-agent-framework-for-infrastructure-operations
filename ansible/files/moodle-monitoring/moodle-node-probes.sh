@@ -102,25 +102,18 @@ if [[ -f "$moodledata_path/climaintenance.html" ]]; then
   cli_maintenance_enabled=1
 fi
 
-# BIZ-01 guard: an upgrade process in either Moodle container makes disabling
-# maintenance unsafe. If the process table cannot be read, report 1 so the
-# agent escalates instead of assuming the upgrade has finished. A container
-# that exits between the running check and `docker top` (the cron container
-# exits and restarts while CLI maintenance is on) runs no upgrade, so it is
-# skipped; only a running container whose table stays unreadable reports 1.
-for upgrade_container in "$container" "$cron_container"; do
-  docker inspect "$upgrade_container" >/dev/null 2>&1 || continue
-  process_table=""
-  for _ in 1 2 3; do
-    [[ "$(docker inspect --format '{{.State.Running}}' "$upgrade_container" 2>/dev/null || true)" == true ]] || continue 2
-    process_table="$(timeout 5 docker top "$upgrade_container" -eo pid,args 2>/dev/null)" && break
-    process_table=""
-    sleep 1
-  done
-  if [[ -z "$process_table" ]] || grep -Fq 'admin/cli/upgrade.php' <<<"$process_table"; then
-    upgrade_in_progress=1
-  fi
-done
+# BIZ-01 guard: an upgrade process anywhere on the node (web, cron, or a
+# one-off installer container) makes disabling maintenance unsafe. Container
+# processes are visible in the host process table, which, unlike
+# `docker top`, does not race with the cron container restarting while CLI
+# maintenance is on. If the table cannot be read, report 1 so the agent
+# escalates instead of assuming the upgrade has finished. Only a php process
+# counts, so a grep for the path (e.g. this guard in the executor) does not.
+if ! host_processes="$(ps -eo args 2>/dev/null)" || [[ -z "$host_processes" ]]; then
+  upgrade_in_progress=1
+elif awk '$1 ~ /(^|\/)php[0-9.]*$/ && /admin\/cli\/upgrade\.php/ { found = 1 } END { exit !found }' <<<"$host_processes"; then
+  upgrade_in_progress=1
+fi
 
 # BIZ-02: cron runs as a Compose service on the cron node only. A container
 # that exists but is not running is the infrastructure-level fault.

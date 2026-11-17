@@ -167,7 +167,9 @@ BUSINESS_METRIC_QUERIES_BY_ALERT: dict[str, tuple[tuple[str, str], ...]] = {
         ("moodle_cli_maintenance_mode_enabled", 'moodle_cli_maintenance_mode_enabled{job="moodle_node"}'),
         ("moodle_upgrade_in_progress", 'moodle_upgrade_in_progress{job="moodle_node"}'),
         ("moodle_node_web_running", 'moodle_node_web_running{job="moodle_node"}'),
-        ("moodle_public_probe", 'probe_success{job="blackbox_moodle_public"}'),
+        # Only the healthz probe: the login probe fails by design under CLI
+        # maintenance, and two series under one query ID are ambiguous evidence.
+        ("moodle_public_probe", 'probe_success{job="blackbox_moodle_public",probe="healthz"}'),
     ),
     "MoodleAdhocTaskQueueStuck": (
         ("moodle_adhoc_tasks_overdue_count", 'moodle_adhoc_tasks_overdue_count{job="moodle_node"}'),

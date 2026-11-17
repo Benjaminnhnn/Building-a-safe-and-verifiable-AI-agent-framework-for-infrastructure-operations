@@ -111,9 +111,31 @@ def test_biz01_rollback_restores_maintenance_instead_of_repeating_the_disable() 
 def test_biz01_host_branch_refuses_during_an_upgrade() -> None:
     script = _playbook_script("/usr/local/sbin/moodle-safe-executor")
     branch = script.split("BIZ-01)", 1)[1].split(";;", 1)[0]
-    assert "admin/cli/upgrade.php" in branch
     assert "exit 75" in branch
-    assert branch.index("upgrade.php") < branch.index("--disable")
+    assert branch.index("upgrade") < branch.index("--disable")
+
+    # Run the branch with stub `ps`/`docker`: only a php upgrade process (or an
+    # unreadable process table) blocks the disable; a grep for the path does not.
+    import subprocess
+    import tempfile
+
+    cases = {
+        "php /var/www/html/admin/cli/upgrade.php --non-interactive": 75,
+        "/usr/local/bin/php admin/cli/upgrade.php": 75,
+        "grep -Fq admin/cli/upgrade.php\nphp /var/www/html/admin/cli/cron.php": 0,
+        "": 75,
+    }
+    for table, expected in cases.items():
+        with tempfile.TemporaryDirectory() as stub:
+            Path(stub, "ps").write_text(f"#!/bin/sh\nprintf '%s' '{table}'\n", encoding="utf-8")
+            Path(stub, "docker").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            for name in ("ps", "docker"):
+                Path(stub, name).chmod(0o755)
+            result = subprocess.run(
+                ["bash", "-c", f"set -euo pipefail\n{branch}"],
+                env={"PATH": f"{stub}:/usr/bin:/bin"}, capture_output=True, text=True, check=False,
+            )
+        assert result.returncode == expected, (table, result.stderr)
 
 
 def test_sec01_is_never_executable() -> None:

@@ -107,6 +107,7 @@ def _scenario_evidence(scenario_id: str) -> tuple[str, list[SimpleNamespace]]:
                 ("moodle_upgrade_in_progress", 0.0, "moodle-app-b"),
                 ("moodle_node_web_running", 1.0, "moodle-app-a"),
                 ("moodle_node_web_running", 1.0, "moodle-app-b"),
+                ("moodle_public_probe", 1.0, "blackbox-exporter:9115"),
             ],
         ),
         "BIZ-02": (
@@ -293,6 +294,33 @@ def test_biz01_maintenance_mode_refuses_automated_disable_when_upgrade_in_progre
         evidence=evidence,
     )
     assert plan is None, "AI must not plan maintenance disable while upgrade is in progress"
+
+
+def test_biz01_plans_from_its_own_diagnosis_refs_only_while_healthz_is_up() -> None:
+    """Live path: the planner receives the diagnosis' own refs (which include the
+    healthz probe), so the BIZ-01 candidate must match that probe too."""
+    alert_name, evidence = _scenario_evidence("BIZ-01")
+    diag = diagnose_moodle_alert(alert_name, evidence)
+    assert diag["cause_code"] == "moodle_maintenance_mode_stuck"
+    proposal = plan_moodle_s3_3_remediation(
+        incident_id="inc-biz01-own-refs", alert_name=alert_name, diagnosis=diag, evidence=evidence,
+    )
+    assert proposal is not None
+    assert proposal["catalog_action_id"] == "disable_moodle_cli_maintenance_mode"
+
+    down = [
+        SimpleNamespace(**{**vars(item), "metadata": {**item.metadata, "payload_json": json.dumps({
+            **json.loads(item.metadata["payload_json"]), "sample_value": 0.0,
+        })}})
+        if json.loads(item.metadata["payload_json"]).get("query_id") == "moodle_public_probe"
+        else item
+        for item in evidence
+    ]
+    down_diag = diagnose_moodle_alert(alert_name, down)
+    assert plan_moodle_s3_3_remediation(
+        incident_id="inc-biz01-healthz-down", alert_name=alert_name,
+        diagnosis={**down_diag, "evidence_refs": [item.evidence_id for item in down]}, evidence=down,
+    ) is None
 
 
 def test_biz02_cron_restarts_container_without_moodle_db_mutation() -> None:
