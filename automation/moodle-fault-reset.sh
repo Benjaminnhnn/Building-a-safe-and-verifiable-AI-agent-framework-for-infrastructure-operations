@@ -72,7 +72,14 @@ case "$scenario" in
     if [[ -r "$sec01_marker" ]]; then
       rule_ids="$rule_ids $(cat "$sec01_marker")"
     fi
+    # The human operator may already have revoked the recorded rule; revoking a
+    # missing rule ID fails, so act only on IDs still present in the group.
+    present_ids="$(aws ec2 describe-security-group-rules \
+      --profile "${AWS_PROFILE:-target-account}" --region "$region" \
+      --filters "Name=group-id,Values=$rds_security_group" \
+      --query 'SecurityGroupRules[].SecurityGroupRuleId' --output text)"
     for rule_id in $(tr ' \t' '\n\n' <<<"$rule_ids" | grep -E '^sgr-[0-9a-f]+$' | sort -u); do
+      grep -qwF -- "$rule_id" <<<"$present_ids" || continue
       aws ec2 revoke-security-group-ingress \
         --profile "${AWS_PROFILE:-target-account}" --region "$region" \
         --group-id "$rds_security_group" --security-group-rule-ids "$rule_id" >/dev/null

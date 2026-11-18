@@ -172,3 +172,33 @@ def test_obsolete_unsafe_fault_implementations_are_absent() -> None:
         "sudo iptables -I INPUT 1 -p tcp --dport 5432",
     ):
         assert obsolete not in source
+
+
+def test_sec01_reset_skips_a_rule_the_operator_already_revoked(tmp_path: Path) -> None:
+    # SEC-01 is remediated by a human, who revokes the rule before the harness
+    # resets; revoking that missing rule ID again would fail the reset.
+    branch = RESET.read_text(encoding="utf-8").split("  SEC-01)\n", 1)[1].split("    rm -f --", 1)[0]
+    branch = branch.replace("    load_sec01_network\n", "")
+    marker = tmp_path / "SEC-01.rule"
+    marker.write_text("sgr-0aaa\n", encoding="utf-8")
+    calls = tmp_path / "calls"
+    stub = tmp_path / "bin"
+    stub.mkdir()
+    (stub / "aws").write_text(
+        "#!/bin/bash\n"
+        f"echo \"$*\" >> {calls}\n"
+        "case \"$*\" in\n"
+        "  *tag:moodle-fault*) echo sgr-0bbb ;;\n"
+        "  *describe-security-group-rules*) printf 'sgr-0bbb\\tsgr-0ccc\\n' ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    (stub / "aws").chmod(0o755)
+    script = f"set -euo pipefail\nregion=r\nrds_security_group=sg-1\nsec01_marker={marker}\n{branch}"
+    result = subprocess.run(
+        ["bash", "-c", script], env={"PATH": f"{stub}:/usr/bin:/bin"},
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    revoked = [line for line in calls.read_text(encoding="utf-8").splitlines() if "revoke" in line]
+    assert len(revoked) == 1 and "sgr-0bbb" in revoked[0]
