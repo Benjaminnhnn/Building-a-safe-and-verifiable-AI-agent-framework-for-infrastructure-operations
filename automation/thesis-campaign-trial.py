@@ -56,6 +56,18 @@ TIMESTAMPS = (
 AUTHORITY = {"ansible": "fixed_ansible_playbook", "ai_agent": "approved_safe_executor"}
 MODEL_NAME = "deterministic-evidence-rules"
 VERIFY_WINDOW_SECONDS = 120
+# Mirrors the agent drill's pre-verifier-recovery stage so both methods are
+# verified from the same settled state (see LiveOps.settle).
+SETTLE_SCRIPT = r"""wait_for_alb_healthy 2 || true
+run_synthetic_once >/dev/null || true
+state=active
+for _ in {1..20}; do
+  state="$(remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=ALERTS{alertname=\"__ALERT__\",alertstate=\"firing\"}' http://127.0.0.1:9090/api/v1/query | jq -r 'if (.data.result | length) > 0 then \"active\" else \"clear\" end'")"
+  [[ "$state" == clear ]] && break
+  sleep 5
+done
+echo "$state"
+"""
 VERIFY_INTERVAL_SECONDS = 30
 ALERT_TIMEOUT_SECONDS = {"BIZ-01": 420, "BIZ-02": 420, "SEC-01": 180}
 # The agent's evidence-derived cause code, mapped to the thesis root cause.
@@ -233,6 +245,19 @@ class LiveOps:
             payload = {"status": "failed", "checks": [], "error": result.stderr[-500:]}
         return payload
 
+    def settle(self, scenario: str) -> dict[str, Any]:
+        """The pre-verification settling the agent drill performs (stage
+        ``pre-verifier-recovery``): two healthy ALB targets, one fresh
+        synthetic transaction, then up to 100 s for the alert to clear.
+        Without it the first verification sample races Prometheus and a
+        working fix is scored as failed. It never fails the trial itself:
+        the verification window still decides recovery."""
+        alert = thesis_profile.THESIS_SCENARIOS[scenario].alert_name
+        script = SETTLE_SCRIPT.replace("__ALERT__", alert)
+        result = _lib(script, timeout=600)
+        lines = result.stdout.strip().splitlines()
+        return {"alert": lines[-1] if lines else "unknown", "returncode": result.returncode}
+
     def ansible(self, scenario: str) -> dict[str, Any]:
         playbook = AnsibleBaseline().get_playbook(scenario)
         result = _run([
@@ -312,6 +337,10 @@ class SimulatedOps:
         self.clock.sleep(5)
         status = "failed" if self.fault_active else "passed"
         return {"status": status, "checks": [{"id": "simulated", "status": status}]}
+
+    def settle(self, scenario: str) -> dict[str, Any]:
+        self.clock.sleep(30)
+        return {"alert": "active" if self.fault_active else "clear", "returncode": 0}
 
     def ansible(self, scenario: str) -> dict[str, Any]:
         self.clock.sleep(20)
@@ -470,6 +499,8 @@ def run_trial(args: argparse.Namespace, ops: Any, clock: Clock) -> dict[str, dic
         trial.mark("t_execute_end")
         health_only = ops.health_only()
         contract_at_end = ops.contract(scenario).get("status") == "passed"
+        if not denied:
+            trial.save("settle.json", ops.settle(scenario))
         verification_passed, stability, samples = _verify_window(trial, ops, scenario)
         trial.save("verification-samples.json", samples)
         trial.mark("t_verify")

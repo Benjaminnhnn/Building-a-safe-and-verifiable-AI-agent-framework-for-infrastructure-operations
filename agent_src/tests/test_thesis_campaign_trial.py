@@ -128,3 +128,51 @@ def test_timed_out_script_runs_its_exit_trap_before_being_killed(tmp_path: Path)
     with pytest.raises(runner.subprocess.TimeoutExpired):
         runner._run(["bash", str(script)], timeout=1)
     assert marker.read_text(encoding="utf-8").strip() == "done"
+
+
+class _LaggingOps(runner.SimulatedOps):
+    """Ansible fixes the fault, but monitoring only catches up after the
+    settle phase, as on staging (the first live BIZ-01 sample raced it)."""
+
+    def __init__(self, clock) -> None:
+        super().__init__(clock)
+        self.calls: list[str] = []
+        self.monitoring_stale = False
+
+    def ansible(self, scenario):
+        self.calls.append("ansible")
+        result = super().ansible(scenario)
+        self.monitoring_stale = True
+        return result
+
+    def settle(self, scenario):
+        self.calls.append("settle")
+        self.monitoring_stale = False
+        return super().settle(scenario)
+
+    def contract(self, scenario):
+        self.calls.append("contract")
+        result = super().contract(scenario)
+        return {"status": "failed", "checks": []} if self.monitoring_stale else result
+
+
+@pytest.mark.parametrize("scenario", ["BIZ-01", "SEC-01"])
+def test_ansible_is_verified_from_the_same_settled_state_as_the_agent(tmp_path: Path, scenario: str) -> None:
+    args = runner.parse_args([
+        "--scenario", scenario, "--method", "ansible", "--repetition", "1",
+        "--campaign-id", "camp-test", "--dataset-dir", str(tmp_path), "--simulate",
+    ])
+    args.model_configuration = runner.write_model_configuration(tmp_path)
+    clock = runner.Clock(True)
+    ops = _LaggingOps(clock)
+    rows = runner.run_trial(args, ops, clock)
+    if scenario == "SEC-01":
+        # Denied: nothing executed, so there is nothing to settle.
+        assert "settle" not in ops.calls and "ansible" not in ops.calls
+        return
+    executed = ops.calls.index("ansible")
+    settled = ops.calls.index("settle")
+    assert executed < settled
+    # Only the execute-end snapshot precedes settling; the verification window follows it.
+    assert ops.calls[executed + 1:settled] == ["contract"]
+    assert rows["main"]["verification_status"] == "passed"
