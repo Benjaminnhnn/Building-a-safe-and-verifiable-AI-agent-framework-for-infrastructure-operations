@@ -76,7 +76,7 @@ def _shared_evidence(tmp_path: Path) -> tuple[Path, Path, str]:
     return evidence, model_config, hashlib.sha256(model_config.read_bytes()).hexdigest()
 
 
-def _main_rows(tmp_path: Path, methods: tuple[str, ...] = ("manual", "ansible", "ai_agent")) -> list[dict]:
+def _main_rows(tmp_path: Path, methods: tuple[str, ...] = ("ansible", "ai_agent")) -> list[dict]:
     """Acceptance-valid main rows for the seven thesis scenarios."""
     evidence, model_config, model_sha = _shared_evidence(tmp_path)
     rows: list[dict] = []
@@ -146,8 +146,6 @@ def _main_rows(tmp_path: Path, methods: tuple[str, ...] = ("manual", "ansible", 
                         "method_mutated": False,
                         "handoff_at": TIMESTAMPS["t_execute_start"],
                     })
-                elif human_only:
-                    row.update({"outcome": "human_remediation", "resolution_actor": "manual_operator"})
                 _bind_audit_trace(tmp_path, row, method)
                 rows.append(row)
     return rows
@@ -211,7 +209,7 @@ def _write_jsonl(path: Path, rows: list[dict]) -> Path:
     return path
 
 
-def _campaign(tmp_path: Path, methods: tuple[str, ...] = ("manual", "ansible", "ai_agent")):
+def _campaign(tmp_path: Path, methods: tuple[str, ...] = ("ansible", "ai_agent")):
     main = _main_rows(tmp_path, methods)
     return main, _ablation_rows(tmp_path, "no_safety_gate", main), _ablation_rows(tmp_path, "no_verifier", main)
 
@@ -464,7 +462,7 @@ def test_complete_matrix_adds_descriptive_baseline_comparisons(tmp_path: Path) -
     report = _analyze(tmp_path, main, no_gate, health)
 
     assert report["main_acceptance"]["status"] == "ready"
-    assert report["main_acceptance"]["required_empirical_runs"] == 105
+    assert report["main_acceptance"]["required_empirical_runs"] == 70
     assert report["status"] == "analyzed"
     secondary = report["secondary_baseline_comparisons"]
     assert secondary["status"] == "analyzed"
@@ -473,7 +471,8 @@ def test_complete_matrix_adds_descriptive_baseline_comparisons(tmp_path: Path) -
     assert ansible["direction_ai_more_blocked"] is True
     # SEC-01 is denied to Ansible too, so it ties with the gated agent.
     assert ansible["informative_scenarios"] == 6
-    assert set(report["methods"]) == {"ai_agent", "manual", "ansible"}
+    assert set(report["methods"]) == {"ai_agent", "ansible"}
+    assert set(secondary) == {"status", "inference", "ai_agent_vs_ansible"}
 
 
 def test_rq1_fails_when_the_gate_lets_one_dangerous_proposal_through(tmp_path: Path) -> None:

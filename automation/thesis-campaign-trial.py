@@ -13,8 +13,10 @@ Methods:
   Independent Verifier) and builds the row from its evidence;
 - ai_agent and ansible on SEC-01 record a denied handoff, then a human
   remediates;
-- ansible runs ``ansible/playbooks/baseline-remediation.yml``;
-- manual follows ``OPERATOR_ACTION_CATALOG`` with operator-entered times.
+- ansible runs ``ansible/playbooks/baseline-remediation.yml``.
+
+There is no manual-operator method; ``OPERATOR_ACTION_CATALOG`` only tells the
+human what to do after a SEC-01 handoff.
 
 Every trial also runs the RQ1 dangerous-proposal injection in a sandbox.
 ``--simulate`` exercises the same row construction with a fake clock and
@@ -45,13 +47,13 @@ from evaluation.benchmark import thesis_profile  # noqa: E402
 from evaluation.benchmark.ansible_baseline import AnsibleBaseline  # noqa: E402
 from evaluation.benchmark.manual_protocol import OPERATOR_ACTION_CATALOG  # noqa: E402
 
-METHODS = ("manual", "ansible", "ai_agent")
+METHODS = ("ansible", "ai_agent")
 STAGES = ("observe", "triage", "diagnose", "plan", "gate_request", "execute", "verify")
 TIMESTAMPS = (
     "t_inject", "t_detect", "t_incident", "t_plan", "t_gate",
     "t_execute_start", "t_execute_end", "t_verify", "t_resolved",
 )
-AUTHORITY = {"manual": "manual_operator", "ansible": "fixed_ansible_playbook", "ai_agent": "approved_safe_executor"}
+AUTHORITY = {"ansible": "fixed_ansible_playbook", "ai_agent": "approved_safe_executor"}
 MODEL_NAME = "deterministic-evidence-rules"
 VERIFY_WINDOW_SECONDS = 120
 VERIFY_INTERVAL_SECONDS = 30
@@ -248,7 +250,7 @@ class LiveOps:
 
     def operator(self, prompt: str) -> str:
         if not sys.stdin.isatty():
-            raise RuntimeError("manual steps need an interactive operator terminal")
+            raise RuntimeError("the SEC-01 human handoff needs an interactive operator terminal")
         return input(f"{prompt}: ").strip()
 
     def drill(self, scenario: str, directory: Path) -> dict[str, Any]:
@@ -392,25 +394,6 @@ def _fault_checkpoint(trial: Trial, ops: Any, scenario: str) -> dict[str, Any]:
     }
 
 
-def _root_cause_from_operator(ops: Any, trial: Trial) -> dict[str, str]:
-    components = sorted({cause["component"] for cause in thesis_profile.ROOT_CAUSE.values()})
-    choice = ops.operator("Predicted root-cause component (" + ", ".join(components) + ")")
-    for cause in thesis_profile.ROOT_CAUSE.values():
-        if cause["component"] == choice:
-            return dict(cause)
-    if trial.clock.simulate:
-        return dict(thesis_profile.ROOT_CAUSE[trial.args.scenario])
-    return dict(UNKNOWN_ROOT_CAUSE)
-
-
-def _manual_injection(ops: Any, scenario: str, simulate: bool) -> dict[str, bool]:
-    decisions = {}
-    for proposal in injection.proposals(scenario):
-        answer = ops.operator(f"Would you execute {proposal['action_id']} on {proposal['target_scope']}? [y/N]")
-        decisions[proposal["action_id"]] = answer.lower() == "y"
-    return decisions
-
-
 def run_trial(args: argparse.Namespace, ops: Any, clock: Clock) -> dict[str, dict[str, Any]]:
     scenario, method = args.scenario, args.method
     stamp = clock.now().strftime("%Y%m%dT%H%M%SZ")
@@ -461,12 +444,10 @@ def run_trial(args: argparse.Namespace, ops: Any, clock: Clock) -> dict[str, dic
             diagnosis = ops.agent_diagnosis(scenario, trial.times["t_inject"])
             trial.save("agent-diagnosis.json", diagnosis)
             predicted = dict(thesis_profile.ROOT_CAUSE.get(CAUSE_SCENARIO.get(diagnosis.get("cause_code"), ""), UNKNOWN_ROOT_CAUSE))
-        elif method == "ansible":
+        else:
             # A fixed playbook keys on the alert rule, not on a diagnosis.
             matches = [sid for sid, item in thesis_profile.THESIS_SCENARIOS.items() if item.alert_name == alert]
             predicted = dict(thesis_profile.ROOT_CAUSE[matches[0]]) if len(matches) == 1 else dict(UNKNOWN_ROOT_CAUSE)
-        else:
-            predicted = _root_cause_from_operator(ops, trial)
         trial.mark("t_incident")
         trial.mark("t_plan")
         trial.mark("t_gate")
@@ -483,9 +464,9 @@ def run_trial(args: argparse.Namespace, ops: Any, clock: Clock) -> dict[str, dic
             trial.save("ansible-run.json", result)
             mutated = result["returncode"] == 0
         else:
-            # Manual remediation, also the handoff target of a denied method.
+            # Only a denied (human-only) scenario reaches here: the human
+            # handoff target remediates; the denied method mutated nothing.
             ops.operator(f"Perform: {catalog_action.procedure} ({catalog_action.command}); press Enter when done")
-            mutated = not denied
         trial.mark("t_execute_end")
         health_only = ops.health_only()
         contract_at_end = ops.contract(scenario).get("status") == "passed"
@@ -494,13 +475,9 @@ def run_trial(args: argparse.Namespace, ops: Any, clock: Clock) -> dict[str, dic
         trial.mark("t_verify")
         trial.mark("t_resolved")
         resolution_actor = "manual_operator" if human_only else "independent_verifier"
-        if human_only and method == "manual":
-            outcome.update({"outcome": "human_remediation"})
         if human_only:
             outcome["resolution_actor"] = "manual_operator"
-        executor = {"manual": "manual_operator", "ansible": "ansible_playbook", "ai_agent": "manual_operator"}[method]
-        if denied:
-            executor = "manual_operator"
+        executor = "manual_operator" if denied else "ansible_playbook"
         actors = {"observe": method, "triage": method, "diagnose": method, "plan": method,
                   "gate_request": "safety_gate" if method == "ai_agent" else method,
                   "execute": executor, "verify": "independent_verifier"}
@@ -512,11 +489,9 @@ def run_trial(args: argparse.Namespace, ops: Any, clock: Clock) -> dict[str, dic
 
     if method == "ai_agent":
         injected = injection.evaluate_ai_agent(scenario)
-    elif method == "ansible":
+    else:
         decisions = {p["action_id"]: False for p in injection.proposals(scenario)} if denied else ops.ansible_injection(scenario, trial.directory)
         injected = injection.evaluate_ansible(scenario, decisions)
-    else:
-        injected = injection.evaluate_manual(scenario, _manual_injection(ops, scenario, clock.simulate))
     trial.save("dangerous-injection.json", injected)
 
     reset_passed = ops.reset(scenario)

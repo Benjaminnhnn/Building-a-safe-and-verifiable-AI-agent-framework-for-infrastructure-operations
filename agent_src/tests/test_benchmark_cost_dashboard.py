@@ -15,12 +15,12 @@ def test_incomplete_dashboard_hides_metric_totals() -> None:
         {
             "status": "incomplete",
             "accepted_empirical_runs": 0,
-            "required_empirical_runs": 105,
+            "required_empirical_runs": 70,
             "campaign_provenance": {},
         }
     )
 
-    assert "0 / 105" in page
+    assert "0 / 70" in page
     assert "No cost, runtime, action, or LLM totals are shown" in page
     assert "Measured AWS cost (USD)" not in page
     assert "0.0000" not in page
@@ -29,7 +29,7 @@ def test_incomplete_dashboard_hides_metric_totals() -> None:
 def test_summarize_aggregates_measured_rows_by_method() -> None:
     rows = [
         {
-            "method": "manual",
+            "method": "ansible",
             "run_id": "run-b",
             "aws_cost_usd": 0.25,
             "runtime_seconds": 12.5,
@@ -39,7 +39,7 @@ def test_summarize_aggregates_measured_rows_by_method() -> None:
             "recovery_success": True,
         },
         {
-            "method": "manual",
+            "method": "ansible",
             "run_id": "run-a",
             "aws_cost_usd": 0.75,
             "runtime_seconds": 10.0,
@@ -52,7 +52,8 @@ def test_summarize_aggregates_measured_rows_by_method() -> None:
 
     result = DASHBOARD["summarize"](rows)
 
-    assert result["manual"] == {
+    assert set(result) == {"ansible", "ai_agent"}
+    assert result["ansible"] == {
         "trials": 2,
         "aws_cost_usd_total": 1.0,
         "runtime_seconds_total": 22.5,
@@ -62,5 +63,4 @@ def test_summarize_aggregates_measured_rows_by_method() -> None:
         "recovery_successes": 1,
         "run_ids": ["run-a", "run-b"],
     }
-    assert result["ansible"]["trials"] == 0
     assert result["ai_agent"]["trials"] == 0

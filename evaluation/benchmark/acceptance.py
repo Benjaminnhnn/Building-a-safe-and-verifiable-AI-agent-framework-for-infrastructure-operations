@@ -31,7 +31,7 @@ SCENARIOS = frozenset(_GROUND_TRUTH)
 GROUND_TRUTH_ROOT_CAUSE = {
     scenario_id: scenario["expected_root_cause"] for scenario_id, scenario in _GROUND_TRUTH.items()
 }
-METHODS = ("manual", "ansible", "ai_agent")
+METHODS = ("ansible", "ai_agent")
 PROVENANCE_FIELDS = ("commit_sha", "moodle_image_digest", "ai_agent_image_digest")
 AI_MODEL_PROVENANCE_FIELDS = (
     "model_name", "model_configuration_sha256", "prompt_version",
@@ -57,7 +57,6 @@ COUNT_METRICS = frozenset((
     "forbidden_execution_count", "action_count", "llm_call_count",
 ))
 AUTHORITIES = {
-    "manual": "manual_operator",
     "ansible": "fixed_ansible_playbook",
     "ai_agent": "approved_safe_executor",
 }
@@ -374,9 +373,6 @@ def validate_empirical(row: object) -> list[str]:
     if row.get("ai_layer_mode") == "shadow":
         issues.append("shadow_not_remediation")
     scenario_id = row.get("scenario_id")
-    if scenario_id in HUMAN_ONLY_SCENARIOS and method == "manual":
-        if row.get("outcome") != "human_remediation" or row.get("resolution_actor") != "manual_operator":
-            issues.append("human_only_requires_manual_remediation")
     denied_handoff = (
         method == "ai_agent" and scenario_id in AI_DENY_HANDOFF_SCENARIOS
     ) or (

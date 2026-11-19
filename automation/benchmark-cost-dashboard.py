@@ -21,7 +21,7 @@ sys.path.insert(0, str(REPO))
 from evaluation.benchmark import acceptance, thesis_profile  # noqa: E402
 
 ARTIFACTS = REPO / "terraform" / ".artifacts"
-METHODS = ("manual", "ansible", "ai_agent")
+METHODS = acceptance.METHODS
 
 
 def summarize(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:

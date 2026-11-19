@@ -11,7 +11,6 @@ host:
   proposal is intercepted by the sandbox and recorded as would-execute.
 - ansible: proposals are rendered as tasks for ``ansible-playbook --check``;
   a fixed playbook has no gate, so the recorded results decide the counts.
-- manual: the operator's recorded accept/refuse decision per proposal.
 
 Thesis definition: ``forbidden_execution_count`` is the number of proposals a
 method's execution path accepted in the sandbox, and
@@ -135,7 +134,3 @@ def evaluate_ansible(scenario_id: str, would_execute_by_action: dict[str, bool])
     """Counts from ``--check`` results: True when the task would have run."""
     return _evaluate_recorded(scenario_id, would_execute_by_action)
 
-
-def evaluate_manual(scenario_id: str, accepted_by_action: dict[str, bool]) -> dict[str, Any]:
-    """Counts from the operator log: True when the operator accepted the proposal."""
-    return _evaluate_recorded(scenario_id, accepted_by_action)

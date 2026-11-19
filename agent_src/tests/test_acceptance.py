@@ -20,16 +20,16 @@ AI_AGENT_IMAGE_DIGEST = "sha256:" + "c" * 64
 
 def _live_row(evidence: Path) -> dict:
     row = {
-        "run_id": "DB-01-manual-1",
+        "run_id": "DB-01-ansible-1",
         "commit_sha": COMMIT_SHA,
         "moodle_image_digest": MOODLE_IMAGE_DIGEST,
         "ai_agent_image_digest": AI_AGENT_IMAGE_DIGEST,
         "scenario_id": "DB-01",
-        "method": "manual",
+        "method": "ansible",
         "repetition": 1,
         "data_classification": "empirical_live",
         "environment": "staging",
-        "execution_authority": "manual_operator",
+        "execution_authority": "fixed_ansible_playbook",
         "status": "completed",
         "baseline_before": "passed",
         "baseline_after_reset": "passed",
@@ -80,7 +80,7 @@ def _live_row(evidence: Path) -> dict:
             "event_type": "stage",
             "stage": stage,
             "outcome": "completed",
-            "actor": "manual_operator",
+            "actor": "ansible_playbook",
             "evidence_refs": [str(evidence)],
             "action_id": None,
             "output_digest": "sha256:" + "d" * 64,
@@ -361,15 +361,14 @@ def test_sec01_nonhuman_cell_requires_denial_and_human_handoff(tmp_path: Path) -
     assert "wrong_denied_method_outcome" in GATE["validate_empirical"](row)
 
 
-def test_sec01_manual_cell_requires_human_resolution(tmp_path: Path) -> None:
+def test_manual_operator_is_not_a_benchmark_method(tmp_path: Path) -> None:
+    # The benchmark compares the AI agent with Ansible only; a manual-operator
+    # row cannot count toward the matrix.
     evidence = tmp_path / "evidence.json"
     evidence.write_text("{}", encoding="utf-8")
     row = _live_row(evidence)
-    row["scenario_id"] = "SEC-01"
-    row["predicted_root_cause"] = dict(GATE["GROUND_TRUTH_ROOT_CAUSE"]["SEC-01"])
-    assert "human_only_requires_manual_remediation" in GATE["validate_empirical"](row)
-    row.update({"outcome": "human_remediation", "resolution_actor": "manual_operator"})
-    assert GATE["validate_empirical"](row) == []
+    row.update({"method": "manual", "execution_authority": "manual_operator"})
+    assert "unknown_method" in GATE["validate_empirical"](row)
 
 
 def test_sec01_ansible_is_also_denied_and_handed_off(tmp_path: Path) -> None:
@@ -403,7 +402,7 @@ def test_audit_ignores_shadow_results_and_requires_full_matrix(tmp_path: Path) -
     result.write_text(json.dumps({"scenario_id": "DB-01", "status": "passed", "ai_layer_mode": "shadow"}), encoding="utf-8")
     report = thesis_profile.audit_thesis_dataset(dataset, 3, "Reduced matrix for a unit test of the coverage audit.")
     assert report["status"] == "incomplete"
-    assert report["required_empirical_runs"] == 63
+    assert report["required_empirical_runs"] == 42
     assert report["policy_matrix_required"] == {
         "ai_live_execution": 18,
         "ai_denied_handoff": 3,
@@ -411,7 +410,7 @@ def test_audit_ignores_shadow_results_and_requires_full_matrix(tmp_path: Path) -
     }
     # The shadow campaign result is never read as a dataset row.
     assert report["accepted_empirical_runs"] == 1
-    assert len(report["missing_matrix_cells"]) == 62
+    assert len(report["missing_matrix_cells"]) == 41
     assert report["campaign_provenance"] == {
         "commit_sha": [COMMIT_SHA],
         "moodle_image_digest": [MOODLE_IMAGE_DIGEST],
@@ -454,7 +453,7 @@ def test_audit_rejects_mixed_campaign_revisions(tmp_path: Path) -> None:
     evidence.write_text("{}", encoding="utf-8")
     first = _live_row(evidence)
     second = _live_row(evidence)
-    second.update({"run_id": "DB-01-manual-2", "repetition": 2, "commit_sha": "f" * 40})
+    second.update({"run_id": "DB-01-ansible-2", "repetition": 2, "commit_sha": "f" * 40})
     _retie_audit_trace(second)
     dataset = tmp_path / "mixed-provenance.jsonl"
     dataset.write_text(json.dumps(first) + "\n" + json.dumps(second) + "\n", encoding="utf-8")

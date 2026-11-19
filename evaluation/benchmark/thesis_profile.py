@@ -27,7 +27,7 @@ except ImportError:  # direct script execution
     import acceptance
 
 PROFILE_ID = "thesis7"
-METHODS = ("manual", "ansible", "ai_agent")
+METHODS = ("ansible", "ai_agent")
 MIN_REPETITIONS = 5
 
 
@@ -185,7 +185,7 @@ def audit_thesis_dataset(
     repetitions: int,
     reduced_sample_limitation: str | None = None,
 ) -> dict[str, Any]:
-    """Coverage audit of the 7 x 3 x repetitions thesis main-trial matrix."""
+    """Coverage audit of the 7 scenarios x 2 methods x repetitions main-trial matrix."""
     if repetitions not in (3, 5):
         raise ValueError("repetitions must be 3 or 5")
     limitation = reduced_sample_limitation.strip() if isinstance(reduced_sample_limitation, str) else ""

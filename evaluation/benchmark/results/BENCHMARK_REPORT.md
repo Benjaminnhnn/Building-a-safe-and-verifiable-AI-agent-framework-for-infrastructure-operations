@@ -1,6 +1,6 @@
 # Benchmark luận văn: thiết kế 7 kịch bản và cách đưa ra kết luận RQ1/RQ2
 
-**Cập nhật:** 16/11/2026 · **Profile:** `thesis7` ([`thesis_profile.py`](../thesis_profile.py),
+**Cập nhật:** 19/11/2026 · **Profile:** `thesis7` ([`thesis_profile.py`](../thesis_profile.py),
 [`acceptance.py`](../acceptance.py), [`statistical_analysis.py`](../statistical_analysis.py))
 
 Benchmark chỉ dùng **7 kịch bản đã chuẩn hóa** trong [báo cáo kịch bản lỗi](../../../docs/BAO_CAO_KICH_BAN_LOI.md):
@@ -28,13 +28,26 @@ nghĩa là thiết kế có khả năng bị bác bỏ.
 và chưa reset, nên mọi câu trả lời "đã phục hồi" đều là phục hồi sai. Trạng thái này tương đương với một lần sửa không
 có tác dụng. Điểm đo sau Execute được giữ làm chỉ số phụ.
 
-**Số liệu phụ (không quyết định RQ):** so sánh với `manual` và `ansible` (tỷ lệ chặn, Wilson CI, sign test mô tả), RCA,
-thời gian phát hiện/khắc phục, chi phí. Phần này chỉ được tính khi ma trận đủ 7 × 3 × 5 = 105 lượt.
+**Số liệu phụ (không quyết định RQ):** so sánh với playbook Ansible cố định (`ansible`: tỷ lệ chặn, Wilson CI, sign
+test mô tả), RCA, thời gian phát hiện/khắc phục, chi phí. Phần này chỉ được tính khi ma trận đủ 7 × 2 × 5 = 70 lượt
+(`ai_agent` và `ansible`). Benchmark **không có nhánh vận hành thủ công**: nhánh này đã bị loại ngày 19/11/2026. Danh
+mục thao tác của Operator chỉ còn dùng cho việc chuyển giao SEC-01 cho người.
 
 ## 2. Trạng thái hiện tại
 
-Audit ngày 16/11/2026: **0/35 lượt `ai_agent`** và **0/105 lượt** của ma trận đầy đủ được chấp nhận; chưa có
-`main.jsonl`, `no-gate.jsonl`, `health-only.jsonl`. **Chưa có kết luận định lượng cho RQ1 hoặc RQ2.**
+Chiến dịch live `thesis7-20261117-dc79e78` (17–18/11/2026, commit `dc79e78`, image Agent
+`sha256:4ab2…103a`): **35/35 lượt `ai_agent`** được chấp nhận, kèm 35 dòng `no-gate` và 35 dòng `health-only`.
+`statistical_analysis.py --require-complete` cho trạng thái `analyzed`:
+
+| | RQ1 | RQ2 |
+| --- | --- | --- |
+| Kết quả | Gate chặn 90/90 đề xuất nguy hiểm (Wilson 95%: 95,9–100%), 0 lệnh bị thực thi; bỏ Gate thì cả 90 sẽ chạy | Health-only phục hồi sai 35/35 (Wilson 95%: 90,1–100%); Verifier 0/35 |
+| Sign test | 7/7 kịch bản cùng chiều, p = 0,0156 | 7/7 kịch bản cùng chiều, p = 0,0156 |
+| Kết luận | `supported` | `supported` |
+
+Chỉ số phụ RQ2: Verifier chấp nhận 30/30 lần phục hồi thật; ngay sau Execute, health-only đã báo xong sớm 31/35 lượt.
+5 lượt SEC-01 chạy với bản sửa reset của harness (commit `287ad2d`, không đổi code hay image Agent) nhưng được ghi
+theo commit chiến dịch `dc79e78`. Nhánh `ansible` (35 lượt) là số liệu phụ, chạy riêng sau.
 
 Các lượt Moodle đã chạy thật trước đây là bằng chứng của **từng lượt**, không phải dòng benchmark, vì không được tạo
 bằng harness, không có cặp ablation và không có điểm đo lỗi còn hoạt động:
@@ -92,8 +105,8 @@ qua Telegram, nên dự kiến chia thành 3–4 phiên.
    File `terraform/.artifacts/empirical-analysis.json` chứa `rq1`/`rq2` (`supported`, `not_supported` hoặc
    `inconclusive` kèm lý do), p-value, tỷ lệ theo kịch bản, Wilson CI và các giới hạn. Báo đúng kết quả, kể cả khi
    là `not_supported`.
-6. **(Tùy chọn) Số liệu phụ:** chạy thêm 35 lượt `--method manual` và 35 lượt `--method ansible` cùng chiến dịch để có
-   so sánh mô tả với vận hành thủ công và playbook cố định.
+6. **(Tùy chọn) Số liệu phụ:** chạy thêm 35 lượt `--method ansible` cùng commit và digest của chiến dịch để có so sánh
+   mô tả với playbook cố định. Với SEC-01, Ansible cũng bị từ chối và chuyển cho người như Agent.
 
 ## 4. Giới hạn cần ghi trong luận văn
 

@@ -46,7 +46,8 @@ def campaign(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 def test_simulated_main_rows_fail_only_because_they_are_simulated(campaign: Path) -> None:
     rows = _rows(campaign / "main.jsonl")
-    assert len(rows) == len(SCENARIOS) * 3 * 5
+    assert runner.METHODS == ("ansible", "ai_agent")
+    assert len(rows) == len(SCENARIOS) * 2 * 5
     for row in rows:
         assert thesis_profile.validate_thesis_row(row) == ["not_empirical_live"], row["run_id"]
 
@@ -64,8 +65,9 @@ def test_human_only_rows_follow_the_denied_handoff_protocol(campaign: Path) -> N
         assert row["outcome"] == "denied_handoff" and row["method_mutated"] is False and row["action_count"] == 0
         assert row["forbidden_execution_count"] == 0 and row["dangerous_action_blocked"] is True
     assert rows[("ai_agent", 1)]["execution_authority"] == "ai_agent_policy_gate"
-    assert rows[("manual", 1)]["outcome"] == "human_remediation"
-    assert rows[("manual", 1)]["resolution_actor"] == "manual_operator"
+    for method in ("ai_agent", "ansible"):
+        assert rows[(method, 1)]["resolution_actor"] == "manual_operator"
+        assert rows[(method, 1)]["handoff_target"] == "manual_operator"
 
 
 def test_ai_rows_carry_deterministic_model_provenance_without_llm_calls(campaign: Path) -> None:
