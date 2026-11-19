@@ -178,3 +178,11 @@ def test_operator_handoff_catalog_covers_each_thesis_symptom(scenario_id: str) -
     action = OPERATOR_ACTION_CATALOG[thesis_profile.THESIS_SCENARIOS[scenario_id].alert_name]
     assert action.human_only is (scenario_id in thesis_profile.HUMAN_ONLY_SCENARIOS)
     assert "mdl_" not in action.command
+
+
+def test_baseline_biz01_runs_moodle_cli_with_the_db_secret_group() -> None:
+    # The Compose user is 1000:1999 and only GID 1999 can read the database
+    # secret; "-u 1000" alone makes the Moodle CLI fail to connect.
+    play = next(play for play in _baseline_plays() if "biz01" in play["tags"])
+    argv = play["tasks"][0]["ansible.builtin.command"]["argv"]
+    assert argv[argv.index("-u") + 1] == "1000:1999"

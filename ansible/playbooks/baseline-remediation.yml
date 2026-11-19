@@ -72,7 +72,7 @@
   tasks:
     - name: Disable maintenance mode
       ansible.builtin.command:
-        argv: [docker, exec, -u, "1000", release-moodle-web-1, php, /var/www/html/admin/cli/maintenance.php, --disable]
+        argv: [docker, exec, -u, "1000:1999", release-moodle-web-1, php, /var/www/html/admin/cli/maintenance.php, --disable]
       changed_when: true
 
 - name: BIZ-02 restart the Moodle cron container
