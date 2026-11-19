@@ -57,6 +57,9 @@ TIMESTAMPS = (
 AUTHORITY = {"ansible": "fixed_ansible_playbook", "ai_agent": "approved_safe_executor"}
 MODEL_NAME = "deterministic-evidence-rules"
 VERIFY_WINDOW_SECONDS = 120
+# After a method executes, wait up to this long for the contract to pass once
+# before the stability window starts; the wait counts toward recovery time.
+RECOVERY_WAIT_SECONDS = 180
 # The alert each recovery contract requires to be clear, read from the
 # contract script itself so the two cannot drift.
 CONTRACT_ALERTS = dict(re.findall(
@@ -403,6 +406,24 @@ class SimulatedOps:
 # ---------------------------------------------------------------------------
 
 
+def _await_recovery(trial: Trial, ops: Any, scenario: str) -> list[dict[str, Any]]:
+    """Poll the contract until it first passes, bounded by RECOVERY_WAIT_SECONDS.
+
+    Monitoring lags a fix by up to a scrape interval (the synthetic result,
+    an alert's resolution), so a working fix can fail one immediate sample.
+    Stability is then judged on the window that follows; a fix that never
+    passes within the bound still fails that window.
+    """
+    samples = []
+    deadline = trial.clock.now().timestamp() + RECOVERY_WAIT_SECONDS
+    while True:
+        sample = ops.contract(scenario)
+        samples.append(sample)
+        if sample.get("status") == "passed" or trial.clock.now().timestamp() >= deadline:
+            return samples
+        trial.clock.sleep(VERIFY_INTERVAL_SECONDS)
+
+
 def _verify_window(trial: Trial, ops: Any, scenario: str) -> tuple[bool, float, list[dict[str, Any]]]:
     """Sample the scenario contract for the stability window."""
     started = trial.clock.now()
@@ -512,6 +533,7 @@ def run_trial(args: argparse.Namespace, ops: Any, clock: Clock) -> dict[str, dic
         contract_at_end = ops.contract(scenario).get("status") == "passed"
         if not denied:
             trial.save("settle.json", ops.settle(scenario))
+            trial.save("recovery-wait-samples.json", _await_recovery(trial, ops, scenario))
         verification_passed, stability, samples = _verify_window(trial, ops, scenario)
         trial.save("verification-samples.json", samples)
         trial.mark("t_verify")

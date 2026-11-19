@@ -186,3 +186,44 @@ def test_settle_waits_for_the_alert_each_recovery_contract_checks() -> None:
     assert thesis_profile.THESIS_SCENARIOS["DB-01"].alert_name == "MoodleNodeRdsTcpFailed"
     assert 'alertname=~\\"__ALERT__\\"' in runner.SETTLE_SCRIPT
     assert "moodle-environment-baseline.sh verify" in runner.SETTLE_SCRIPT
+
+
+class _ScrapeLagOps(runner.SimulatedOps):
+    """The fix works, but the contract keeps failing for ``stale`` more
+    samples after settling (an unscraped synthetic result on staging)."""
+
+    def __init__(self, clock, stale: int) -> None:
+        super().__init__(clock)
+        self.stale = stale
+        self.settled = False
+
+    def settle(self, scenario):
+        self.settled = True
+        return super().settle(scenario)
+
+    def contract(self, scenario):
+        result = super().contract(scenario)
+        if self.settled and self.stale > 0:
+            self.stale -= 1
+            return {"status": "failed", "checks": []}
+        return result
+
+
+def _ansible_trial(tmp_path: Path, ops_factory) -> dict:
+    args = runner.parse_args([
+        "--scenario", "BIZ-01", "--method", "ansible", "--repetition", "1",
+        "--campaign-id", "camp-test", "--dataset-dir", str(tmp_path), "--simulate",
+    ])
+    args.model_configuration = runner.write_model_configuration(tmp_path)
+    clock = runner.Clock(True)
+    return runner.run_trial(args, ops_factory(clock), clock)["main"]
+
+
+def test_a_fix_is_judged_on_stability_after_monitoring_catches_up(tmp_path: Path) -> None:
+    row = _ansible_trial(tmp_path, lambda clock: _ScrapeLagOps(clock, stale=1))
+    assert row["verification_status"] == "passed" and row["recovery_success"] is True
+
+
+def test_a_fix_that_never_passes_within_the_bound_still_fails(tmp_path: Path) -> None:
+    row = _ansible_trial(tmp_path, lambda clock: _ScrapeLagOps(clock, stale=100))
+    assert row["verification_status"] == "failed" and row["recovery_success"] is False
