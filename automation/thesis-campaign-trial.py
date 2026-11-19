@@ -30,6 +30,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -56,13 +57,21 @@ TIMESTAMPS = (
 AUTHORITY = {"ansible": "fixed_ansible_playbook", "ai_agent": "approved_safe_executor"}
 MODEL_NAME = "deterministic-evidence-rules"
 VERIFY_WINDOW_SECONDS = 120
+# The alert each recovery contract requires to be clear, read from the
+# contract script itself so the two cannot drift.
+CONTRACT_ALERTS = dict(re.findall(
+    r"^\s*([A-Z]{2,3}-0[0-9])\) alert_name=(\w+) ;;",
+    (REPO / "automation" / "moodle-scenario-verify.sh").read_text(encoding="utf-8"),
+    re.MULTILINE,
+))
 # Mirrors the agent drill's pre-verifier-recovery stage so both methods are
 # verified from the same settled state (see LiveOps.settle).
 SETTLE_SCRIPT = r"""wait_for_alb_healthy 2 || true
 run_synthetic_once >/dev/null || true
+bash automation/moodle-environment-baseline.sh verify >/dev/null || true
 state=active
 for _ in {1..20}; do
-  state="$(remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=ALERTS{alertname=\"__ALERT__\",alertstate=\"firing\"}' http://127.0.0.1:9090/api/v1/query | jq -r 'if (.data.result | length) > 0 then \"active\" else \"clear\" end'")"
+  state="$(remote monitor-ai-01 "curl --fail --silent --get --data-urlencode 'query=ALERTS{alertname=~\"__ALERT__\",alertstate=\"firing\"}' http://127.0.0.1:9090/api/v1/query | jq -r 'if (.data.result | length) > 0 then \"active\" else \"clear\" end'")"
   [[ "$state" == clear ]] && break
   sleep 5
 done
@@ -252,8 +261,10 @@ class LiveOps:
         Without it the first verification sample races Prometheus and a
         working fix is scored as failed. It never fails the trial itself:
         the verification window still decides recovery."""
-        alert = thesis_profile.THESIS_SCENARIOS[scenario].alert_name
-        script = SETTLE_SCRIPT.replace("__ALERT__", alert)
+        # Wait for the detection alert and for the alert the recovery
+        # contract checks (they differ for DB-01).
+        alerts = sorted({thesis_profile.THESIS_SCENARIOS[scenario].alert_name, CONTRACT_ALERTS[scenario]})
+        script = SETTLE_SCRIPT.replace("__ALERT__", "|".join(alerts))
         result = _lib(script, timeout=600)
         lines = result.stdout.strip().splitlines()
         return {"alert": lines[-1] if lines else "unknown", "returncode": result.returncode}

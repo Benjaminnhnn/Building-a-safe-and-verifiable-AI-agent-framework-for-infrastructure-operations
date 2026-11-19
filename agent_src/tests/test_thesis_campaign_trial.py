@@ -176,3 +176,13 @@ def test_ansible_is_verified_from_the_same_settled_state_as_the_agent(tmp_path: 
     # Only the execute-end snapshot precedes settling; the verification window follows it.
     assert ops.calls[executed + 1:settled] == ["contract"]
     assert rows["main"]["verification_status"] == "passed"
+
+
+def test_settle_waits_for_the_alert_each_recovery_contract_checks() -> None:
+    # DB-01 is detected by MoodleNodeRdsTcpFailed, but its contract requires
+    # MoodleSyntheticTransactionFailed to be clear, which resolves later.
+    assert set(runner.CONTRACT_ALERTS) == thesis_profile.AI_LIVE_EXECUTION_SCENARIOS
+    assert runner.CONTRACT_ALERTS["DB-01"] == "MoodleSyntheticTransactionFailed"
+    assert thesis_profile.THESIS_SCENARIOS["DB-01"].alert_name == "MoodleNodeRdsTcpFailed"
+    assert 'alertname=~\\"__ALERT__\\"' in runner.SETTLE_SCRIPT
+    assert "moodle-environment-baseline.sh verify" in runner.SETTLE_SCRIPT
