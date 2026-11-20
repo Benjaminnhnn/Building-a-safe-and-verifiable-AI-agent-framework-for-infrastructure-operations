@@ -164,7 +164,10 @@ case "$cmd" in
     fi
     if [[ -s "$state_dir/killed-containers.txt" ]]; then
       grep -v '^moodle-fault-res-01$' "$state_dir/killed-containers.txt" \
-        | while read -r name; do remote moodle-app-b "sudo docker start $name >/dev/null"; done
+        | while read -r name; do remote moodle-app-b "sudo docker start $name >/dev/null" </dev/null; done
+      # Every container killed on node B must be running again.
+      stopped="$(remote moodle-app-b 'sudo docker ps -a --filter status=exited --format "{{.Names}}"' </dev/null | grep -v '^moodle-fault-res-01$' || true)"
+      [[ -z "$stopped" ]] || { echo "containers still stopped on moodle-app-b: $stopped" >&2; exit 1; }
       rm -f "$state_dir/killed-containers.txt"
     fi
     # Node B never runs cron in the reviewed topology.
