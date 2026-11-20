@@ -520,7 +520,8 @@ def _unguarded_comparison(
 
     def recovery_seconds(row: dict[str, Any], unguarded: bool) -> float | None:
         if unguarded:
-            return (row.get("unguarded") or {}).get("true_recovery_seconds_from_inject")
+            # The first passing contract sample only counts when the stability window then held.
+            return (row.get("unguarded") or {}).get("true_recovery_seconds_from_inject") if row["recovery_success"] else None
         return _elapsed(row, "t_inject", "t_resolved") if row["recovery_success"] else None
 
     full_rows = [ai_by_key[key] for key in keys]
