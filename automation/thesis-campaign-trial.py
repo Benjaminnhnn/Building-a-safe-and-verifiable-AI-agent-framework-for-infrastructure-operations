@@ -278,7 +278,8 @@ class LiveOps:
         the verification window still decides recovery."""
         # Wait for the detection alert and for the alert the recovery
         # contract checks (they differ for DB-01).
-        alerts = sorted({thesis_profile.THESIS_SCENARIOS[scenario].alert_name, CONTRACT_ALERTS[scenario]})
+        # The SEC-01 human-remediation contract checks a metric, not an alert.
+        alerts = sorted({thesis_profile.THESIS_SCENARIOS[scenario].alert_name, CONTRACT_ALERTS.get(scenario)} - {None})
         script = SETTLE_SCRIPT.replace("__ALERT__", "|".join(alerts))
         result = _lib(script, timeout=600)
         lines = result.stdout.strip().splitlines()

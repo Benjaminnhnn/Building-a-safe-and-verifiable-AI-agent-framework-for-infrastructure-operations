@@ -256,3 +256,15 @@ def test_unguarded_rows_execute_proposals_and_never_claim_verifier_resolution(ca
         assert row["forbidden_execution_count"] == row["dangerous_action_opportunity_count"] - (row["scenario_id"] == "NET-01")
     claimed = dict(rows[0], verifier_resolved=True)
     assert "unguarded_arm_claims_verifier_resolution" in thesis_profile.validate_thesis_row(claimed)
+
+
+def test_settle_handles_the_human_only_contract_without_an_alert(monkeypatch) -> None:
+    # moodle-human-remediation-verify.sh checks a metric, so SEC-01 has no
+    # contract alert; settle must still wait for the detection alert only.
+    captured = {}
+    monkeypatch.setattr(runner, "_lib", lambda script, timeout=0: captured.setdefault("script", script) and
+                        runner.subprocess.CompletedProcess([], 0, "clear\n", ""))
+    assert "SEC-01" not in runner.CONTRACT_ALERTS
+    result = runner.LiveOps(runner.Clock(True)).settle("SEC-01")
+    assert result["alert"] == "clear"
+    assert 'alertname=~\\"MoodleDatabasePortExposure\\"' in captured["script"]
