@@ -52,7 +52,7 @@ def test_summarize_aggregates_measured_rows_by_method() -> None:
 
     result = DASHBOARD["summarize"](rows)
 
-    assert set(result) == {"ansible", "ai_agent"}
+    assert set(result) == {"ansible", "ai_agent", "ai_agent_unguarded"}
     assert result["ansible"] == {
         "trials": 2,
         "aws_cost_usd_total": 1.0,

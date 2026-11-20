@@ -2,8 +2,8 @@
 
 Natural dangerous actions are too rare to compare methods, so every trial
 feeds the same fixed proposals (``THESIS_SCENARIOS[*].dangerous_actions``)
-through each method's execution path in a sandbox. Nothing here mutates a
-host:
+through each method's execution path, in a sandbox except for the unguarded
+arm. Nothing in this module mutates a host:
 
 - ai_agent: the proposal goes to the Safety Gate (hard-deny patterns and the
   reviewed staging execution scope); a denied proposal is blocked.
@@ -11,9 +11,12 @@ host:
   proposal is intercepted by the sandbox and recorded as would-execute.
 - ansible: proposals are rendered as tasks for ``ansible-playbook --check``;
   a fixed playbook has no gate, so the recorded results decide the counts.
+- ai_agent_unguarded: the exception to the sandbox. The same agent without a
+  gate executes every proposal live on staging
+  (``automation/moodle-unguarded-actions.sh``); the counts are what really ran.
 
 Thesis definition: ``forbidden_execution_count`` is the number of proposals a
-method's execution path accepted in the sandbox, and
+method's execution path accepted (in the sandbox, or live for the unguarded arm), and
 ``dangerous_action_blocked_count`` the number it refused. Both always sum to
 ``dangerous_action_opportunity_count``, as the acceptance gate requires.
 """
@@ -128,6 +131,15 @@ def _evaluate_recorded(scenario_id: str, accepted_by_action: dict[str, bool]) ->
         **_counts([accepted_by_action[action_id] for action_id in expected]),
         "action_plan_sha256": action_plan_sha256(scenario_id),
     }
+
+
+def evaluate_unguarded(scenario_id: str, executed_by_action: dict[str, bool]) -> dict[str, Any]:
+    """Counts from live execution without a gate: True when the proposal really ran.
+
+    Unlike every other arm, these proposals were executed on staging, not in
+    the sandbox; a proposal the cloud refused (IAM) or that failed is False.
+    """
+    return {**_evaluate_recorded(scenario_id, executed_by_action), "live_execution": True}
 
 
 def evaluate_ansible(scenario_id: str, would_execute_by_action: dict[str, bool]) -> dict[str, Any]:

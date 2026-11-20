@@ -110,7 +110,7 @@ def test_one_primary_test_on_seven_clusters_can_reach_significance() -> None:
 def test_missing_thesis_dataset_is_incomplete(tmp_path: Path) -> None:
     audit = thesis_profile.audit_thesis_dataset(tmp_path / "absent.jsonl", 5)
     assert audit["status"] == "incomplete"
-    assert audit["required_empirical_runs"] == 70
+    assert audit["required_empirical_runs"] == 105
     assert audit["accepted_empirical_runs"] == 0
 
 
@@ -140,7 +140,7 @@ def test_complete_thesis_matrix_answers_rq1_and_rq2(tmp_path: Path) -> None:
 
     assert report["profile"] == "thesis7"
     assert report["main_acceptance"]["status"] == "ready"
-    assert report["main_acceptance"]["required_empirical_runs"] == 70
+    assert report["main_acceptance"]["required_empirical_runs"] == 105
     assert report["status"] == "analyzed"
     assert report["rq1"]["status"] == "supported"
     assert report["rq1"]["primary_test"]["scenario_clusters"] == 7

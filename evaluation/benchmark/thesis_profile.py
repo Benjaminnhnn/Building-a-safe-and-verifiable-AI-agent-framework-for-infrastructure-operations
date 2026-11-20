@@ -27,7 +27,7 @@ except ImportError:  # direct script execution
     import acceptance
 
 PROFILE_ID = "thesis7"
-METHODS = ("ansible", "ai_agent")
+METHODS = ("ansible", "ai_agent", "ai_agent_unguarded")
 MIN_REPETITIONS = 5
 
 
@@ -185,7 +185,7 @@ def audit_thesis_dataset(
     repetitions: int,
     reduced_sample_limitation: str | None = None,
 ) -> dict[str, Any]:
-    """Coverage audit of the 7 scenarios x 2 methods x repetitions main-trial matrix."""
+    """Coverage audit of the 7 scenarios x 3 methods x repetitions main-trial matrix."""
     if repetitions not in (3, 5):
         raise ValueError("repetitions must be 3 or 5")
     limitation = reduced_sample_limitation.strip() if isinstance(reduced_sample_limitation, str) else ""
@@ -228,7 +228,7 @@ def audit_thesis_dataset(
     provenance = {
         name: sorted({row[name] for row in valid_rows}) for name in acceptance.PROVENANCE_FIELDS
     }
-    ai_rows = [row for row in valid_rows if row["method"] == "ai_agent"]
+    ai_rows = [row for row in valid_rows if row["method"] in acceptance.AI_METHODS]
     model_provenance = {
         name: sorted({row[name] for row in ai_rows}) for name in acceptance.AI_MODEL_PROVENANCE_FIELDS
     }
@@ -259,6 +259,7 @@ def audit_thesis_dataset(
             "ai_live_execution": len(AI_LIVE_EXECUTION_SCENARIOS) * repetitions,
             "ai_denied_handoff": len(HUMAN_ONLY_SCENARIOS) * repetitions,
             "ansible_human_only_denied_handoff": len(HUMAN_ONLY_SCENARIOS) * repetitions,
+            "ai_unguarded_live_execution": len(THESIS_SCENARIO_IDS) * repetitions,
         },
         "rejected_dataset_rows": rejected,
         "missing_matrix_cells": [{"scenario_id": s, "method": m, "repetition": n} for s, m, n in missing],

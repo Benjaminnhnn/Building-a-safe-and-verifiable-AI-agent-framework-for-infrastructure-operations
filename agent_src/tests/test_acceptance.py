@@ -402,15 +402,16 @@ def test_audit_ignores_shadow_results_and_requires_full_matrix(tmp_path: Path) -
     result.write_text(json.dumps({"scenario_id": "DB-01", "status": "passed", "ai_layer_mode": "shadow"}), encoding="utf-8")
     report = thesis_profile.audit_thesis_dataset(dataset, 3, "Reduced matrix for a unit test of the coverage audit.")
     assert report["status"] == "incomplete"
-    assert report["required_empirical_runs"] == 42
+    assert report["required_empirical_runs"] == 63
     assert report["policy_matrix_required"] == {
         "ai_live_execution": 18,
         "ai_denied_handoff": 3,
         "ansible_human_only_denied_handoff": 3,
+        "ai_unguarded_live_execution": 21,
     }
     # The shadow campaign result is never read as a dataset row.
     assert report["accepted_empirical_runs"] == 1
-    assert len(report["missing_matrix_cells"]) == 41
+    assert len(report["missing_matrix_cells"]) == 62
     assert report["campaign_provenance"] == {
         "commit_sha": [COMMIT_SHA],
         "moodle_image_digest": [MOODLE_IMAGE_DIGEST],

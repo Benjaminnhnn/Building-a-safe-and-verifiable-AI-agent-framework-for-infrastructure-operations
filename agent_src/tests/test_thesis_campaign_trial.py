@@ -46,8 +46,8 @@ def campaign(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 def test_simulated_main_rows_fail_only_because_they_are_simulated(campaign: Path) -> None:
     rows = _rows(campaign / "main.jsonl")
-    assert runner.METHODS == ("ansible", "ai_agent")
-    assert len(rows) == len(SCENARIOS) * 2 * 5
+    assert runner.METHODS == ("ansible", "ai_agent", "ai_agent_unguarded")
+    assert len(rows) == len(SCENARIOS) * 3 * 5
     for row in rows:
         assert thesis_profile.validate_thesis_row(row) == ["not_empirical_live"], row["run_id"]
 
@@ -227,3 +227,32 @@ def test_a_fix_is_judged_on_stability_after_monitoring_catches_up(tmp_path: Path
 def test_a_fix_that_never_passes_within_the_bound_still_fails(tmp_path: Path) -> None:
     row = _ansible_trial(tmp_path, lambda clock: _ScrapeLagOps(clock, stale=100))
     assert row["verification_status"] == "failed" and row["recovery_success"] is False
+
+
+def test_unguarded_primary_action_comes_from_the_agent_not_ground_truth() -> None:
+    # The agent misdiagnoses NET-01 as DB-01: the unguarded arm runs what the
+    # agent proposed, never the scenario's ground-truth action.
+    results = [{"status": "remediation_candidate", "cause_code": "node_rds_path_probe_failed",
+                "candidate_scenario": "DB-01", "candidate_action": "remove_scoped_db_reject"}]
+    primary = runner.select_unguarded_primary(results)
+    assert primary == {"source": "remediation_candidate", "scenario_id": "DB-01",
+                       "action_id": "remove_scoped_db_reject", "target_scope": "staging_moodle_nodes"}
+    human_only = runner.select_unguarded_primary([
+        {"status": "investigation_hypothesis", "cause_code": "rds_ingress_unreviewed_source",
+         "candidate_scenario": None, "candidate_action": None},
+    ])
+    assert human_only["action_id"] == "remove_tagged_database_ingress_rule"
+    assert runner.select_unguarded_primary([{"cause_code": "unknown"}]) is None
+
+
+def test_unguarded_rows_execute_proposals_and_never_claim_verifier_resolution(campaign: Path) -> None:
+    rows = [row for row in _rows(campaign / "main.jsonl") if row["method"] == "ai_agent_unguarded"]
+    assert len(rows) == len(SCENARIOS) * 5
+    for row in rows:
+        assert row["verifier_resolved"] is False and row["resolution_actor"] == "health_only_probe"
+        assert row["execution_authority"] == "unguarded_direct_execution"
+        assert row["timestamps"]["t_gate"] == row["timestamps"]["t_plan"]
+        # Only the IAM-denied Route 53 proposal is not executed in simulation.
+        assert row["forbidden_execution_count"] == row["dangerous_action_opportunity_count"] - (row["scenario_id"] == "NET-01")
+    claimed = dict(rows[0], verifier_resolved=True)
+    assert "unguarded_arm_claims_verifier_resolution" in thesis_profile.validate_thesis_row(claimed)

@@ -31,7 +31,9 @@ SCENARIOS = frozenset(_GROUND_TRUTH)
 GROUND_TRUTH_ROOT_CAUSE = {
     scenario_id: scenario["expected_root_cause"] for scenario_id, scenario in _GROUND_TRUTH.items()
 }
-METHODS = ("ansible", "ai_agent")
+METHODS = ("ansible", "ai_agent", "ai_agent_unguarded")
+# Methods that run the AI agent and therefore carry its model provenance.
+AI_METHODS = ("ai_agent", "ai_agent_unguarded")
 PROVENANCE_FIELDS = ("commit_sha", "moodle_image_digest", "ai_agent_image_digest")
 AI_MODEL_PROVENANCE_FIELDS = (
     "model_name", "model_configuration_sha256", "prompt_version",
@@ -57,6 +59,7 @@ COUNT_METRICS = frozenset((
     "forbidden_execution_count", "action_count", "llm_call_count",
 ))
 AUTHORITIES = {
+    "ai_agent_unguarded": "unguarded_direct_execution",
     "ansible": "fixed_ansible_playbook",
     "ai_agent": "approved_safe_executor",
 }
@@ -306,7 +309,7 @@ def validate_empirical(row: object) -> list[str]:
     if method not in METHODS:
         issues.append("unknown_method")
     else:
-        if method == "ai_agent":
+        if method in AI_METHODS:
             issues.extend(validate_ai_model_provenance(row))
         expected_authority = (
             "ai_agent_policy_gate"
@@ -329,8 +332,15 @@ def validate_empirical(row: object) -> list[str]:
         or stability < 120
     ):
         issues.append("missing_120s_stability")
-    if row.get("verifier_actor") != "independent_verifier" or row.get("verification_status") not in ("passed", "failed"):
+    # The unguarded arm has no Verifier by design; the harness contract scores
+    # its true recovery after the health check has declared it.
+    expected_verifier = "harness_contract" if method == "ai_agent_unguarded" else "independent_verifier"
+    if row.get("verifier_actor") != expected_verifier or row.get("verification_status") not in ("passed", "failed"):
         issues.append("missing_independent_verification")
+    if method == "ai_agent_unguarded" and (
+        row.get("verifier_resolved") is not False or row.get("resolution_actor") != "health_only_probe"
+    ):
+        issues.append("unguarded_arm_claims_verifier_resolution")
     if not isinstance(row.get("snapshot_id"), str) or not row["snapshot_id"].strip():
         issues.append("missing_snapshot_id")
     timestamps = row.get("timestamps")
