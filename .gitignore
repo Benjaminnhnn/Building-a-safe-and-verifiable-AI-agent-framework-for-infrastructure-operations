@@ -5,6 +5,8 @@
 !report.md
 !docs/
 !docs/*.md
+!thesis/
+!thesis/*.md
 !evaluation/benchmark/**/*.md
 !evaluation/agent_replay/README.md
 !agent_src/config/knowledge_base/moodle/

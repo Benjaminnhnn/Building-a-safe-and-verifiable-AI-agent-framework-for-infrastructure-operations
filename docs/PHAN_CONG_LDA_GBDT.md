@@ -17,14 +17,16 @@ Giữ **cùng model AIHS, cùng dữ liệu đầu vào và cùng action đượ
 
 ## Hiện còn thiếu gì?
 
-| Điều kiện | Trạng thái ghi nhận ngày 14/11/2026 |
-| --- | --- |
-| Dữ liệu Moodle đủ huấn luyện | **0/10** bản ghi audit đạt yêu cầu; thiếu ảnh chụp dữ liệu trước khi AI dự đoán. |
-| Tập test độc lập | **0** bản ghi đủ điều kiện. |
-| Action AIHS được duyệt để chạy trên Moodle | **0** mapping `live_reviewed`. |
-| Lượt AIHS chạy trên staging | **0** lượt mới. |
+**Cập nhật 17/11/2026: Bước 1–6 đã chạy xong.** Kết quả tổng hợp ở [BAO_CAO_KET_QUA_C0_C3](BAO_CAO_KET_QUA_C0_C3.md).
 
-Vì vậy hiện **chưa có tỷ lệ cải thiện** để báo. “Chưa đo được” là `NOT_MEASURABLE`, không phải 0%.
+| Điều kiện | Ngày 14/11/2026 | Ngày 17/11/2026 |
+| --- | --- | --- |
+| Dữ liệu Moodle đủ huấn luyện | **0/10** bản ghi đạt | Lab `campaign-1`; freeze `17efc7b6…`: train 277 / validation 57 / test 59 |
+| Tập test độc lập | **0** bản ghi | 59 dòng, 8 nhóm; mở **một lần** sau khi khóa protocol `c0-c3-offline-v1` |
+| Action AIHS được duyệt để chạy trên Moodle | **0** mapping `live_reviewed` | `aihs-c0-moodle-reviewed-v1`, `reviewed_for_live` |
+| Lượt AIHS chạy trên staging | **0** lượt | 18 lượt C3 chính + 4 lượt bổ sung đăng ký trước |
+
+**Còn mở (cần con người):** nhãn do một người gán, chưa có người gán thứ hai độc lập; lý do REJECT của seq 2 và seq 13 chưa ghi; ERPNext (PLANNING 9.3) chưa làm. Các chỉ số vẫn `NOT_MEASURABLE` được liệt kê ở mục 5 của báo cáo kết quả.
 
 ## Bước 1 — Thu dữ liệu đúng thời điểm và gán nhãn độc lập
 

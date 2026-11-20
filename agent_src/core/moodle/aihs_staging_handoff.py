@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from core.evidence.adapters import SafeLiveActionRequest
-from core.moodle.aihs_contract import DecisionContext, MappingDefinition, adapt_aihs_output
+from core.moodle.aihs_contract import AIHSAdapterResult, DecisionContext, MappingDefinition, adapt_aihs_output
 from core.moodle.live_handoff import prepare_moodle_live_handoff
 from core.safety.action_catalog import ActionCatalog
 from core.safety.safe_action_audit import SafeActionAuditStore
@@ -27,12 +27,13 @@ def prepare_aihs_staging_handoff(
     *,
     context: DecisionContext,
     evidence_db: str | Path,
-    mapping: MappingDefinition,
+    mapping: Any,
     candidate_id: str,
     gate_public_key: bytes,
     gate_actors: set[str],
     audit_db: str | Path,
     now: datetime | None = None,
+    adapter_result: AIHSAdapterResult | None = None,
 ) -> dict[str, Any]:
     """Bind AIHS to a fresh planner candidate, or return a logged block.
 
@@ -40,7 +41,7 @@ def prepare_aihs_staging_handoff(
     planner must independently produce the exact same action from fresh
     evidence. The returned request still needs action-bound Operator approval.
     """
-    adapter = adapt_aihs_output(
+    adapter = adapter_result or adapt_aihs_output(
         raw_output, context=context, evidence_db=evidence_db,
         mapping=mapping, now=now,
     )

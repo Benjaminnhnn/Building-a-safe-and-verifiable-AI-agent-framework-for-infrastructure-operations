@@ -127,7 +127,7 @@
           [Service]
           Type=oneshot
           ExecStart=/usr/local/sbin/moodle-node-probes
-          TimeoutStartSec=45
+          TimeoutStartSec=90
 
     - name: Install node-local Moodle probe timer
       tags: [moodle_node_probes]
@@ -143,7 +143,7 @@
           [Timer]
           OnBootSec=20s
           OnActiveSec=5s
-          OnUnitActiveSec=30s
+          OnUnitActiveSec=10s
           RandomizedDelaySec=0
           AccuracySec=1s
           Unit=moodle-node-probes.service

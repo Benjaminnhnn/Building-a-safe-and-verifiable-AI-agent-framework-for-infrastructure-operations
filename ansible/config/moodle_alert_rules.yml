@@ -32,7 +32,9 @@ groups:
       # restricted experiment controller, never exported as Prometheus data.
       - alert: MoodleSyntheticTransactionFailed
         expr: moodle_synthetic_success{job="moodle_synthetic",instance="monitor-ai-01"} == 0
-        for: 5s
+        # 40s (was 5s): the Agent investigates once per notification, and the node fault markers it needs
+        # (10s probe cycle + 15s scrape) lagged the 5s alert in the 16/11/2026 live session (NET-01).
+        for: 40s
         labels: {severity: critical, service: moodle, environment: staging, resource_id: moodle-app, runbook: moodle-synthetic}
         annotations: {summary: Moodle synthetic transaction failed}
       - alert: MoodleSyntheticTransactionStale

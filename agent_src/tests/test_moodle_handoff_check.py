@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,6 +29,7 @@ class MoodleHandoffCheckTests(unittest.TestCase):
             self.assertNotIn("/secret/private-key", json.dumps(result))
             self.assertFalse(result["ready_for_live_drill"])
 
+    @unittest.skipIf(sys.platform == "win32", "POSIX-only: sources a bash library via a native path")
     def test_staging_guard_accepts_custom_hostname_and_rejects_wrong_alb(self):
         guard = SCRIPT.parent / "lib/moodle-fault-common.sh"
         command = f'source "{guard}"; validate_staging_application "$1"'

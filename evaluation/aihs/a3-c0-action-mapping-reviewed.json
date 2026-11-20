@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "mapping_version": "aihs-c0-moodle-reviewed-v1",
+  "environment": "staging",
+  "review_status": "reviewed_for_live",
+  "actions": [
+    {
+      "aihs_action": "remove_scoped_db_reject",
+      "status": "live_reviewed",
+      "catalog_action_id": "remove_scoped_db_reject",
+      "scenario_id": "DB-01",
+      "target_scope": "staging_moodle_nodes",
+      "target_resource_id": "postgres-db",
+      "target_resource_type": "database",
+      "required_role": "executor",
+      "rollback_action_id": "reconcile_db01_safe_baseline",
+      "verifier_probe_id": "verify_tls_database_connection",
+      "preconditions": [
+        "Alert MoodleNodeRdsTcpFailed firing and per-node RDS TCP probes failing",
+        "Only the drill-tagged scoped iptables reject rule exists; no other firewall change"
+      ],
+      "review_reference": "REVIEW-2026-11-16-tien-chat-approval-docs/BAO_CAO_A3_MAPPING_REVIEW_RECORD.md",
+      "reason": "Removes the drill-created scoped DB reject rule on both Moodle nodes; allowlisted live action for DB-01."
+    },
+    {
+      "aihs_action": "recreate_moodle_web_from_reviewed_compose",
+      "status": "live_reviewed",
+      "catalog_action_id": "recreate_moodle_web_from_reviewed_compose",
+      "scenario_id": "NET-01",
+      "target_scope": "staging_moodle_nodes",
+      "target_resource_id": "moodle-app",
+      "target_resource_type": "application",
+      "required_role": "executor",
+      "rollback_action_id": "reconcile_net01_safe_baseline",
+      "verifier_probe_id": "verify_database_hostname",
+      "preconditions": [
+        "Synthetic transaction failing while DB DNS alias differs from the approved endpoint",
+        "Reviewed compose manifest is the one deployed by CD"
+      ],
+      "review_reference": "REVIEW-2026-11-16-tien-chat-approval-docs/BAO_CAO_A3_MAPPING_REVIEW_RECORD.md",
+      "reason": "Recreates the web container from the reviewed compose on nodes A and B (MEDIUM blast radius, always needs Operator approval)."
+    },
+    {
+      "aihs_action": "remove_named_cpu_load_container",
+      "status": "live_reviewed",
+      "catalog_action_id": "remove_named_cpu_load_container",
+      "scenario_id": "RES-01",
+      "target_scope": "moodle-app-b",
+      "target_resource_id": "moodle-app",
+      "target_resource_type": "application",
+      "required_role": "executor",
+      "rollback_action_id": "reconcile_res01_safe_baseline",
+      "verifier_probe_id": "verify_node_cpu_recovers",
+      "preconditions": [
+        "Alert MoodleNodeCpuHigh firing on node B",
+        "Only the named CPU load fixture container is removed"
+      ],
+      "review_reference": "REVIEW-2026-11-16-tien-chat-approval-docs/BAO_CAO_A3_MAPPING_REVIEW_RECORD.md",
+      "reason": "Stops and removes the named CPU load fixture container on node B."
+    },
+    {
+      "aihs_action": "start_reviewed_compose_service",
+      "status": "live_reviewed",
+      "catalog_action_id": "start_reviewed_compose_service",
+      "scenario_id": "CON-01",
+      "target_scope": "moodle-app-b",
+      "target_resource_id": "moodle-app",
+      "target_resource_type": "application",
+      "required_role": "executor",
+      "rollback_action_id": "reconcile_con01_safe_baseline",
+      "verifier_probe_id": "wait_for_alb_target_health",
+      "preconditions": [
+        "Alert MoodleWebContainerMissing firing; web container on node B is stopped",
+        "Service is started only from the reviewed compose file"
+      ],
+      "review_reference": "REVIEW-2026-11-16-tien-chat-approval-docs/BAO_CAO_A3_MAPPING_REVIEW_RECORD.md",
+      "reason": "Starts the stopped Moodle web container on node B from the reviewed compose."
+    },
+    {
+      "aihs_action": "restore_fixture_directory_mode",
+      "status": "live_reviewed",
+      "catalog_action_id": "restore_fixture_directory_mode",
+      "scenario_id": "SEC-02",
+      "target_scope": "moodledata_synthetic_fixture_directory",
+      "target_resource_id": "moodledata-volume",
+      "target_resource_type": "volume",
+      "required_role": "executor",
+      "rollback_action_id": "reconcile_sec02_safe_baseline",
+      "verifier_probe_id": "verify_efs_write",
+      "preconditions": [
+        "Synthetic transaction failing on a write to the fixture directory with changed mode",
+        "Only the synthetic fixture directory under moodledata is touched"
+      ],
+      "review_reference": "REVIEW-2026-11-16-tien-chat-approval-docs/BAO_CAO_A3_MAPPING_REVIEW_RECORD.md",
+      "reason": "Restores the mode of the synthetic fixture directory on moodledata only."
+    },
+    {
+      "aihs_action": "restart_moodle_cron_service",
+      "status": "live_reviewed",
+      "catalog_action_id": "restart_moodle_cron_service",
+      "scenario_id": "BIZ-02",
+      "target_scope": "staging_moodle_app",
+      "target_resource_id": "moodle-app",
+      "target_resource_type": "application",
+      "required_role": "executor",
+      "rollback_action_id": "reconcile_biz02_cron_baseline",
+      "verifier_probe_id": "verify_moodle_cron_running",
+      "preconditions": [
+        "Alert MoodleAdhocTaskQueueStuck firing; cron container on node A is stopped or stuck",
+        "Restart is container-level only; no Moodle DB table is modified"
+      ],
+      "review_reference": "REVIEW-2026-11-16-tien-chat-approval-docs/BAO_CAO_A3_MAPPING_REVIEW_RECORD.md",
+      "reason": "Restarts the moodle-cron container on node A."
+    },
+    {
+      "aihs_action": "wait_and_recheck",
+      "status": "observe_only",
+      "reason": "Observe-only rung (NOP equivalent); never mutates, so it has no catalog mapping and never reaches the Gate."
+    },
+    {
+      "aihs_action": "call_human",
+      "status": "human_only",
+      "reason": "Escalation rung; always hands the incident to an Operator, never executed by the agent."
+    }
+  ]
+}

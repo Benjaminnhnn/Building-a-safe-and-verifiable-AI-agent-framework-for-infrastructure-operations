@@ -12,6 +12,8 @@ import re
 from collections import Counter
 from pathlib import Path
 
+from a2_export_lab import export_lab  # noqa: F401  (lab-campaign reader; see a2_export_lab.py)
+
 
 RUN_FILE = re.compile(r"^((?:CON|DB|NET|RES|SEC)-\d{2})-(\d{8}T\d{6}Z)\.json$")
 RUN_PREFIX = re.compile(r"^((?:CON|DB|NET|RES|SEC)-\d{2}-\d{8}T\d{6}Z)(?:\.|-)")
@@ -224,9 +226,19 @@ def export(artifact_root, ground_truth_root, output_dir):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--source", choices=("staging", "lab"), default="staging")
     parser.add_argument("--artifact-root", type=Path, default=Path("terraform/.artifacts"))
     parser.add_argument("--ground-truth-root", type=Path, default=Path("evaluation/ground_truth"))
-    parser.add_argument("--output-dir", type=Path, default=Path("evaluation/aihs/a2-export"))
+    parser.add_argument("--output-dir", type=Path, default=None)
+    parser.add_argument("--lab-root", type=Path, default=Path("evaluation/aihs/.artifacts/lab-campaign"))
+    parser.add_argument("--campaign", action="append", default=[], help="lab campaign directory name (repeatable)")
+    parser.add_argument("--session-size", type=int, default=8, help="lab episodes per session group")
     args = parser.parse_args()
-    result = export(args.artifact_root, args.ground_truth_root, args.output_dir)
+    if args.source == "lab":
+        if not args.campaign:
+            parser.error("--campaign is required with --source lab")
+        result = export_lab(args.lab_root, args.campaign, args.output_dir or Path("evaluation/aihs/.artifacts/new-a2-export"),
+                            Path(__file__).resolve().parents[2], args.session_size)
+    else:
+        result = export(args.artifact_root, args.ground_truth_root, args.output_dir or Path("evaluation/aihs/a2-export"))
     print(json.dumps({k: result[k] for k in ("distinct_incidents", "candidate_records", "by_proposal_source", "by_scenario", "by_outcome", "training_eligible", "leakage_scan")}, ensure_ascii=False))

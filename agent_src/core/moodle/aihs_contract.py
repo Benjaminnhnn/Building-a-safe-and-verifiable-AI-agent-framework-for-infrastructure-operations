@@ -105,6 +105,7 @@ class AIHSAdapterResult(_Strict):
         "human_only_action", "missing_evidence", "stale_evidence",
         "cross_incident_evidence", "invalid_evidence", "stale_prediction",
         "unmapped_action", "scope_mismatch", "catalog_not_allowed", "shadow_candidate_ready",
+        "observe_only_action", "draft_shadow_candidate",
     ]
     incident_id: str
     scenario_id: str
@@ -123,6 +124,48 @@ class AIHSAdapterResult(_Strict):
 
 def load_mapping(path: str | Path) -> MappingDefinition:
     return MappingDefinition.model_validate_json(Path(path).read_text())
+
+
+def check_decision_evidence(
+    context: DecisionContext, *, mapping_environment: str, evidence_db: str | Path, current: datetime,
+) -> str | None:
+    """Return the first failing reason code for scope, prediction age and evidence, else None.
+
+    Shared by the legacy AIHS adapter and the C0 adapter so both apply one rule set.
+    """
+    profile = get_environment_profile()
+    if context.environment != profile.environment or mapping_environment != context.environment:
+        return "scope_mismatch"
+    if (context.predicted_at > current + timedelta(seconds=30)
+            or current - context.predicted_at > timedelta(seconds=profile.evidence.max_sample_age_seconds)):
+        return "stale_prediction"
+    if (len(context.evidence_refs) < profile.gate.min_evidence_refs
+            or len(context.evidence_refs) != len(set(context.evidence_refs))):
+        return "missing_evidence"
+    if not Path(evidence_db).is_file():
+        return "missing_evidence"
+    try:
+        with SQLiteEvidenceStore(evidence_db) as store:
+            store.verify_integrity()
+            evidence = [store.get_by_id(ref) for ref in context.evidence_refs]
+    except (EvidenceIntegrityError, ValueError, DatabaseError, OSError):
+        return "invalid_evidence"
+    if any(item is None for item in evidence):
+        return "missing_evidence"
+    if any(item.incident_id != context.incident_id for item in evidence):
+        return "cross_incident_evidence"
+    if any(item.source not in EVIDENCE_SOURCES for item in evidence):
+        return "invalid_evidence"
+    freshness = timedelta(seconds=profile.evidence.max_sample_age_seconds)
+    if any(
+        item.collected_at > context.predicted_at
+        or item.observed_at > context.predicted_at
+        or context.predicted_at - item.collected_at > freshness
+        or context.predicted_at - item.observed_at > freshness
+        for item in evidence
+    ):
+        return "stale_evidence"
+    return None
 
 
 def adapt_aihs_output(
@@ -169,38 +212,11 @@ def adapt_aihs_output(
     if action_code == "RMA":
         return result("human_only_action", action_code=action_code)
 
-    profile = get_environment_profile()
-    if context.environment != profile.environment or mapping.environment != context.environment:
-        return result("scope_mismatch", action_code=action_code)
-    if (context.predicted_at > current + timedelta(seconds=30)
-            or current - context.predicted_at > timedelta(seconds=profile.evidence.max_sample_age_seconds)):
-        return result("stale_prediction", action_code=action_code)
-    if (len(context.evidence_refs) < profile.gate.min_evidence_refs
-            or len(context.evidence_refs) != len(set(context.evidence_refs))):
-        return result("missing_evidence", action_code=action_code)
-    if not Path(evidence_db).is_file():
-        return result("missing_evidence", action_code=action_code)
-    try:
-        with SQLiteEvidenceStore(evidence_db) as store:
-            store.verify_integrity()
-            evidence = [store.get_by_id(ref) for ref in context.evidence_refs]
-    except (EvidenceIntegrityError, ValueError, DatabaseError, OSError):
-        return result("invalid_evidence", action_code=action_code)
-    if any(item is None for item in evidence):
-        return result("missing_evidence", action_code=action_code)
-    if any(item.incident_id != context.incident_id for item in evidence):
-        return result("cross_incident_evidence", action_code=action_code)
-    if any(item.source not in EVIDENCE_SOURCES for item in evidence):
-        return result("invalid_evidence", action_code=action_code)
-    freshness = timedelta(seconds=profile.evidence.max_sample_age_seconds)
-    if any(
-        item.collected_at > context.predicted_at
-        or item.observed_at > context.predicted_at
-        or context.predicted_at - item.collected_at > freshness
-        or context.predicted_at - item.observed_at > freshness
-        for item in evidence
-    ):
-        return result("stale_evidence", action_code=action_code)
+    failure = check_decision_evidence(
+        context, mapping_environment=mapping.environment, evidence_db=evidence_db, current=current,
+    )
+    if failure is not None:
+        return result(failure, action_code=action_code)
 
     rule = next(entry for entry in mapping.actions if entry.aihs_action == action_code)
     if (mapping.review_status == "no_approved_action_mapping"

@@ -332,6 +332,28 @@ def test_three_sample_window_accounts_for_first_clock_call_overhead(tmp_path, mo
     assert result["verdict"] == "ready_for_runtime_acceptance"
 
 
+def test_wall_clock_slower_than_monotonic_still_yields_a_full_window(tmp_path, monkeypatch):
+    """16/11/2026 live: the wall clock lagged the monotonic schedule by ~10 ms over 120 s -> 119 s -> not_stable."""
+    audit_db = tmp_path / "audit.sqlite"
+    _audit_db(audit_db)
+    contract = {"allowed": ["moodle_healthy"], "forbidden": ["internet_to_postgresql"], "related": ["targets_healthy"]}
+    monkeypatch.setattr(verifier, "_run_probe", lambda *_: {
+        "moodle_healthy": True, "internet_to_postgresql": True, "targets_healthy": True,
+    })
+    elapsed = [0.0]
+    base = datetime.now(timezone.utc) - timedelta(seconds=125)
+    result = verifier.verify_window(
+        audit_db=audit_db, signing_key=_private_key(tmp_path / "verifier.pem"),
+        incident_id="inc-1", request_id="req-1", scenario_id="DB-01", contract=contract,
+        sleep=lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds),
+        monotonic=lambda: elapsed[0], now=lambda: base + timedelta(seconds=elapsed[0] * 0.9999),
+    )
+    times = [datetime.fromisoformat(sample["observed_at"]) for sample in result["probe_samples"]]
+    assert (times[-1] - times[0]).total_seconds() >= 120
+    assert result["verification"]["stability_seconds"] >= 120
+    assert result["verdict"] == "ready_for_runtime_acceptance"
+
+
 def test_executed_request_remains_verifying_until_a_eligible_result_is_stored(
     tmp_path: Path,
 ) -> None:

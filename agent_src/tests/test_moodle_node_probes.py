@@ -87,7 +87,7 @@ def test_probe_timer_has_first_activation_after_deploy() -> None:
     source = PLAYBOOK.read_text(encoding="utf-8")
     timer = source.split("dest: /etc/systemd/system/moodle-node-probes.timer", 1)[1].split("dest:", 1)[0]
     assert "OnActiveSec=5s" in timer
-    assert "OnUnitActiveSec=30s" in timer
+    assert "OnUnitActiveSec=10s" in timer   # 10s since the 16/11/2026 live session: markers must precede the alert
     assert "state: restarted" in source.split("name: Enable node-local Moodle probe timer", 1)[1].split("- name:", 1)[0]
 
 
@@ -138,3 +138,62 @@ def test_positive_container_probes_emit_expected_values(tmp_path: Path) -> None:
     assert "moodle_fault_res01_cpu_fixture_running 1\n" in metrics
     assert "moodle_fault_net01_hosts_override 1\n" in metrics
     assert "moodle_fault_con01_web_stopped 0\n" in metrics
+
+
+def test_aihs_schema_metrics_match_lab_names_and_omit_unknown_values(tmp_path: Path) -> None:
+    """DNS/fixture/heartbeat series exist under the lab names; unknown optional values are omitted, not zero."""
+    result = _run(tmp_path)
+    assert result.returncode == 0, result.stderr
+    metrics = (tmp_path / "moodle_node_probes.prom").read_text(encoding="utf-8")
+    assert "moodle_node_db_dns_success 0\n" in metrics
+    assert "moodle_node_db_dns_matches_expected 0\n" in metrics
+    for optional in ("moodle_node_fixture_dir_mode", "moodle_node_fixture_dir_exists",
+                     "moodle_node_cron_heartbeat_age_seconds"):
+        assert f"\n{optional} " not in metrics
+
+
+def test_aihs_schema_metrics_with_fake_runtime(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    docker = fake_bin / "docker"
+    docker.write_text(
+        "#!/bin/sh\n"
+        "case \"$*\" in\n"
+        "  stats*) printf 'release-moodle-web-1 80.00%%\\nrelease-moodle-cron-1 20.00%%\\nother 99.00%%\\n' ;;\n"
+        "  *RestartCount*) echo 0 ;;\n"
+        "  *'printenv MOODLE_DB_HOST'*) echo db.example ;;\n"
+        "  *.State.Running*) echo true ;;\n"
+        "  *gethostbyname*) echo 10.0.0.9 ;;\n"
+        "  *lastcronstart*) echo \"2 $(date -u +%s)\" ;;\n"
+        "  *'php -r'*) echo 0.012345 ;;\n"
+        "  *) exit 0 ;;\n"
+        "esac\n",
+        encoding="utf-8", newline="\n")
+    docker.chmod(0o755)
+    for name, body in (("getent", "echo '10.0.0.9 STREAM db.example'"), ("nproc", "echo 2"),
+                       ("findmnt", "echo nfs4"), ("stat", "echo 770"), ("iptables", "exit 1")):
+        script = fake_bin / name
+        script.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8", newline="\n")
+        script.chmod(0o755)
+    result = _run(tmp_path, extra_env={"MOODLE_TEST_FAKE_BIN": str(fake_bin),
+                                       "MOODLE_NODE_PROBE_CONTAINER": "release-moodle-web-1",
+                                       "MOODLE_NODE_PROBE_CRON_CONTAINER": "release-moodle-cron-1"})
+    assert result.returncode == 0, result.stderr
+    metrics = (tmp_path / "moodle_node_probes.prom").read_text(encoding="utf-8")
+    assert "moodle_node_db_dns_success 1\n" in metrics
+    assert "moodle_node_db_dns_matches_expected 1\n" in metrics
+    assert "moodle_node_fixture_dir_exists 1\n" in metrics
+    assert "moodle_node_fixture_dir_mode 770\n" in metrics
+    assert "moodle_node_cpu_percent 50.00\n" in metrics
+    assert "moodle_node_cron_heartbeat_age_seconds " in metrics
+    assert "moodle_adhoc_tasks_overdue_count 2\n" in metrics
+    assert "MOODLE_DB_PASSWORD" not in metrics
+
+
+def test_aihs_schema_metrics_are_declared_and_not_fault_markers() -> None:
+    import re
+    source = SCRIPT.read_text(encoding="utf-8")
+    for name in ("moodle_node_db_dns_success", "moodle_node_db_dns_matches_expected", "moodle_node_fixture_dir_mode",
+                 "moodle_node_fixture_dir_exists", "moodle_node_cron_heartbeat_age_seconds", "moodle_node_cpu_percent"):
+        assert re.search(rf"'# TYPE {name} gauge'", source), name
+        assert "fault" not in name

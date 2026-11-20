@@ -98,7 +98,7 @@ case "$scenario" in
         $task->set_custom_data(["plugins" => ["assign"], "moodle_fault" => "BIZ-02"]);
         $task->set_next_run_time(time() - 900);
         \core\task\manager::queue_adhoc_task($task);
-      '\''
+      '\'' || { rc=$?; echo "BIZ-02 ad-hoc task queueing in release-moodle-web-1 failed (php exit $rc)" >&2; exit "$rc"; }
     '
     ;;
 

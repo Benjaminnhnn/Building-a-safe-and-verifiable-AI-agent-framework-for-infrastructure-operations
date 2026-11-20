@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import socket
 import sys
 from pathlib import Path
@@ -33,6 +34,7 @@ def test_demo_exercises_gate_and_verifier_without_network(monkeypatch, scenario,
     assert result["verifier_cases"]["contract_complete"]["resolution_eligible"]
 
 
+@pytest.mark.skipif(not hasattr(os, "fchmod"), reason="POSIX-only: the report writer uses os.fchmod")
 def test_cli_report_keeps_counts_and_simulation_scope(tmp_path, monkeypatch, capsys):
     output = tmp_path / "report.json"
     monkeypatch.setattr(sys, "argv", ["demo", "all", "--output", str(output)])

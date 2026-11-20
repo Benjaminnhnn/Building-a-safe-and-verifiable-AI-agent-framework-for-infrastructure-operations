@@ -7,6 +7,11 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
+if sys.platform == "win32":  # the bridge uses fcntl; CI runs on Linux
+    pytest.skip("POSIX-only automation bridge", allow_module_level=True)
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "automation" / "lib"))
 spec = importlib.util.spec_from_file_location("telegram_approval", REPO_ROOT / "automation" / "moodle-telegram-approval.py")
